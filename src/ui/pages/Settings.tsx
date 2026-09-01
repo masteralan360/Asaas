@@ -8,12 +8,12 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock, Plus, Menu } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, Bluetooth, CalendarClock, Plus, Menu } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
 import { useState, useEffect, useRef, type ChangeEvent } from 'react'
-import { isAndroidPwa, isMobile, isDesktop, isTauri } from '@/lib/platform'
+import { isAndroidPwa, isMobile, isDesktop, isTauri, isTauriAndroid } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
@@ -178,6 +178,7 @@ export function Settings() {
     const canUseBarcodeScanner = hasCapability('barcodeScanner')
     const canUseThermalPrinter = hasCapability('thermalPrinter')
     const isAndroidDirectThermalPwa = isAndroidPwa()
+    const isTauriAndroidApp = isTauriAndroid()
     const directMobileThermalCapabilities = printService.getDirectMobileThermalCapabilities()
     const canUseA4Invoices = hasCapability('a4PdfInvoices')
     const canUseReceiptPrinting = hasCapability('receiptPrinting')
@@ -408,7 +409,7 @@ export function Settings() {
                 interface_type: selectedThermalPrinter.interface_type,
                 identifier: selectedThermalPrinter.identifier,
                 status: selectedThermalPrinter.status,
-                transport: selectedThermalPrinter.transport ?? (isElectron ? 'tauri' : 'qz'),
+                transport: selectedThermalPrinter.transport ?? (isDesktop() ? 'tauri' : isTauriAndroidApp ? 'tauri-android-bluetooth' : 'qz'),
                 usb: selectedThermalPrinter.usb,
                 bluetooth: selectedThermalPrinter.bluetooth
             }, nextValue)
@@ -489,16 +490,21 @@ export function Settings() {
         if (!isThermalDialogOpen) return
 
         void loadSelectedThermalPrinter()
-        if (isElectron) {
+        if (isDesktop()) {
             void scanThermalPrinters()
         } else if (isAndroidDirectThermalPwa) {
             setAvailableThermalPrinters([])
             setThermalPrinterMessage('Pair a USB printer first. Bluetooth LE is also available when you enter the printer service and write-characteristic UUIDs.')
+        } else if (isTauriAndroidApp) {
+            setAvailableThermalPrinters([])
+            setThermalPrinterMessage(t('settings.printing.androidBluetoothClassicHint', {
+                defaultValue: 'Pair a Bluetooth Classic printer in Android Settings, then refresh the paired-printer list here.'
+            }))
         } else {
             setAvailableThermalPrinters([])
             setThermalPrinterMessage('Install and run QZ Tray, then select Connect & Scan to choose a printer for this PWA.')
         }
-    }, [isThermalDialogOpen, user?.workspaceId, isElectron, isAndroidDirectThermalPwa])
+    }, [isThermalDialogOpen, user?.workspaceId, isElectron, isAndroidDirectThermalPwa, isTauriAndroidApp, t])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
     const [updatesDisabled, setUpdatesDisabled] = useState(() => areApplicationUpdatesDisabled())
@@ -4178,7 +4184,7 @@ export function Settings() {
                                 {t('settings.printing.thermalDialogTitle', { defaultValue: 'Thermal Printers' })}
                             </AppDialogTitle>
                             <AppDialogDescription>
-                                {isElectron
+                                {isDesktop()
                                     ? t('settings.printing.thermalDialogDesc', {
                                         defaultValue: 'Scan this device for available thermal printers and choose which one should handle POS receipt printing for this workspace.'
                                     })
@@ -4186,6 +4192,10 @@ export function Settings() {
                                         ? t('settings.printing.thermalAndroidPwaDialogDesc', {
                                             defaultValue: 'Pair a wired USB printer directly with this Android device. Bluetooth LE is also supported when the printer provides its GATT service and write-characteristic UUIDs.'
                                         })
+                                        : isTauriAndroidApp
+                                            ? t('settings.printing.thermalAndroidTauriDialogDesc', {
+                                                defaultValue: 'Use a Bluetooth Classic receipt printer already paired in Android Settings. Atlas sends POS receipts directly through the printer’s SPP connection.'
+                                            })
                                     : t('settings.printing.thermalPwaDialogDesc', {
                                         defaultValue: 'Connect QZ Tray on this device to scan printers and print POS receipts directly from the installed PWA.'
                                     })}
@@ -4271,6 +4281,26 @@ export function Settings() {
                                 </div>
                             )}
 
+                            {isTauriAndroidApp && (
+                                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="rounded-lg bg-background p-2 shadow-sm">
+                                            <Bluetooth className="h-4 w-4 text-primary" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold">
+                                                {t('settings.printing.androidBluetoothClassicTitle', { defaultValue: 'Android Bluetooth Classic printers' })}
+                                            </p>
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {t('settings.printing.androidBluetoothClassicDesc', {
+                                                    defaultValue: 'Pair an SPP/RFCOMM receipt printer in Android Settings first. Then refresh below, select it, and use Print Test Receipt to verify the connection.'
+                                                })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-4 md:flex-row md:items-start md:justify-between">
                                 <div className="space-y-1">
                                     <p className="text-sm font-semibold">
@@ -4295,6 +4325,8 @@ export function Settings() {
                                                     ? t('settings.printing.thermalWebUsbTransport', { defaultValue: 'Connected directly by USB to this Android device.' })
                                                     : selectedThermalPrinter.transport === 'webbluetooth'
                                                         ? t('settings.printing.thermalWebBluetoothTransport', { defaultValue: 'Connected directly by Bluetooth LE to this Android device.' })
+                                                        : selectedThermalPrinter.transport === 'tauri-android-bluetooth'
+                                                            ? t('settings.printing.thermalTauriAndroidBluetoothTransport', { defaultValue: 'Connected directly by Bluetooth Classic to this Android device.' })
                                                     : selectedThermalPrinter.transport === 'qz'
                                                     ? t('settings.printing.thermalQzTransport', { defaultValue: 'Connected through QZ Tray on this device.' })
                                                     : t('settings.printing.thermalTauriTransport', { defaultValue: 'Connected through the native desktop print service.' })}
@@ -4342,7 +4374,7 @@ export function Settings() {
                                     )}
                                 </div>
                                 <div className="flex shrink-0 flex-col gap-2 self-start md:items-end">
-                                    {!isElectron && !isAndroidDirectThermalPwa && (
+                                    {!isDesktop() && !isAndroidDirectThermalPwa && !isTauriAndroidApp && (
                                         <a
                                             href="https://qz.io/download/"
                                             target="_blank"
@@ -4360,10 +4392,12 @@ export function Settings() {
                                         disabled={isScanningThermalPrinters}
                                     >
                                         <RefreshCw className={cn('mr-2 h-4 w-4', isScanningThermalPrinters && 'animate-spin')} />
-                                        {isElectron
+                                        {isDesktop()
                                             ? t('settings.printing.refreshPrinters', { defaultValue: 'Refresh' })
                                             : isAndroidDirectThermalPwa
                                                 ? t('settings.printing.refreshPairedUsbPrinters', { defaultValue: 'Refresh Paired USB Printers' })
+                                                : isTauriAndroidApp
+                                                    ? t('settings.printing.refreshPairedBluetoothPrinters', { defaultValue: 'Refresh Paired Bluetooth Printers' })
                                                 : t('settings.printing.connectAndScanPrinters', { defaultValue: 'Connect & Scan' })}
                                     </Button>
                                 </div>

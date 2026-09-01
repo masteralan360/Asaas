@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
     isDesktop: vi.fn(),
     isAndroidPwa: vi.fn(),
+    isTauriAndroid: vi.fn(),
+    invoke: vi.fn(),
     listNativePrinters: vi.fn(),
     printNative: vi.fn(),
     testNative: vi.fn(),
@@ -13,12 +15,18 @@ const mocks = vi.hoisted(() => ({
     qzConnect: vi.fn(),
     qzFindPrinters: vi.fn(),
     qzCreateConfig: vi.fn(),
-    qzPrint: vi.fn()
+    qzPrint: vi.fn(),
+    renderReceiptImageToEscPos: vi.fn()
 }))
 
 vi.mock('@/lib/platform', () => ({
     isDesktop: mocks.isDesktop,
-    isAndroidPwa: mocks.isAndroidPwa
+    isAndroidPwa: mocks.isAndroidPwa,
+    isTauriAndroid: mocks.isTauriAndroid
+}))
+
+vi.mock('@tauri-apps/api/core', () => ({
+    invoke: mocks.invoke
 }))
 
 vi.mock('@/i18n/config', () => ({
@@ -56,6 +64,16 @@ vi.mock('qz-tray', () => ({
     }
 }))
 
+vi.mock('@/services/mobileThermalPrinter', () => ({
+    getDirectMobileThermalCapabilities: vi.fn(),
+    listAuthorizedUsbThermalPrinters: vi.fn(),
+    printToDirectMobileThermalPrinter: vi.fn(),
+    renderReceiptImageToEscPos: mocks.renderReceiptImageToEscPos,
+    requestBluetoothThermalPrinter: vi.fn(),
+    requestUsbThermalPrinter: vi.fn(),
+    testDirectMobileThermalPrinter: vi.fn()
+}))
+
 import { printService } from './printService'
 
 describe('PWA thermal printing through QZ Tray', () => {
@@ -63,10 +81,12 @@ describe('PWA thermal printing through QZ Tray', () => {
         vi.clearAllMocks()
         mocks.isDesktop.mockReturnValue(false)
         mocks.isAndroidPwa.mockReturnValue(false)
+        mocks.isTauriAndroid.mockReturnValue(false)
         mocks.qzIsActive.mockReturnValue(false)
         mocks.qzConnect.mockResolvedValue(undefined)
         mocks.qzCreateConfig.mockReturnValue({ printer: 'EPSON TM-T20' })
         mocks.qzPrint.mockResolvedValue(undefined)
+        mocks.renderReceiptImageToEscPos.mockResolvedValue(new Uint8Array([27, 64, 29, 86, 0]))
     })
 
     it('discovers local PWA printers through QZ Tray', async () => {
@@ -122,5 +142,70 @@ describe('PWA thermal printing through QZ Tray', () => {
                 '\x1DV\x00'
             ])
         )
+    })
+
+    it('lists Android Tauri Bluetooth Classic printers through the native bridge', async () => {
+        mocks.isTauriAndroid.mockReturnValue(true)
+        mocks.invoke.mockResolvedValue([
+            {
+                name: 'POS-58',
+                interface_type: 'Bluetooth Classic (Tauri Android)',
+                identifier: '00:11:22:33:44:55',
+                status: 'Paired'
+            }
+        ])
+
+        await expect(printService.listThermalPrinters()).resolves.toEqual([
+            {
+                name: 'POS-58',
+                interface_type: 'Bluetooth Classic (Tauri Android)',
+                identifier: '00:11:22:33:44:55',
+                status: 'Paired',
+                transport: 'tauri-android-bluetooth'
+            }
+        ])
+
+        expect(mocks.invoke).toHaveBeenCalledWith('list_android_bluetooth_thermal_printers')
+    })
+
+    it('sends a native Android Bluetooth printer test and returns its error', async () => {
+        mocks.invoke.mockRejectedValueOnce(new Error('Bluetooth permission was denied'))
+
+        await expect(printService.testThermalPrinter('workspace-1', {
+            name: 'POS-58',
+            interface_type: 'Bluetooth Classic (Tauri Android)',
+            identifier: '00:11:22:33:44:55',
+            status: 'Paired',
+            paper_size: 'Mm58',
+            transport: 'tauri-android-bluetooth'
+        })).rejects.toThrow('Bluetooth permission was denied')
+
+        expect(mocks.invoke).toHaveBeenCalledWith('test_android_bluetooth_thermal_printer', {
+            address: '00:11:22:33:44:55'
+        })
+    })
+
+    it('renders and sends an ESC/POS receipt through the Android Bluetooth bridge', async () => {
+        mocks.getAppSetting.mockResolvedValue(JSON.stringify({
+            name: 'POS-58',
+            interface_type: 'Bluetooth Classic (Tauri Android)',
+            identifier: '00:11:22:33:44:55',
+            paper_size: 'Mm58',
+            roll_width_mm: 58,
+            transport: 'tauri-android-bluetooth'
+        }))
+        mocks.invoke.mockResolvedValue(undefined)
+
+        await expect(printService.silentPrintImage({
+            workspaceId: 'workspace-1',
+            imageBase64: 'data:image/png;base64,abc123',
+            maxWidth: 384
+        })).resolves.toBe(true)
+
+        expect(mocks.renderReceiptImageToEscPos).toHaveBeenCalledWith('data:image/png;base64,abc123', 384)
+        expect(mocks.invoke).toHaveBeenCalledWith('print_android_bluetooth_thermal_printer', {
+            address: '00:11:22:33:44:55',
+            payload: [27, 64, 29, 86, 0]
+        })
     })
 })

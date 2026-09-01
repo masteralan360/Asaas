@@ -10,6 +10,7 @@ use tokio::sync::broadcast;
 
 mod kds_server;
 mod kurdishtts_website_stt;
+mod android_bluetooth_printer;
 
 const SINGLE_INSTANCE_PORT: u16 = 41931;
 
@@ -308,6 +309,30 @@ fn backup_db_to_usb(app: tauri::AppHandle, db_filename: String, dest_path: Strin
     Ok(copied)
 }
 
+#[tauri::command]
+async fn list_android_bluetooth_thermal_printers(
+    app: tauri::AppHandle,
+) -> Result<Vec<android_bluetooth_printer::BluetoothPrinterInfo>, String> {
+    android_bluetooth_printer::list_printers(app).await
+}
+
+#[tauri::command]
+async fn print_android_bluetooth_thermal_printer(
+    app: tauri::AppHandle,
+    address: String,
+    payload: Vec<u8>,
+) -> Result<(), String> {
+    android_bluetooth_printer::print(app, address, payload).await
+}
+
+#[tauri::command]
+async fn test_android_bluetooth_thermal_printer(
+    app: tauri::AppHandle,
+    address: String,
+) -> Result<(), String> {
+    android_bluetooth_printer::test(app, address).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (tx, _rx) = broadcast::channel(100);
@@ -322,6 +347,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(android_bluetooth_printer::init())
         .plugin(tauri_plugin_thermal_printer::init());
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -379,6 +405,9 @@ pub fn run() {
             get_file_size,
             backup_db_to_usb,
             create_desktop_shortcut,
+            list_android_bluetooth_thermal_printers,
+            print_android_bluetooth_thermal_printer,
+            test_android_bluetooth_thermal_printer,
             kurdishtts_website_stt::atlas_assistant_kurdishtts_website_status,
             kurdishtts_website_stt::atlas_assistant_transcribe_kurdishtts_website
         ])

@@ -40,6 +40,20 @@
     "amount": "بڕ",
     "currency": "دراو",
     "gigabytes": "کرێدیتی بەکارهێنان بۆ هەر نوێکردنەوەیەک",
+    "manualProvider": "پارەدانی دەستی",
+    "prepaidTerm": {
+      "title": "ماوەی پێش‌پارەدراو چالاکە",
+      "description": "پارەی ئەم شوێنەی کارە تا بەرواری خوارەوە پێش‌وەخت دراوە.",
+      "monthlyPrice": "نرخی بنەڕەتی مانگانە",
+      "monthlyAllowance": "سنووری مانگانە",
+      "termAllowance": "کۆی سنووری تەواوی ماوەکە",
+      "cycles": "مانگە پێش‌پارەدراوەکان",
+      "amountPaid": "بڕی پارەدراو",
+      "startedAt": "دەستپێکی ماوە",
+      "paidThrough": "پارەدراو تا",
+      "noRollover": "سنووری مانگانە لە هەر خولێکدا نوێ دەبێتەوە؛ گیگابایتی بەکارنەهاتوو ناگوازرێتەوە.",
+      "termPoolNoMonthlyReset": "ئەم سنوورە بە درێژایی تەواوی ماوەی پێش‌پارەدان هاوبەشە و مانگانە نوێ نابێتەوە."
+    },
     "paymentInstructions": "وردەکارییەکانی پارەدان",
     "accountHolderName": "ناوی خاوەنی هەژمار",
     "accountHolderNamePlaceholder": "ناوی تەواو بنووسە",
@@ -1814,7 +1828,13 @@
       "low": "نزم",
       "high": "بەرز",
       "qualityDesc": "کوالێتی بەرز ڕوونی زیاتر دەکات بەڵام قەبارەی فایلی PDF گەورەتر دەبێت. کۆدی QR هەمیشە کوالێتی بەرزە.",
-      "templateDesc": "دیزاینی دۆکیومێنتە چاپکراوەکانت هەڵبژێرە."
+      "templateDesc": "دیزاینی دۆکیومێنتە چاپکراوەکانت هەڵبژێرە.",
+      "androidBluetoothClassicHint": "چاپکەرێکی Bluetooth Classic لە ڕێکخستنەکانی ئەندرۆید هاوبەش بکە، پاشان لیستی چاپکەرە هاوبەشکراوەکان لێرە نوێ بکەرەوە.",
+      "thermalAndroidTauriDialogDesc": "چاپکەرێکی پسوڵەی Bluetooth Classic بەکاربهێنە کە پێشتر لە ڕێکخستنەکانی ئەندرۆید هاوبەش کراوە. Atlas پسوڵەکانی POS بە ڕاستەوخۆ لەڕێی پەیوەندی SPP ی چاپکەرەکەوە دەنێرێت.",
+      "androidBluetoothClassicTitle": "چاپکەرەکانی Android Bluetooth Classic",
+      "androidBluetoothClassicDesc": "سەرەتا چاپکەرێکی پسوڵەی SPP/RFCOMM لە ڕێکخستنەکانی ئەندرۆید هاوبەش بکە. پاشان لیستی خوارەوە نوێ بکەرەوە، هەڵیبژێرە، و چاپکردنی تاقیکردنەوە بەکاربهێنە بۆ پشتڕاستکردنەوەی پەیوەندییەکە.",
+      "thermalTauriAndroidBluetoothTransport": "بە ڕاستەوخۆ بە Bluetooth Classic بە ئەم ئامێری ئەندرۆیدە پەیوەست کراوە.",
+      "refreshPairedBluetoothPrinters": "نوێکردنەوەی چاپکەرە Bluetooth هاوبەشکراوەکان"
     },
     "passwordChange": {
       "title": "وشەی نهێنی",

@@ -11,6 +11,8 @@ export const isMobile = () => typeof navigator !== 'undefined'
     && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 export const isAndroid = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 export const isAndroidPwa = () => isAndroid() && !isTauri();
+/** Android native app shell, including the Tauri WebView. */
+export const isTauriAndroid = () => isAndroid() && isTauri();
 export const isDesktop = () => isTauri() && !isMobile();
 export const isPwaDesktop = () => {
     if (isTauri() || isMobile()) return false;

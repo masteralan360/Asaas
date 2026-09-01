@@ -114,6 +114,19 @@ type UpsertWorkspacePaymentConfigurationRequest = {
     gbPerPayment?: string | number
     usageStartDate?: string | null
     renewalDueAt?: string | null
+    billingInterval?: 'monthly'
+}
+
+type ActivateWorkspacePrepaidTermRequest = {
+    action: 'activateWorkspacePrepaidTerm'
+    passkey?: string
+    workspaceId?: string
+    monthlyListPrice?: string | number
+    monthlyAllowanceGb?: string | number
+    prepaidAllowanceMode?: 'monthly_reset' | 'term_pool'
+    prepaidCycles?: number
+    amountPaid?: string | number
+    termStartedAt?: string
 }
 
 type GetPaygPricingScheduleRequest = {
@@ -160,6 +173,7 @@ type AdminConsoleRequest =
     | SendWorkspaceAdminMessageRequest
     | ListWorkspacePaymentConfigurationsRequest
     | UpsertWorkspacePaymentConfigurationRequest
+    | ActivateWorkspacePrepaidTermRequest
     | GetPaygPricingScheduleRequest
     | PublishPaygPricingScheduleRequest
     | ListWorkspacePaymentTransactionsRequest
@@ -1204,11 +1218,80 @@ async function upsertWorkspacePaymentConfiguration(
         p_usage_start_date: body.usageStartDate || null
     }
 
-    const { data, error } = await adminClient.rpc('admin_upsert_workspace_payment_configuration_v2', rpcParams)
+    rpcParams.p_billing_interval = body.billingInterval ?? 'monthly'
+
+    const { data, error } = await adminClient.rpc('admin_upsert_workspace_payment_configuration_v3', rpcParams)
 
     if (error) {
         console.error('RPC error:', JSON.stringify({ message: error.message, code: error.code, details: error.details, hint: error.hint }))
         return errorResponse(error.message || 'Unknown RPC error', 400, {
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        })
+    }
+
+    return jsonResponse(data)
+}
+
+async function activateWorkspacePrepaidTerm(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: ActivateWorkspacePrepaidTermRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!UUID_PATTERN.test(workspaceId)) {
+        return errorResponse('A valid workspace is required')
+    }
+
+    const monthlyListPrice = normalizePaymentDecimal(body.monthlyListPrice, 'Monthly list price', {
+        positive: true,
+        maximumDecimalPlaces: 3,
+        maximumWholeDigits: 17
+    })
+    if (monthlyListPrice.error) return errorResponse(monthlyListPrice.error)
+
+    const monthlyAllowanceGb = normalizePaymentDecimal(body.monthlyAllowanceGb, 'Monthly allowance', {
+        positive: true,
+        maximumDecimalPlaces: 6,
+        maximumWholeDigits: 8
+    })
+    if (monthlyAllowanceGb.error) return errorResponse(monthlyAllowanceGb.error)
+
+    const amountPaid = normalizePaymentDecimal(body.amountPaid, 'Amount paid', {
+        positive: true,
+        maximumDecimalPlaces: 3,
+        maximumWholeDigits: 17
+    })
+    if (amountPaid.error) return errorResponse(amountPaid.error)
+
+    const prepaidCycles = body.prepaidCycles
+    if (typeof prepaidCycles !== 'number' || !Number.isInteger(prepaidCycles) || prepaidCycles < 1 || prepaidCycles > 120) {
+        return errorResponse('Prepaid cycles must be a whole number between 1 and 120')
+    }
+
+    const prepaidAllowanceMode = body.prepaidAllowanceMode ?? 'term_pool'
+    if (prepaidAllowanceMode !== 'monthly_reset' && prepaidAllowanceMode !== 'term_pool') {
+        return errorResponse('Choose a valid prepaid allowance mode')
+    }
+
+    const termStartedAt = body.termStartedAt?.trim() ?? ''
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(termStartedAt) || Number.isNaN(Date.parse(`${termStartedAt}T00:00:00Z`))) {
+        return errorResponse('A valid prepaid term start date is required')
+    }
+
+    const { data, error } = await adminClient.rpc('admin_activate_workspace_prepaid_term_v2', {
+        p_workspace_id: workspaceId,
+        p_monthly_list_price: monthlyListPrice.value,
+        p_monthly_allowance_gb: monthlyAllowanceGb.value,
+        p_prepaid_cycles: prepaidCycles,
+        p_amount_paid: amountPaid.value,
+        p_term_started_at: termStartedAt,
+        p_prepaid_allowance_mode: prepaidAllowanceMode,
+        p_actor: 'admin-console-passkey'
+    })
+
+    if (error) {
+        return errorResponse(error.message || 'Failed to activate prepaid term', 400, {
             code: error.code,
             details: error.details,
             hint: error.hint
@@ -1393,6 +1476,10 @@ Deno.serve(async (req) => {
 
         if (body.action === 'upsertWorkspacePaymentConfiguration') {
             return await upsertWorkspacePaymentConfiguration(adminClient, body)
+        }
+
+        if (body.action === 'activateWorkspacePrepaidTerm') {
+            return await activateWorkspacePrepaidTerm(adminClient, body)
         }
 
         if (body.action === 'getPaygPricingSchedule') {

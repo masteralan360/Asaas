@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     AlertCircle,
+    BadgePercent,
     CalendarClock,
     CheckCircle2,
     Clock3,
     CreditCard,
     Gift,
+    Gauge,
     QrCode,
     RefreshCw,
     XCircle
@@ -43,6 +45,7 @@ import {
     submitWorkspacePayment,
     submitWorkspacePaygPayment,
     type WorkspacePaymentAlertKind,
+    type WorkspacePaymentConfiguration,
     type WorkspacePaymentProvider,
     type WorkspacePaymentStatus,
     type WorkspacePaymentSummary,
@@ -126,6 +129,106 @@ function getStatusPresentation(status: WorkspacePaymentStatus, t: ReturnType<typ
     }
 }
 
+function PrepaidTermSummary({
+    configuration,
+    locale,
+    iqdDisplayPreference,
+    t
+}: {
+    configuration: WorkspacePaymentConfiguration
+    locale: string
+    iqdDisplayPreference: string
+    t: ReturnType<typeof useTranslation>['t']
+}) {
+    const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+        dateStyle: 'medium'
+    }), [locale])
+    const currencyLabel = getWorkspacePaymentCurrencyLabel(iqdDisplayPreference)
+    const usesTermPool = configuration.prepaidAllowanceMode === 'term_pool'
+    const formatDate = (value: string | null) => {
+        if (!value) return '\u2014'
+        const parsed = new Date(value)
+        return Number.isNaN(parsed.getTime()) ? '\u2014' : dateFormatter.format(parsed)
+    }
+
+    return (
+        <section className="rounded-[24px] border border-emerald-500/25 bg-emerald-500/[0.06] p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-700 dark:text-emerald-300">
+                    <CalendarClock className="h-5 w-5" />
+                </span>
+                <div>
+                    <h3 className="font-bold text-foreground">{t('workspacePayments.prepaidTerm.title')}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        {t('workspacePayments.prepaidTerm.description')}
+                    </p>
+                </div>
+            </div>
+
+            <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-2xl bg-background/80 p-3 ring-1 ring-border/60">
+                    <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <CreditCard className="h-3.5 w-3.5" />
+                        {t('workspacePayments.prepaidTerm.monthlyPrice')}
+                    </dt>
+                    <dd className="mt-1 font-bold text-foreground">
+                        {formatWorkspacePaymentDecimal(configuration.monthlyListPrice, locale, 3)} {currencyLabel}
+                    </dd>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-3 ring-1 ring-border/60">
+                    <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <Gauge className="h-3.5 w-3.5" />
+                        {usesTermPool
+                            ? t('workspacePayments.prepaidTerm.termAllowance')
+                            : t('workspacePayments.prepaidTerm.monthlyAllowance')}
+                    </dt>
+                    <dd className="mt-1 font-bold text-foreground">
+                        {formatWorkspacePaymentDecimal(
+                            usesTermPool ? configuration.termAllowanceGb : configuration.monthlyAllowanceGb,
+                            locale,
+                            6
+                        )} GB
+                    </dd>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-3 ring-1 ring-border/60">
+                    <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t('workspacePayments.prepaidTerm.cycles')}
+                    </dt>
+                    <dd className="mt-1 font-bold text-foreground">{configuration.prepaidCycles ?? '\u2014'}</dd>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-3 ring-1 ring-border/60">
+                    <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <BadgePercent className="h-3.5 w-3.5" />
+                        {t('workspacePayments.prepaidTerm.amountPaid')}
+                    </dt>
+                    <dd className="mt-1 font-bold text-foreground">
+                        {formatWorkspacePaymentDecimal(configuration.prepaidAmount, locale, 3)} {currencyLabel}
+                    </dd>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-3 ring-1 ring-border/60">
+                    <dt className="text-xs font-medium text-muted-foreground">
+                        {t('workspacePayments.prepaidTerm.startedAt')}
+                    </dt>
+                    <dd className="mt-1 font-bold text-foreground">{formatDate(configuration.prepaidTermStartedAt)}</dd>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-3 ring-1 ring-border/60">
+                    <dt className="text-xs font-medium text-muted-foreground">
+                        {t('workspacePayments.prepaidTerm.paidThrough')}
+                    </dt>
+                    <dd className="mt-1 font-bold text-foreground">{formatDate(configuration.renewalDueAt)}</dd>
+                </div>
+            </dl>
+
+            <p className="mt-3 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                {usesTermPool
+                    ? t('workspacePayments.prepaidTerm.termPoolNoMonthlyReset')
+                    : t('workspacePayments.prepaidTerm.noRollover')}
+            </p>
+        </section>
+    )
+}
+
 function TransactionHistory({
     transactions,
     locale,
@@ -175,13 +278,25 @@ function TransactionHistory({
                                         <p className="font-semibold text-foreground">
                                             {transaction.provider === 'fib'
                                                 ? t('workspacePayments.fib')
-                                                : t('workspacePayments.qicard')}
+                                                : transaction.provider === 'qicard'
+                                                    ? t('workspacePayments.qicard')
+                                                    : transaction.provider === 'free'
+                                                        ? t('workspacePayments.freeRenewal', 'Free Renewal')
+                                                        : t('workspacePayments.manualProvider')}
                                         </p>
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {formatWorkspacePaymentDecimal(transaction.amount, locale, 3)} {transaction.currency === WORKSPACE_PAYMENT_CURRENCY
                                                 ? getWorkspacePaymentCurrencyLabel(iqdDisplayPreference)
                                                 : transaction.currency}
-                                            {' \u00b7 '}{formatWorkspacePaymentDecimal(transaction.gbAdded, locale, 6)} GB
+                                            {' \u00b7 '}{formatWorkspacePaymentDecimal(
+                                                transaction.paymentType === 'prepaid_term'
+                                                    ? transaction.prepaidAllowanceMode === 'term_pool'
+                                                        ? transaction.termAllowanceGb ?? '0'
+                                                        : transaction.monthlyAllowanceGb ?? '0'
+                                                    : transaction.gbAdded,
+                                                locale,
+                                                6
+                                            )} GB
                                         </p>
                                     </div>
                                     <span className={cn(
@@ -441,15 +556,21 @@ export function WorkspacePaymentController() {
     const workspacePaymentCurrencyLabel = getWorkspacePaymentCurrencyLabel(features.iqd_display_preference)
     const configuration = paymentSummary?.configuration ?? null
     const paygMode = Boolean(configuration?.paygEnabled)
+    const prepaidTermActive = configuration?.billingInterval === 'prepaid_term'
     const paygPaymentDue = Boolean(paygMode && paygSummary?.enabled && paygSummary.cycleStatus === 'awaiting_payment')
     const isFreeRenewal = Boolean(!paygMode && configuration && Number(configuration.subscriptionAmount) === 0)
     const alertKind = getWorkspacePaymentAlertKind(paymentSummary)
-    const alertCopy = paygPaymentDue
+    const alertCopy = prepaidTermActive
         ? {
+            title: t('workspacePayments.prepaidTerm.title'),
+            description: t('workspacePayments.prepaidTerm.description')
+        }
+        : paygPaymentDue
+            ? {
             title: t('workspacePayments.payg.paymentSubmission'),
             description: t('workspacePayments.payg.paymentSubmissionDescription')
-        }
-        : getAlertCopy(alertKind, t)
+            }
+            : getAlertCopy(alertKind, t)
     const pendingTransaction = paymentSummary?.pendingTransaction ?? null
     const hasWorkspacePendingTransaction = paymentSummary?.hasWorkspacePendingTransaction ?? false
     const paymentEnabled = paygMode
@@ -626,7 +747,16 @@ export function WorkspacePaymentController() {
                                 </div>
                             )}
 
-                            {!paymentEnabled && !hasWorkspacePendingTransaction && (
+                            {prepaidTermActive && configuration && (
+                                <PrepaidTermSummary
+                                    configuration={configuration}
+                                    locale={locale}
+                                    iqdDisplayPreference={features.iqd_display_preference}
+                                    t={t}
+                                />
+                            )}
+
+                            {!paymentEnabled && !hasWorkspacePendingTransaction && !prepaidTermActive && (
                                 <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
                                     <p className="font-bold text-foreground">{t('workspacePayments.paymentUnavailableTitle')}</p>
                                     <p className="mt-1 text-sm text-muted-foreground">
@@ -961,14 +1091,24 @@ export function WorkspacePaymentStatusDialog() {
                             </Button>
                         </div>
                     ) : (
-                        <TransactionHistory
-                            transactions={paymentSummary?.transactions ?? []}
-                            locale={locale}
-                            iqdDisplayPreference={features.iqd_display_preference}
-                            showHeading={false}
-                            showDivider={false}
-                            t={t}
-                        />
+                        <div className="space-y-5">
+                            {paymentSummary?.configuration?.billingInterval === 'prepaid_term' && (
+                                <PrepaidTermSummary
+                                    configuration={paymentSummary.configuration}
+                                    locale={locale}
+                                    iqdDisplayPreference={features.iqd_display_preference}
+                                    t={t}
+                                />
+                            )}
+                            <TransactionHistory
+                                transactions={paymentSummary?.transactions ?? []}
+                                locale={locale}
+                                iqdDisplayPreference={features.iqd_display_preference}
+                                showHeading={false}
+                                showDivider={false}
+                                t={t}
+                            />
+                        </div>
                     )}
                 </div>
 

@@ -117,6 +117,73 @@ describe('workspace payments', () => {
         })
     })
 
+    it('normalizes prepaid-term configuration and immutable payment snapshots', () => {
+        const result = summary({
+            configuration: {
+                id: 'configuration-1',
+                workspace_id: 'workspace-1',
+                subscription_amount: '10000',
+                monthly_list_price: '10000',
+                monthly_allowance_gb: '15',
+                prepaid_allowance_mode: 'term_pool',
+                term_allowance_gb: '75',
+                gb_per_payment: '15',
+                currency: 'IQD',
+                is_payment_enabled: true,
+                usage_enabled: true,
+                payg_enabled: false,
+                billing_interval: 'prepaid_term',
+                prepaid_cycles: 5,
+                prepaid_amount: '50000',
+                prepaid_term_started_at: '2026-08-01',
+                renewal_due_at: '2027-01-01T00:00:00+00:00',
+                rollover_enabled: false
+            },
+            pending_transaction: null,
+            has_workspace_pending_transaction: false,
+            transactions: [transaction({
+                provider: 'manual',
+                payment_type: 'prepaid_term',
+                amount: '50000',
+                gb_added: '0',
+                monthly_list_price: '10000',
+                monthly_allowance_gb: '15',
+                prepaid_allowance_mode: 'term_pool',
+                term_allowance_gb: '75',
+                prepaid_cycles: 5,
+                term_started_at: '2026-08-01',
+                term_paid_through_at: '2027-01-01T00:00:00+00:00',
+                status: 'approved'
+            })]
+        })
+
+        expect(result.configuration).toMatchObject({
+            billingInterval: 'prepaid_term',
+            monthlyListPrice: '10000',
+            monthlyAllowanceGb: '15',
+            prepaidAllowanceMode: 'term_pool',
+            termAllowanceGb: '75',
+            prepaidCycles: 5,
+            prepaidAmount: '50000',
+            prepaidTermStartedAt: '2026-08-01',
+            renewalDueAt: '2027-01-01T00:00:00+00:00',
+            rolloverEnabled: false
+        })
+        expect(result.transactions[0]).toMatchObject({
+            provider: 'manual',
+            paymentType: 'prepaid_term',
+            amount: '50000',
+            monthlyListPrice: '10000',
+            monthlyAllowanceGb: '15',
+            prepaidAllowanceMode: 'term_pool',
+            termAllowanceGb: '75',
+            prepaidCycles: 5,
+            termStartedAt: '2026-08-01',
+            termPaidThroughAt: '2027-01-01T00:00:00+00:00'
+        })
+        expect(isWorkspacePaymentProvider('manual')).toBe(false)
+    })
+
     it('preserves and losslessly formats the full supported decimal range', () => {
         const result = summary({
             configuration: {

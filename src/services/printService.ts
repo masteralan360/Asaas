@@ -1,6 +1,7 @@
 import i18n from '@/i18n/config'
 import { formatCurrency, formatDocumentDateTime } from '@/lib/utils'
-import { isAndroidPwa, isDesktop } from '@/lib/platform'
+import { invoke } from '@tauri-apps/api/core'
+import { isAndroidPwa, isDesktop, isTauriAndroid } from '@/lib/platform'
 import { clearAppSetting, getAppSetting, setAppSetting } from '@/local-db/settings'
 import {
     getDirectMobileThermalCapabilities,
@@ -28,7 +29,7 @@ import {
 } from 'tauri-plugin-thermal-printer'
 
 export type ThermalRollWidth = 58 | 76 | 80 | 112
-export type ThermalPrintTransport = 'tauri' | 'qz' | DirectMobileThermalTransport
+export type ThermalPrintTransport = 'tauri' | 'qz' | 'tauri-android-bluetooth' | DirectMobileThermalTransport
 
 export const THERMAL_ROLL_WIDTHS: { value: ThermalRollWidth; label: string }[] = [
     { value: 58, label: '57-58 mm' },
@@ -176,6 +177,13 @@ function getThermalPrinterSettingKey(workspaceId: string) {
     return `thermal_printer_selection_${workspaceId}`
 }
 
+interface AndroidBluetoothThermalPrinterInfo {
+    name: string
+    interface_type: string
+    identifier: string
+    status: string
+}
+
 function getPrinterSearchText(printer: Pick<ThermalPrinterInfo, 'name' | 'identifier' | 'interface_type'>) {
     return `${printer.name} ${printer.identifier} ${printer.interface_type}`.toLowerCase()
 }
@@ -208,6 +216,7 @@ function getStoredPrinterTransport(printer: Partial<StoredThermalPrinter>): Ther
     if (
         printer.transport === 'qz'
         || printer.transport === 'tauri'
+        || printer.transport === 'tauri-android-bluetooth'
         || printer.transport === 'webusb'
         || printer.transport === 'webbluetooth'
     ) {
@@ -218,6 +227,14 @@ function getStoredPrinterTransport(printer: Partial<StoredThermalPrinter>): Ther
     // storage belongs to the running app, so native selections remain native
     // while browser/PWA selections are treated as QZ Tray profiles.
     return isDesktop() ? 'tauri' : 'qz'
+}
+
+async function listAndroidBluetoothThermalPrinters(): Promise<ThermalPrinterInfo[]> {
+    const printers = await invoke<AndroidBluetoothThermalPrinterInfo[]>('list_android_bluetooth_thermal_printers')
+    return printers.map((printer) => ({
+        ...printer,
+        transport: 'tauri-android-bluetooth' as const
+    }))
 }
 
 function getPrintLanguage(features: WorkspaceFeatures) {
@@ -376,6 +393,10 @@ export const printService = {
             return printers.map((printer) => ({ ...printer, transport: 'tauri' }))
         }
 
+        if (isTauriAndroid()) {
+            return listAndroidBluetoothThermalPrinters()
+        }
+
         if (isAndroidPwa()) {
             return listAuthorizedUsbThermalPrinters()
         }
@@ -489,6 +510,11 @@ export const printService = {
             return true
         }
 
+        if (selectedPrinter.transport === 'tauri-android-bluetooth') {
+            await invoke('test_android_bluetooth_thermal_printer', { address: selectedPrinter.identifier })
+            return true
+        }
+
         if (!isDesktop()) return false
 
         await test_thermal_printer({
@@ -551,6 +577,15 @@ export const printService = {
         }
 
         const transport = getStoredPrinterTransport(printer)
+        if (transport === 'tauri-android-bluetooth') {
+            const payload = await renderReceiptImageToEscPos(imageBase64, maxWidth)
+            await invoke('print_android_bluetooth_thermal_printer', {
+                address: printer.identifier,
+                payload: Array.from(payload)
+            })
+            return true
+        }
+
         if (transport === 'webusb' || transport === 'webbluetooth') {
             const payload = await renderReceiptImageToEscPos(imageBase64, maxWidth)
             await printToDirectMobileThermalPrinter({

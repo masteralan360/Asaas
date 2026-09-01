@@ -2212,19 +2212,46 @@ async function createSettlement(
     : isMerchantRepayment
       ? "merchant_repayment"
       : "merchant_payout";
-  const ledgerEntry = makeLedgerEntry(workspaceId, {
+  const makeSettlementLedgerEntry = (shipmentId: string | null, amount: number) => makeLedgerEntry(workspaceId, {
     kind: entryKind,
-    shipmentId: options.shipmentId ?? null,
+    shipmentId,
     settlementId: settlement.id,
     agentId: isCourierSettlement ? options.agentId ?? null : null,
     merchantProfileId: isCourierSettlement ? null : options.merchantProfileId ?? null,
     businessPartnerId: isCourierSettlement ? null : options.businessPartnerId ?? null,
-    amount: isMerchantRepayment || isCourierFeePayout || isCourierReimbursement ? actual : -actual,
+    amount,
     currency: options.currency,
     occurredAt: settledAt,
     note: normalizeText(options.note),
     createdBy: options.createdBy ?? null,
   });
+
+  // Merchant-level payouts are a single real payment, but their ledger lines
+  // must be assigned to the posts they clear. That keeps each courier's
+  // limited view accurate without disclosing settlements for other couriers.
+  const ledgerEntries: DeliveryLedgerEntry[] = [];
+  if (type === "merchant_payout" && !options.shipmentId) {
+    const outstandingPosts = merchantSettlementBreakdownByParty(entries)
+      .get(`${options.merchantProfileId}:${options.currency}`)
+      ?.filter((post) => post.outstanding > 0.000001) ?? [];
+    let unallocatedAmount = actual;
+    for (const post of outstandingPosts) {
+      if (unallocatedAmount <= 0.000001) break;
+      const allocation = Math.min(post.outstanding, unallocatedAmount);
+      ledgerEntries.push(makeSettlementLedgerEntry(post.shipmentId, -allocation));
+      unallocatedAmount -= allocation;
+    }
+    // This should only be reached for a legacy/inconsistent balance. Retain a
+    // merchant-level line rather than losing part of a real payment.
+    if (unallocatedAmount > 0.000001) {
+      ledgerEntries.push(makeSettlementLedgerEntry(null, -unallocatedAmount));
+    }
+  } else {
+    ledgerEntries.push(makeSettlementLedgerEntry(
+      options.shipmentId ?? null,
+      isMerchantRepayment || isCourierFeePayout || isCourierReimbursement ? actual : -actual,
+    ));
+  }
 
   const linkedBusinessPartnerId = isCourierSettlement
     ? (options.agentId ? (await db.agents.get(options.agentId))?.businessPartnerId ?? null : null)
@@ -2276,7 +2303,7 @@ async function createSettlement(
   try {
     await db.transaction("rw", [db.delivery_settlements, db.delivery_ledger_entries], async () => {
       await db.delivery_settlements.put(settlement);
-      await db.delivery_ledger_entries.put(ledgerEntry);
+      await db.delivery_ledger_entries.bulkPut(ledgerEntries);
     });
   } catch (error) {
     try {
@@ -2290,7 +2317,7 @@ async function createSettlement(
 
   await syncEntitiesInDependencyOrder(workspaceId, [
     [SETTLEMENT_TABLE, [settlement]],
-    [LEDGER_TABLE, [ledgerEntry]],
+    [LEDGER_TABLE, ledgerEntries],
   ]);
 
   const settlementWithPayment: DeliverySettlement = {

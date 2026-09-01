@@ -40,6 +40,20 @@
     "amount": "Amount",
     "currency": "Currency",
     "gigabytes": "Usage credit per renewal",
+    "manualProvider": "Manual payment",
+    "prepaidTerm": {
+      "title": "Prepaid term active",
+      "description": "This workspace is paid in advance through the date shown below.",
+      "monthlyPrice": "Monthly list price",
+      "monthlyAllowance": "Monthly allowance",
+      "termAllowance": "Full-term allowance pool",
+      "cycles": "Prepaid months",
+      "amountPaid": "Amount paid",
+      "startedAt": "Term started",
+      "paidThrough": "Paid through",
+      "noRollover": "The monthly allowance resets each cycle; unused GB does not roll over.",
+      "termPoolNoMonthlyReset": "This allowance is shared across the complete prepaid term and does not reset monthly."
+    },
     "paymentInstructions": "Payment details",
     "accountHolderName": "Account holder name",
     "accountHolderNamePlaceholder": "ENTER FULL NAME",
@@ -2826,7 +2840,13 @@
       "low": "Low",
       "high": "High",
       "qualityDesc": "HIGH quality increases clarity but results in larger PDF files. QR codes are always high quality.",
-      "templateDesc": "Choose the design for your printed documents."
+      "templateDesc": "Choose the design for your printed documents.",
+      "androidBluetoothClassicHint": "Pair a Bluetooth Classic printer in Android Settings, then refresh the paired-printer list here.",
+      "thermalAndroidTauriDialogDesc": "Use a Bluetooth Classic receipt printer already paired in Android Settings. Atlas sends POS receipts directly through the printer’s SPP connection.",
+      "androidBluetoothClassicTitle": "Android Bluetooth Classic printers",
+      "androidBluetoothClassicDesc": "Pair an SPP/RFCOMM receipt printer in Android Settings first. Then refresh below, select it, and use Print Test Receipt to verify the connection.",
+      "thermalTauriAndroidBluetoothTransport": "Connected directly by Bluetooth Classic to this Android device.",
+      "refreshPairedBluetoothPrinters": "Refresh Paired Bluetooth Printers"
     },
     "passwordChange": {
       "title": "Password",

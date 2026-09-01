@@ -40,6 +40,20 @@
     "amount": "المبلغ",
     "currency": "العملة",
     "gigabytes": "رصيد الاستخدام لكل تجديد",
+    "manualProvider": "دفع يدوي",
+    "prepaidTerm": {
+      "title": "الفترة المدفوعة مسبقاً نشطة",
+      "description": "مساحة العمل هذه مدفوعة مسبقاً حتى التاريخ الموضح أدناه.",
+      "monthlyPrice": "السعر الشهري الأساسي",
+      "monthlyAllowance": "السعة الشهرية",
+      "termAllowance": "إجمالي سعة مدة الاشتراك",
+      "cycles": "الأشهر المدفوعة مسبقاً",
+      "amountPaid": "المبلغ المدفوع",
+      "startedAt": "بداية الفترة",
+      "paidThrough": "مدفوع حتى",
+      "noRollover": "تُعاد السعة في كل دورة شهرية، ولا تُرحّل الجيجابايت غير المستخدمة.",
+      "termPoolNoMonthlyReset": "هذه السعة مشتركة طوال مدة الدفع المسبق بالكامل ولا تُعاد شهرياً."
+    },
     "paymentInstructions": "تفاصيل الدفع",
     "accountHolderName": "اسم صاحب الحساب",
     "accountHolderNamePlaceholder": "أدخل الاسم الكامل",
@@ -1807,7 +1821,13 @@
       "low": "منخفضة",
       "high": "عالية",
       "qualityDesc": "الجودة العالية تزيد من الوضوح ولكنها تؤدي إلى ملفات PDF أكبر. رموز QR تكون دائماً عالية الجودة.",
-      "templateDesc": "اختر تصميم مستنداتك المطبوعة."
+      "templateDesc": "اختر تصميم مستنداتك المطبوعة.",
+      "androidBluetoothClassicHint": "اقرن طابعة Bluetooth Classic من إعدادات أندرويد، ثم حدّث قائمة الطابعات المقترنة هنا.",
+      "thermalAndroidTauriDialogDesc": "استخدم طابعة إيصالات Bluetooth Classic المقترنة مسبقًا من إعدادات أندرويد. يرسل Atlas إيصالات نقطة البيع مباشرة عبر اتصال SPP للطابعة.",
+      "androidBluetoothClassicTitle": "طابعات Bluetooth Classic على أندرويد",
+      "androidBluetoothClassicDesc": "اقرن طابعة إيصالات SPP/RFCOMM من إعدادات أندرويد أولاً. ثم حدّث القائمة أدناه، وحددها، واستخدم طباعة إيصال الاختبار للتحقق من الاتصال.",
+      "thermalTauriAndroidBluetoothTransport": "متصلة مباشرة بهذا الجهاز عبر Bluetooth Classic.",
+      "refreshPairedBluetoothPrinters": "تحديث طابعات Bluetooth المقترنة"
     },
     "passwordChange": {
       "title": "كلمة المرور",

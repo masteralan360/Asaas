@@ -136,6 +136,55 @@ describe("Post Service COD accounting", () => {
     ]));
   });
 
+  it("allocates a merchant-wide payout to its delivered posts", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, {
+      businessPartnerId: merchant.id,
+      defaultFeeAmount: 10,
+      defaultFeePayer: "merchant",
+    });
+    const firstShipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000001",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+    const secondShipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000002",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 200,
+    });
+    await createDeliveryRun(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      shipmentIds: [firstShipment.id, secondShipment.id],
+    });
+    await updateDeliveryShipmentStatus(firstShipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+    await updateDeliveryShipmentStatus(secondShipment.id, { status: "delivered", actorAgentId: deliveryCourier.id });
+
+    const settlement = await payDeliveryMerchant(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      currency: "iqd",
+      actualAmount: 270,
+      paymentMethod: "cash",
+    });
+
+    const payoutEntries = (await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray())
+      .filter((entry) => entry.settlementId === settlement.id && entry.kind === "merchant_payout");
+    expect(payoutEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ shipmentId: firstShipment.id, amount: -90 }),
+      expect.objectContaining({ shipmentId: secondShipment.id, amount: -180 }),
+    ]));
+    expect(payoutEntries).toHaveLength(2);
+    expect(payoutEntries.every((entry) => entry.shipmentId !== null)).toBe(true);
+    expect(payoutEntries.reduce((total, entry) => total + entry.amount, 0)).toBe(-270);
+  });
+
   it("retries create and dispatch without creating a duplicate post or manifest", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 15 };

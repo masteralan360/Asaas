@@ -9,8 +9,11 @@ export const OPEN_WORKSPACE_EXTRA_DAYS_DIALOG_EVENT = 'open-workspace-extra-days
 export { WORKSPACE_PAYMENT_HOLD_DURATION_MS }
 
 export type WorkspacePaymentProvider = 'fib' | 'qicard' | 'free'
+export type WorkspacePaymentTransactionProvider = WorkspacePaymentProvider | 'manual'
 export type WorkspacePaymentStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'unknown'
-export type WorkspacePaymentType = 'subscription' | 'usage' | 'payg' | 'unknown'
+export type WorkspacePaymentType = 'subscription' | 'usage' | 'payg' | 'prepaid_term' | 'unknown'
+export type WorkspaceBillingInterval = 'monthly' | 'prepaid_term'
+export type WorkspacePrepaidAllowanceMode = 'monthly_reset' | 'term_pool'
 export type WorkspacePaymentAlertKind =
     | 'subscription_expired'
     | 'usage_exhausted'
@@ -27,11 +30,20 @@ export interface WorkspacePaymentConfiguration {
     gbPerPayment: string
     renewalDueAt: string | null
     usageStartDate: string | null
+    billingInterval: WorkspaceBillingInterval
+    monthlyListPrice: string
+    monthlyAllowanceGb: string
+    prepaidAllowanceMode: WorkspacePrepaidAllowanceMode
+    termAllowanceGb: string
+    prepaidCycles: number | null
+    prepaidAmount: string
+    prepaidTermStartedAt: string | null
+    rolloverEnabled: boolean
 }
 
 export interface WorkspacePaymentTransaction {
     id: string
-    provider: WorkspacePaymentProvider
+    provider: WorkspacePaymentTransactionProvider
     accountHolderName: string | null
     amount: string
     currency: string
@@ -42,6 +54,13 @@ export interface WorkspacePaymentTransaction {
     paidAt: string | null
     reviewNote: string | null
     createdAt: string
+    monthlyListPrice: string | null
+    monthlyAllowanceGb: string | null
+    prepaidAllowanceMode: WorkspacePrepaidAllowanceMode | null
+    termAllowanceGb: string | null
+    prepaidCycles: number | null
+    termStartedAt: string | null
+    termPaidThroughAt: string | null
 }
 
 export interface WorkspacePaymentEligibility {
@@ -129,7 +148,8 @@ const SUPPORTED_STATUSES = new Set<Exclude<WorkspacePaymentStatus, 'unknown'>>([
 const SUPPORTED_PAYMENT_TYPES = new Set<Exclude<WorkspacePaymentType, 'unknown'>>([
     'subscription',
     'usage',
-    'payg'
+    'payg',
+    'prepaid_term'
 ])
 
 let submitPaymentInFlight: Promise<WorkspacePaymentTransaction> | null = null
@@ -224,8 +244,14 @@ function getBoolean(value: unknown, fallback = false): boolean {
     return typeof value === 'boolean' ? value : fallback
 }
 
-function normalizeProvider(value: unknown): WorkspacePaymentProvider {
-    return value === 'qicard' ? 'qicard' : value === 'free' ? 'free' : 'fib'
+function normalizeProvider(value: unknown): WorkspacePaymentTransactionProvider {
+    return value === 'qicard'
+        ? 'qicard'
+        : value === 'free'
+            ? 'free'
+            : value === 'manual'
+                ? 'manual'
+                : 'fib'
 }
 
 function getSafeInteger(value: unknown): number {
@@ -258,7 +284,20 @@ function normalizeConfiguration(value: unknown): WorkspacePaymentConfiguration |
         paygEnabled: getBoolean(value.payg_enabled),
         gbPerPayment: getDecimalText(value.gb_per_payment),
         renewalDueAt: getNullableText(value.renewal_due_at),
-        usageStartDate: getNullableText(value.usage_start_date)
+        usageStartDate: getNullableText(value.usage_start_date),
+        billingInterval: value.billing_interval === 'prepaid_term' ? 'prepaid_term' : 'monthly',
+        monthlyListPrice: getDecimalText(value.monthly_list_price ?? value.subscription_amount),
+        monthlyAllowanceGb: getDecimalText(value.monthly_allowance_gb ?? value.gb_per_payment),
+        prepaidAllowanceMode: value.prepaid_allowance_mode === 'monthly_reset'
+            ? 'monthly_reset'
+            : 'term_pool',
+        termAllowanceGb: getDecimalText(value.term_allowance_gb),
+        prepaidCycles: value.billing_interval === 'prepaid_term'
+            ? getSafeInteger(value.prepaid_cycles) || null
+            : null,
+        prepaidAmount: getDecimalText(value.prepaid_amount),
+        prepaidTermStartedAt: getNullableText(value.prepaid_term_started_at),
+        rolloverEnabled: getBoolean(value.rollover_enabled)
     }
 }
 
@@ -280,7 +319,18 @@ export function normalizeWorkspacePaymentTransaction(value: unknown): WorkspaceP
         expiresAt: getNullableText(value.expires_at),
         paidAt: getNullableText(value.paid_at),
         reviewNote: getNullableText(value.review_note),
-        createdAt: getText(value.created_at, new Date(0).toISOString())
+        createdAt: getText(value.created_at, new Date(0).toISOString()),
+        monthlyListPrice: getNullableText(value.monthly_list_price),
+        monthlyAllowanceGb: getNullableText(value.monthly_allowance_gb),
+        prepaidAllowanceMode: value.payment_type === 'prepaid_term'
+            ? value.prepaid_allowance_mode === 'monthly_reset' ? 'monthly_reset' : 'term_pool'
+            : null,
+        termAllowanceGb: getNullableText(value.term_allowance_gb),
+        prepaidCycles: value.payment_type === 'prepaid_term'
+            ? getSafeInteger(value.prepaid_cycles) || null
+            : null,
+        termStartedAt: getNullableText(value.term_started_at),
+        termPaidThroughAt: getNullableText(value.term_paid_through_at)
     }
 }
 
