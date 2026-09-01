@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { Activity, CalendarDays, Database, Gauge, HardDrive, RefreshCw, TrendingUp } from 'lucide-react'
+import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Scatter, Tooltip as RechartsTooltip, XAxis, YAxis, Bar, BarChart } from 'recharts'
+import { Activity, CalendarDays, CircleDollarSign, Database, Gauge, HardDrive, RefreshCw, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkspaceUsageInsights } from '@/lib/workspaceUsageHistory'
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './dialog'
+import type { WorkspacePaygSummary } from '@/lib/workspacePayments'
+import { openWorkspacePaymentDialog } from '@/lib/workspacePayments'
+import { getPaygInterpolationSegment } from '@/lib/paygPricing'
 
 export type WorkspaceUsageMeterSegment = {
     key: 'storage' | 'chargedUsage'
@@ -46,11 +49,19 @@ type WorkspaceUsageModalProps = {
     usageMeter: WorkspaceUsageMeter | null
     onRefresh: () => void | Promise<void>
     isRefreshing: boolean
+    paygSummary?: WorkspacePaygSummary | null
 }
 
 type WorkspaceUsageButtonProps = {
     usageMeter: WorkspaceUsageMeter
     onClick: () => void
+    className?: string
+}
+
+type WorkspacePaygChargeButtonProps = {
+    summary: WorkspacePaygSummary
+    onClick: () => void
+    compact?: boolean
     className?: string
 }
 
@@ -221,12 +232,46 @@ export function WorkspaceUsageCircleButton({ usageMeter, onClick, className }: W
     )
 }
 
+export function WorkspacePaygChargeButton({
+    summary,
+    onClick,
+    compact = false,
+    className
+}: WorkspacePaygChargeButtonProps) {
+    const { t, i18n } = useTranslation()
+    const amount = new Intl.NumberFormat(i18n.language || 'en', {
+        maximumFractionDigits: 0
+    }).format(Number(summary.amountIqd))
+    const label = summary.cycleStatus === 'awaiting_payment'
+        ? t('workspaceUsage.payg.amountDue')
+        : t('workspaceUsage.payg.accruedCharge')
+
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            title={`${label}: ${amount} ${summary.currency}`}
+            aria-label={`${label}: ${amount} ${summary.currency}`}
+            className={cn(
+                'relative z-0 -me-2 flex h-6 shrink-0 items-center rounded-full border border-amber-600/30 bg-[#f59e0b] pe-4 ps-2 text-black shadow-sm transition-colors hover:bg-[#e69008] focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-background',
+                compact ? 'min-w-12 text-[9px] font-black' : 'min-w-20 gap-1 text-[10px] font-bold',
+                className
+            )}
+        >
+            <CircleDollarSign className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+            <span className="tabular-nums">{amount}</span>
+            {!compact && <span className="text-[8px] font-black">{summary.currency}</span>}
+        </button>
+    )
+}
+
 export function WorkspaceUsageModal({
     open,
     onOpenChange,
     usageMeter,
     onRefresh,
-    isRefreshing
+    isRefreshing,
+    paygSummary
 }: WorkspaceUsageModalProps) {
     const { t, i18n } = useTranslation()
 
@@ -248,6 +293,30 @@ export function WorkspaceUsageModal({
         ? '—'
         : formatBytes(insights.dailyChargedUsageBudgetBytes, locale)
     const numberFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+    const paygAmountFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+    const paygUsageGb = Number(paygSummary?.chargedUsageGb ?? 0)
+    const paygGraphUsageGb = Math.min(100, Math.max(0, paygUsageGb))
+    const paygGraphData = paygSummary
+        ? [
+            ...paygSummary.pricingCheckpoints.map((checkpoint) => ({
+                gb: checkpoint.gb,
+                amountIqd: checkpoint.amountIqd,
+                traversedAmount: checkpoint.gb <= paygGraphUsageGb ? checkpoint.amountIqd : null,
+                protected: checkpoint.protected,
+                current: false
+            })),
+            {
+                gb: paygGraphUsageGb,
+                amountIqd: Number(paygSummary.amountIqd),
+                traversedAmount: Number(paygSummary.amountIqd),
+                protected: false,
+                current: true
+            }
+        ].sort((left, right) => left.gb - right.gb)
+        : []
+    const interpolationSegment = paygSummary?.pricingCheckpoints.length
+        ? getPaygInterpolationSegment(paygGraphUsageGb, paygSummary.pricingCheckpoints)
+        : null
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -260,10 +329,10 @@ export function WorkspaceUsageModal({
                             </div>
                             <div className="min-w-0">
                                 <DialogTitle>
-                                    {t('workspaceUsage.modalTitle')}
+                                    {paygSummary ? t('workspaceUsage.payg.modalTitle') : t('workspaceUsage.modalTitle')}
                                 </DialogTitle>
                                 <DialogDescription>
-                                    {t('workspaceUsage.modalDescription')}
+                                    {paygSummary ? t('workspaceUsage.payg.modalDescription') : t('workspaceUsage.modalDescription')}
                                 </DialogDescription>
                             </div>
                         </div>
@@ -282,6 +351,139 @@ export function WorkspaceUsageModal({
                 </DialogHeader>
 
                 <DialogBody className="space-y-5">
+                    {paygSummary && (
+                        <section className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4 shadow-sm sm:p-5">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <UsageStatCard
+                                    icon={<Activity className="h-4 w-4" />}
+                                    label={t('workspaceUsage.payg.chargedUsage')}
+                                    value={`${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(paygUsageGb)} GB`}
+                                    detail={t('workspaceUsage.payg.nativeCounter')}
+                                    toneClassName="bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                />
+                                <UsageStatCard
+                                    icon={<CircleDollarSign className="h-4 w-4" />}
+                                    label={paygSummary.cycleStatus === 'awaiting_payment'
+                                        ? t('workspaceUsage.payg.amountDue')
+                                        : t('workspaceUsage.payg.accruedCharge')}
+                                    value={`${paygAmountFormatter.format(Number(paygSummary.amountIqd))} IQD`}
+                                    detail={t('workspaceUsage.payg.roundingHint')}
+                                    toneClassName="bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                />
+                                <UsageStatCard
+                                    icon={<CalendarDays className="h-4 w-4" />}
+                                    label={t('workspaceUsage.payg.renewalDue')}
+                                    value={formatTimestamp(paygSummary.renewalDueAt, locale)}
+                                    detail={t('workspaceUsage.payg.cycleStarted', {
+                                        value: formatTimestamp(paygSummary.cycleStartedAt, locale)
+                                    })}
+                                    toneClassName="bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                                />
+                                <UsageStatCard
+                                    icon={<Gauge className="h-4 w-4" />}
+                                    label={t('workspaceUsage.payg.pricingVersion')}
+                                    value={`v${paygSummary.pricingVersion ?? '—'}`}
+                                    detail={t('workspaceUsage.payg.pricingFrozen')}
+                                    toneClassName="bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                                />
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-border/60 bg-background p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold">{t('workspaceUsage.payg.graphTitle')}</h3>
+                                        <p className="mt-1 text-xs text-muted-foreground">{t('workspaceUsage.payg.graphDescription')}</p>
+                                    </div>
+                                    <span className="rounded-full bg-[#f59e0b] px-3 py-1.5 text-xs font-black text-black">
+                                        {new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(paygUsageGb)} GB · {paygAmountFormatter.format(Number(paygSummary.amountIqd))} IQD
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-[11px] text-muted-foreground">
+                                    {t('workspaceUsage.payg.serverLastUpdated', {
+                                        value: formatTimestamp(paygSummary.lastUpdatedAt, locale)
+                                    })}
+                                </p>
+                                <div className="mt-4 h-72 w-full" dir="ltr">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={paygGraphData} margin={{ top: 12, right: 12, bottom: 4, left: 4 }}>
+                                            <CartesianGrid strokeDasharray="4 4" stroke="hsl(var(--border))" opacity={0.6} />
+                                            <XAxis dataKey="gb" type="number" domain={[0, 100]} unit=" GB" tick={{ fontSize: 10 }} />
+                                            <YAxis domain={[0, 40000]} tickFormatter={(value) => paygAmountFormatter.format(Number(value))} tick={{ fontSize: 10 }} width={72} />
+                                            <RechartsTooltip
+                                                contentStyle={{
+                                                    backgroundColor: 'hsl(var(--card))',
+                                                    border: '1px solid hsl(var(--border))',
+                                                    borderRadius: '12px'
+                                                }}
+                                                labelFormatter={(value) => `${new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(Number(value))} GB`}
+                                                formatter={(value) => [`${paygAmountFormatter.format(Number(value))} IQD`, t('workspaceUsage.payg.price')]}
+                                            />
+                                            <Area type="linear" dataKey="traversedAmount" stroke="none" fill="#f59e0b" fillOpacity={0.22} connectNulls={false} />
+                                            <Line type="linear" dataKey="amountIqd" stroke="#f59e0b" strokeWidth={3} dot={{ r: 5, fill: '#f59e0b', stroke: '#111827', strokeWidth: 1.5 }} isAnimationActive={false} />
+                                            <Scatter data={paygGraphData.filter((point) => point.current)} dataKey="amountIqd" fill="#111827" shape="star" />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {interpolationSegment && (
+                                <div className="mt-4 rounded-xl border border-border/60 bg-background p-4 text-sm">
+                                    <div className="font-bold">{t('workspaceUsage.payg.interpolationBreakdown')}</div>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {t('workspaceUsage.payg.betweenCheckpoints', {
+                                            lowerGb: interpolationSegment.lower.gb,
+                                            lowerAmount: paygAmountFormatter.format(interpolationSegment.lower.amountIqd),
+                                            upperGb: interpolationSegment.upper.gb,
+                                            upperAmount: paygAmountFormatter.format(interpolationSegment.upper.amountIqd)
+                                        })}
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="mt-4 rounded-xl border border-border/60 bg-background p-4">
+                                <h3 className="text-sm font-bold">{t('workspaceUsage.payg.historyTitle')}</h3>
+                                <div className="mt-3 space-y-2">
+                                    {paygSummary.history.length ? paygSummary.history.slice(0, 8).map((cycle) => (
+                                        <div key={cycle.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-border/50 bg-muted/15 p-3 text-xs sm:grid-cols-[1fr_auto_auto]">
+                                            <div><div className="font-semibold">{formatTimestamp(cycle.periodStartedAt, locale)}</div><div className="mt-0.5 text-muted-foreground">v{cycle.pricingVersion}</div></div>
+                                            <div className="text-end font-semibold tabular-nums">{new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Number(cycle.chargedUsageGb))} GB<br />{paygAmountFormatter.format(Number(cycle.amountIqd))} IQD</div>
+                                            <div className="col-span-2 rounded-full bg-muted px-2 py-1 text-center font-semibold sm:col-span-1">{t(`workspaceUsage.payg.statuses.${cycle.status}`)}</div>
+                                        </div>
+                                    )) : <p className="text-xs text-muted-foreground">{t('workspaceUsage.payg.noHistory')}</p>}
+                                    {paygSummary.paymentHistory.slice(0, 8).map((payment) => (
+                                        <div key={payment.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-background p-3 text-xs">
+                                            <div><div className="font-semibold">{t('workspaceUsage.payg.paymentSubmission')}</div><div className="mt-0.5 text-muted-foreground">{formatTimestamp(payment.createdAt, locale)}</div></div>
+                                            <div className="text-end"><div className="font-semibold tabular-nums">{paygAmountFormatter.format(Number(payment.amount))} IQD</div><div className="mt-0.5 text-muted-foreground">{t(`workspacePayments.statuses.${payment.status}`)}</div></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {paygSummary.cycleStatus === 'awaiting_payment' && (
+                                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-sm font-bold">{t('workspaceUsage.payg.paymentSubmission')}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {paygSummary.canSubmitPayment
+                                                ? t('workspaceUsage.payg.submitExactAmount')
+                                                : t('workspaceUsage.payg.workspaceAdminRequired')}
+                                        </p>
+                                    </div>
+                                    {paygSummary.canSubmitPayment && (
+                                        <button
+                                            type="button"
+                                            onClick={openWorkspacePaymentDialog}
+                                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#f59e0b] px-4 text-sm font-black text-black hover:bg-[#e69008]"
+                                        >
+                                            <CircleDollarSign className="h-4 w-4" />
+                                            {t('workspaceUsage.payg.submitPayment')}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+                    )}
+
                     <div className="rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm backdrop-blur">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
@@ -299,7 +501,7 @@ export function WorkspaceUsageModal({
                                 </p>
                             </div>
                         </div>
-                        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted ring-1 ring-border/50">
+                        {!paygSummary && <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted ring-1 ring-border/50">
                             <div
                                 className="flex h-full transition-all duration-300"
                                 style={{ width: `${Math.min(100, Math.max(0, usageMeter.percent))}%` }}
@@ -312,7 +514,7 @@ export function WorkspaceUsageModal({
                                     />
                                 ))}
                             </div>
-                        </div>
+                        </div>}
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

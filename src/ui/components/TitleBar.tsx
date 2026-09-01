@@ -10,7 +10,7 @@ import { NotificationCenter } from './NotificationCenter'
 import { ThemeAwareTitleLogo } from './ThemeAwareTitleLogo'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { useSubscriptionExpiryWarning } from '@/hooks/useSubscriptionExpiryWarning'
-import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
+import { WorkspacePaygChargeButton, WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
 import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
 import { useNavigationHistory } from '@/hooks/useNavigationHistory'
 
@@ -28,6 +28,7 @@ export function TitleBar() {
     const { canGoBack, canGoForward, back, forward } = useNavigationHistory()
     const {
         usageMeter,
+        paygSummary,
         refreshWorkspaceUsage,
         isRefreshingWorkspaceUsage
     } = useWorkspaceUsageMeter({
@@ -183,20 +184,35 @@ export function TitleBar() {
             </div>
 
             {/* Right: Window Controls */}
-            <div data-tauri-drag-region className="flex items-center justify-end gap-1 w-1/3">
+            <div data-tauri-drag-region className="flex min-w-0 w-1/3 items-center justify-end gap-1">
                 {usageMeter && (
-                    <>
+                    <div className="flex min-w-0 flex-1 items-center justify-end">
+                        {paygSummary && (
+                            <WorkspacePaygChargeButton
+                                summary={paygSummary}
+                                onClick={() => setUsageModalOpen(true)}
+                                compact
+                                className="shrink-0 xl:hidden"
+                            />
+                        )}
                         <WorkspaceUsageCircleButton
                             usageMeter={usageMeter}
                             onClick={() => setUsageModalOpen(true)}
-                            className="mr-1 h-8 w-8 xl:hidden"
+                            className="relative z-10 mr-1 h-8 w-8 xl:hidden"
                         />
+                        {paygSummary && (
+                            <WorkspacePaygChargeButton
+                                summary={paygSummary}
+                                onClick={() => setUsageModalOpen(true)}
+                                className="hidden shrink-0 xl:flex"
+                            />
+                        )}
                         <WorkspaceUsageButton
                             usageMeter={usageMeter}
                             onClick={() => setUsageModalOpen(true)}
-                            className="mr-2 hidden h-7 w-[300px] max-w-[30vw] shrink xl:flex"
+                            className="relative z-10 mr-2 hidden h-7 min-w-[150px] w-[240px] max-w-[22vw] shrink xl:flex"
                         />
-                    </>
+                    </div>
                 )}
                 {subscriptionWarning && (
                     <button
@@ -311,6 +327,7 @@ export function TitleBar() {
             usageMeter={usageMeter}
             onRefresh={refreshWorkspaceUsage}
             isRefreshing={isRefreshingWorkspaceUsage}
+            paygSummary={paygSummary}
         />
         </>
     )

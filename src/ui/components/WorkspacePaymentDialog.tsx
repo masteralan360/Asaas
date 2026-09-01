@@ -34,17 +34,20 @@ import {
     formatWorkspacePaymentDecimal,
     getWorkspacePaymentAlertKind,
     getWorkspacePaymentQrPath,
+    getWorkspacePaygSummary,
     getSavedWorkspacePaymentAccountHolderNames,
     hasNewlyApprovedWorkspacePayment,
     hasWorkspacePaymentAccessBeenRestored,
     isValidWorkspacePaymentAccountHolderName,
     normalizeWorkspacePaymentAccountHolderName,
     submitWorkspacePayment,
+    submitWorkspacePaygPayment,
     type WorkspacePaymentAlertKind,
     type WorkspacePaymentProvider,
     type WorkspacePaymentStatus,
     type WorkspacePaymentSummary,
-    type WorkspacePaymentTransaction
+    type WorkspacePaymentTransaction,
+    type WorkspacePaygSummary
 } from '@/lib/workspacePayments'
 
 const PENDING_PAYMENT_POLL_INTERVAL_MS = 10_000
@@ -70,6 +73,11 @@ function getErrorMessage(error: unknown) {
 
 function getAlertCopy(kind: WorkspacePaymentAlertKind | null, t: ReturnType<typeof useTranslation>['t']) {
     switch (kind) {
+        case 'payg_renewal_due':
+            return {
+                title: t('workspacePayments.payg.renewalDueTitle'),
+                description: t('workspacePayments.payg.renewalDueDescription')
+            }
         case 'subscription_expired':
             return {
                 title: t('workspacePayments.subscriptionExpiredTitle'),
@@ -291,6 +299,7 @@ export function WorkspacePaymentController() {
     const [confirmationDelayRemainingMs, setConfirmationDelayRemainingMs] = useState(
         () => getPaymentConfirmationDelayRemaining(paymentConfirmationDelayEndsAtForSession)
     )
+    const [paygSummary, setPaygSummary] = useState<WorkspacePaygSummary | null>(null)
     const submissionGuardRef = useRef(false)
     const previousSummaryRef = useRef<WorkspacePaymentSummary | null>(null)
     const refreshPaymentSummaryRef = useRef(refreshPaymentSummary)
@@ -302,7 +311,13 @@ export function WorkspacePaymentController() {
     }, [refreshFeatures, refreshPaymentSummary])
 
     useEffect(() => {
-        const handleOpen = () => setOpen(true)
+        const handleOpen = () => {
+            setPaygSummary(null)
+            setOpen(true)
+            void getWorkspacePaygSummary()
+                .then((summary) => setPaygSummary(summary.enabled ? summary : null))
+                .catch((error) => setLoadError(getErrorMessage(error)))
+        }
         window.addEventListener(OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT, handleOpen)
         return () => window.removeEventListener(OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT, handleOpen)
     }, [])
@@ -316,6 +331,7 @@ export function WorkspacePaymentController() {
         setSubmitError(null)
         setAccountHolderName('')
         setSavedAccountHolderNames([])
+        setPaygSummary(null)
         setIsConfirmationHighlighted(false)
         submissionGuardRef.current = false
         previousSummaryRef.current = null
@@ -424,18 +440,29 @@ export function WorkspacePaymentController() {
     const locale = i18n.language || 'en'
     const workspacePaymentCurrencyLabel = getWorkspacePaymentCurrencyLabel(features.iqd_display_preference)
     const configuration = paymentSummary?.configuration ?? null
-    const isFreeRenewal = Boolean(configuration && Number(configuration.subscriptionAmount) === 0)
+    const paygMode = Boolean(configuration?.paygEnabled)
+    const paygPaymentDue = Boolean(paygMode && paygSummary?.enabled && paygSummary.cycleStatus === 'awaiting_payment')
+    const isFreeRenewal = Boolean(!paygMode && configuration && Number(configuration.subscriptionAmount) === 0)
     const alertKind = getWorkspacePaymentAlertKind(paymentSummary)
-    const alertCopy = getAlertCopy(alertKind, t)
+    const alertCopy = paygPaymentDue
+        ? {
+            title: t('workspacePayments.payg.paymentSubmission'),
+            description: t('workspacePayments.payg.paymentSubmissionDescription')
+        }
+        : getAlertCopy(alertKind, t)
     const pendingTransaction = paymentSummary?.pendingTransaction ?? null
     const hasWorkspacePendingTransaction = paymentSummary?.hasWorkspacePendingTransaction ?? false
-    const paymentEnabled = Boolean(
-        configuration?.isPaymentEnabled
-        && paymentSummary?.eligibility.paymentEnabled
-    )
-    const gbForPayment = configuration?.usageEnabled
+    const paymentEnabled = paygMode
+        ? paygPaymentDue
+        : Boolean(configuration?.isPaymentEnabled && paymentSummary?.eligibility.paymentEnabled)
+    const gbForPayment = paygMode
+        ? paygSummary?.chargedUsageGb ?? '0'
+        : configuration?.usageEnabled
         ? configuration.gbPerPayment
         : '0'
+    const paymentAmount = paygMode
+        ? paygSummary?.amountIqd ?? configuration?.subscriptionAmount ?? '0'
+        : configuration?.subscriptionAmount ?? '0'
     const isConfirmationDelayActive = confirmationDelayRemainingMs > 0
     const confirmationDelaySeconds = Math.ceil(confirmationDelayRemainingMs / 1000)
     const normalizedAccountHolderName = normalizeWorkspacePaymentAccountHolderName(accountHolderName)
@@ -474,11 +501,23 @@ export function WorkspacePaymentController() {
         setAccountHolderName(normalizedAccountHolderName)
 
         try {
-            const transaction = await submitWorkspacePayment(selectedProvider, normalizedAccountHolderName)
+            let transaction: WorkspacePaymentTransaction
+            if (paygMode) {
+                if (!paygPaymentDue || selectedProvider === 'free') {
+                    throw new Error(t('workspacePayments.payg.paymentNotDue'))
+                }
+                transaction = await submitWorkspacePaygPayment(selectedProvider, normalizedAccountHolderName)
+            } else {
+                transaction = await submitWorkspacePayment(selectedProvider, normalizedAccountHolderName)
+            }
             setSubmitted(true)
             setSubmittedTransactionId(transaction.id)
             setSelectedProvider(null)
             await refreshPaymentSummaryRef.current()
+            if (paygMode) {
+                const refreshedPayg = await getWorkspacePaygSummary()
+                setPaygSummary(refreshedPayg.enabled ? refreshedPayg : null)
+            }
         } catch (error) {
             // A database uniqueness guard may have accepted the first request
             // even if this client lost its response. Refresh before presenting
@@ -565,7 +604,7 @@ export function WorkspacePaymentController() {
                                 {t('workspacePayments.retry')}
                             </Button>
                         </div>
-                    ) : !configuration ? (
+                    ) : !configuration && !paygPaymentDue ? (
                         <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5 text-center">
                             <AlertCircle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-300" />
                             <h3 className="mt-3 font-bold text-foreground">{t('workspacePayments.paymentUnavailableTitle')}</h3>
@@ -709,7 +748,7 @@ export function WorkspacePaymentController() {
                                                     <div className={paymentSummaryCardClass}>
                                                         <dt className="text-[11px] font-semibold text-muted-foreground">{t('workspacePayments.amount')}</dt>
                                                         <dd className="mt-1 text-sm font-black tabular-nums text-foreground sm:text-base">
-                                                            {formatWorkspacePaymentDecimal(configuration.subscriptionAmount, locale, 3)} {workspacePaymentCurrencyLabel}
+                                                            {formatWorkspacePaymentDecimal(paymentAmount, locale, 3)} {workspacePaymentCurrencyLabel}
                                                         </dd>
                                                     </div>
                                                     <div className={paymentSummaryCardClass}>

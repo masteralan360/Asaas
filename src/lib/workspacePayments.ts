@@ -10,10 +10,11 @@ export { WORKSPACE_PAYMENT_HOLD_DURATION_MS }
 
 export type WorkspacePaymentProvider = 'fib' | 'qicard' | 'free'
 export type WorkspacePaymentStatus = 'pending' | 'approved' | 'rejected' | 'expired' | 'unknown'
-export type WorkspacePaymentType = 'subscription' | 'usage' | 'unknown'
+export type WorkspacePaymentType = 'subscription' | 'usage' | 'payg' | 'unknown'
 export type WorkspacePaymentAlertKind =
     | 'subscription_expired'
     | 'usage_exhausted'
+    | 'payg_renewal_due'
 
 export interface WorkspacePaymentConfiguration {
     id: string
@@ -22,6 +23,7 @@ export interface WorkspacePaymentConfiguration {
     currency: typeof WORKSPACE_PAYMENT_CURRENCY
     isPaymentEnabled: boolean
     usageEnabled: boolean
+    paygEnabled: boolean
     gbPerPayment: string
     renewalDueAt: string | null
     usageStartDate: string | null
@@ -72,6 +74,49 @@ export interface WorkspacePaymentSummary {
     transactions: WorkspacePaymentTransaction[]
 }
 
+export type WorkspacePaygCycleStatus = 'open' | 'awaiting_payment' | 'paid' | 'no_payment_required'
+
+export interface WorkspacePaygCheckpoint {
+    gb: number
+    amountIqd: number
+    protected: boolean
+}
+
+export interface WorkspacePaygCycleHistory {
+    id: string
+    periodStartedAt: string
+    periodEndedAt: string | null
+    chargedUsageBytes: number
+    chargedUsageGb: string
+    amountIqd: string
+    status: WorkspacePaygCycleStatus
+    pricingVersion: number
+    paymentTransactionId: string | null
+}
+
+export interface WorkspacePaygSummary {
+    enabled: boolean
+    workspaceId: string
+    billingWorkspaceId: string
+    isInherited: boolean
+    canSubmitPayment: boolean
+    cycleId: string | null
+    cycleStatus: WorkspacePaygCycleStatus | null
+    cycleStartedAt: string | null
+    renewalDueAt: string | null
+    chargedUsageBytes: number
+    chargedUsageGb: string
+    amountIqd: string
+    currency: typeof WORKSPACE_PAYMENT_CURRENCY
+    pricingVersionId: string | null
+    pricingVersion: number | null
+    pricingCheckpoints: WorkspacePaygCheckpoint[]
+    pendingBillingMode: 'monthly' | 'prepaid_usage' | null
+    lastUpdatedAt: string | null
+    history: WorkspacePaygCycleHistory[]
+    paymentHistory: WorkspacePaymentTransaction[]
+}
+
 type UnknownRecord = Record<string, unknown>
 
 const SUPPORTED_PROVIDERS = new Set<WorkspacePaymentProvider>(['fib', 'qicard', 'free'])
@@ -83,7 +128,8 @@ const SUPPORTED_STATUSES = new Set<Exclude<WorkspacePaymentStatus, 'unknown'>>([
 ])
 const SUPPORTED_PAYMENT_TYPES = new Set<Exclude<WorkspacePaymentType, 'unknown'>>([
     'subscription',
-    'usage'
+    'usage',
+    'payg'
 ])
 
 let submitPaymentInFlight: Promise<WorkspacePaymentTransaction> | null = null
@@ -179,7 +225,12 @@ function getBoolean(value: unknown, fallback = false): boolean {
 }
 
 function normalizeProvider(value: unknown): WorkspacePaymentProvider {
-    return value === 'qicard' ? 'qicard' : 'fib'
+    return value === 'qicard' ? 'qicard' : value === 'free' ? 'free' : 'fib'
+}
+
+function getSafeInteger(value: unknown): number {
+    const number = typeof value === 'number' ? value : Number(value)
+    return Number.isSafeInteger(number) && number >= 0 ? number : 0
 }
 
 function normalizeStatus(value: unknown): WorkspacePaymentStatus {
@@ -204,6 +255,7 @@ function normalizeConfiguration(value: unknown): WorkspacePaymentConfiguration |
         currency: WORKSPACE_PAYMENT_CURRENCY,
         isPaymentEnabled: getBoolean(value.is_payment_enabled),
         usageEnabled: getBoolean(value.usage_enabled),
+        paygEnabled: getBoolean(value.payg_enabled),
         gbPerPayment: getDecimalText(value.gb_per_payment),
         renewalDueAt: getNullableText(value.renewal_due_at),
         usageStartDate: getNullableText(value.usage_start_date)
@@ -345,6 +397,75 @@ export function openWorkspacePaymentDialog() {
     window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_PAYMENT_DIALOG_EVENT))
 }
 
+export function normalizeWorkspacePaygSummary(value: unknown): WorkspacePaygSummary {
+    const unwrapped = unwrapRpcJson(value)
+    if (!isRecord(unwrapped)) throw new Error('Workspace PAYG summary is invalid')
+
+    const normalizeCycleStatus = (status: unknown): WorkspacePaygCycleStatus | null => (
+        status === 'open' || status === 'awaiting_payment' || status === 'paid' || status === 'no_payment_required'
+            ? status
+            : null
+    )
+    const checkpoints = (Array.isArray(unwrapped.pricing_checkpoints) ? unwrapped.pricing_checkpoints : [])
+        .flatMap((checkpoint): WorkspacePaygCheckpoint[] => {
+            if (!isRecord(checkpoint)) return []
+            const gb = Number(checkpoint.gb)
+            const amountIqd = Number(checkpoint.amount_iqd)
+            return Number.isFinite(gb) && Number.isInteger(amountIqd)
+                ? [{ gb, amountIqd, protected: getBoolean(checkpoint.protected) }]
+                : []
+        })
+        .sort((left, right) => left.gb - right.gb)
+    const history = (Array.isArray(unwrapped.history) ? unwrapped.history : [])
+        .flatMap((cycle): WorkspacePaygCycleHistory[] => {
+            if (!isRecord(cycle)) return []
+            const status = normalizeCycleStatus(cycle.status)
+            const id = getText(cycle.id)
+            if (!id || !status) return []
+            return [{
+                id,
+                periodStartedAt: getText(cycle.period_started_at),
+                periodEndedAt: getNullableText(cycle.period_ended_at),
+                chargedUsageBytes: getSafeInteger(cycle.charged_usage_bytes),
+                chargedUsageGb: getDecimalText(cycle.charged_usage_gb),
+                amountIqd: getDecimalText(cycle.amount_iqd),
+                status,
+                pricingVersion: getSafeInteger(cycle.pricing_version),
+                paymentTransactionId: getNullableText(cycle.payment_transaction_id)
+            }]
+        })
+    const paymentHistory = (Array.isArray(unwrapped.payment_history) ? unwrapped.payment_history : [])
+        .map(normalizeWorkspacePaymentTransaction)
+        .filter((transaction): transaction is WorkspacePaymentTransaction => Boolean(transaction))
+
+    return {
+        enabled: getBoolean(unwrapped.enabled),
+        workspaceId: getText(unwrapped.workspace_id),
+        billingWorkspaceId: getText(unwrapped.billing_workspace_id),
+        isInherited: getBoolean(unwrapped.is_inherited),
+        canSubmitPayment: getBoolean(unwrapped.can_submit_payment),
+        cycleId: getNullableText(unwrapped.cycle_id),
+        cycleStatus: normalizeCycleStatus(unwrapped.cycle_status),
+        cycleStartedAt: getNullableText(unwrapped.cycle_started_at),
+        renewalDueAt: getNullableText(unwrapped.renewal_due_at),
+        chargedUsageBytes: getSafeInteger(unwrapped.charged_usage_bytes),
+        chargedUsageGb: getDecimalText(unwrapped.charged_usage_gb),
+        amountIqd: getDecimalText(unwrapped.amount_iqd),
+        currency: WORKSPACE_PAYMENT_CURRENCY,
+        pricingVersionId: getNullableText(unwrapped.pricing_version_id),
+        pricingVersion: unwrapped.pricing_version === null || unwrapped.pricing_version === undefined
+            ? null
+            : getSafeInteger(unwrapped.pricing_version),
+        pricingCheckpoints: checkpoints,
+        pendingBillingMode: unwrapped.pending_billing_mode === 'monthly' || unwrapped.pending_billing_mode === 'prepaid_usage'
+            ? unwrapped.pending_billing_mode
+            : null,
+        lastUpdatedAt: getNullableText(unwrapped.last_updated_at),
+        history,
+        paymentHistory
+    }
+}
+
 export function openWorkspacePaymentStatusDialog() {
     if (typeof window === 'undefined') return
     window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_PAYMENT_STATUS_DIALOG_EVENT))
@@ -360,6 +481,9 @@ export function getWorkspacePaymentAlertKind(
 ): WorkspacePaymentAlertKind | null {
     if (!summary) return null
 
+    if (summary.configuration?.paygEnabled && summary.eligibility.usageRenewalDue) {
+        return 'payg_renewal_due'
+    }
     if (summary.eligibility.usageExhausted || summary.eligibility.alertReason === 'usage_exhausted') {
         return 'usage_exhausted'
     }
@@ -506,6 +630,38 @@ export async function getWorkspacePaymentSummary(): Promise<WorkspacePaymentSumm
     }
 
     return normalizeWorkspacePaymentSummary(result.data)
+}
+
+export async function getWorkspacePaygSummary(): Promise<WorkspacePaygSummary> {
+    const result = await runSupabaseAction(
+        'workspacePayments.getPaygSummary',
+        () => supabase.rpc('get_workspace_payg_summary'),
+        { timeoutMs: 12_000, platform: 'all' }
+    ) as { data: unknown; error?: unknown }
+    if (result.error) throw normalizeSupabaseActionError(result.error)
+    return normalizeWorkspacePaygSummary(result.data)
+}
+
+export async function submitWorkspacePaygPayment(
+    provider: Exclude<WorkspacePaymentProvider, 'free'>,
+    accountHolderName: string
+): Promise<WorkspacePaymentTransaction> {
+    const normalizedName = normalizeWorkspacePaymentAccountHolderName(accountHolderName)
+    if (!isValidWorkspacePaymentAccountHolderName(normalizedName)) {
+        throw new Error('Account holder name must contain at least three words')
+    }
+    const result = await runSupabaseAction(
+        'workspacePayments.submitPayg',
+        () => supabase.rpc('submit_workspace_payg_payment', {
+            p_provider: provider,
+            p_account_holder_name: normalizedName
+        }),
+        { timeoutMs: 12_000, platform: 'all' }
+    ) as { data: unknown; error?: unknown }
+    if (result.error) throw normalizeSupabaseActionError(result.error)
+    const transaction = normalizeWorkspacePaymentTransaction(unwrapRpcJson(result.data))
+    if (!transaction) throw new Error('Workspace PAYG payment transaction is invalid')
+    return transaction
 }
 
 export async function getSavedWorkspacePaymentAccountHolderNames(): Promise<string[]> {

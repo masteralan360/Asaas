@@ -16,6 +16,7 @@ import type {
     WorkspaceUsageMeterMetric,
     WorkspaceUsageMeterSegment
 } from './WorkspaceUsageModal'
+import { getWorkspacePaygSummary, type WorkspacePaygSummary } from '@/lib/workspacePayments'
 
 const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
 const WORKSPACE_USAGE_REFRESH_DELAY_MS = 1500
@@ -36,7 +37,8 @@ function getMetricPercent(usedValue?: number | null, limitValue?: number | null)
 function buildWorkspaceUsageMeter(
     status: WorkspaceUsageStatus | null,
     history: WorkspaceUsageLocalHistory | null,
-    t: TFunction
+    t: TFunction,
+    paygSummary: WorkspacePaygSummary | null
 ): WorkspaceUsageMeter | null {
     if (!status?.has_limits) return null
 
@@ -68,7 +70,10 @@ function buildWorkspaceUsageMeter(
     }
 
     const chargedUsageBytes = getChargedWorkspaceUsageBytes(status)
-    const chargedUsagePercent = getMetricPercent(chargedUsageBytes, status.monthly_data_transfer_limit_bytes)
+    const chargedUsageDisplayLimit = paygSummary?.enabled
+        ? 100_000_000_000
+        : status.monthly_data_transfer_limit_bytes
+    const chargedUsagePercent = getMetricPercent(chargedUsageBytes, chargedUsageDisplayLimit)
     if (chargedUsagePercent !== null) {
         titleParts.push(`${chargedUsageLabel}: ${Math.round(chargedUsagePercent)}%`)
         const chargedUsageMetric: WorkspaceUsageMeterMetric = {
@@ -114,9 +119,9 @@ function buildWorkspaceUsageMeter(
                 ? null
                 : Number(status.storage_unit_limit),
             chargedUsageBytes,
-            chargedUsageLimitBytes: status.monthly_data_transfer_limit_bytes === null
+            chargedUsageLimitBytes: chargedUsageDisplayLimit === null
                 ? null
-                : Number(status.monthly_data_transfer_limit_bytes),
+                : Number(chargedUsageDisplayLimit),
             transferPeriodStart: status.transfer_period_start,
             insights: buildWorkspaceUsageInsights(status, history)
         }
@@ -132,6 +137,7 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
     const { t } = useTranslation()
     const [usageStatus, setUsageStatus] = useState<WorkspaceUsageStatus | null>(null)
     const [usageHistory, setUsageHistory] = useState<WorkspaceUsageLocalHistory | null>(null)
+    const [paygSummary, setPaygSummary] = useState<WorkspacePaygSummary | null>(null)
     const [isRefreshingWorkspaceUsage, setIsRefreshingWorkspaceUsage] = useState(false)
     const refreshUsageRef = useRef<(() => Promise<void>) | null>(null)
 
@@ -139,6 +145,7 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
         if (!enabled || !workspaceId) {
             setUsageStatus(null)
             setUsageHistory(null)
+            setPaygSummary(null)
             setIsRefreshingWorkspaceUsage(false)
             refreshUsageRef.current = null
             return
@@ -151,12 +158,20 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
         const fetchUsageStatus = async () => {
             const requestId = ++latestRequestId
             try {
-                const status = await getWorkspaceUsageStatus(workspaceId)
+                const [statusResult, paygResult] = await Promise.allSettled([
+                    getWorkspaceUsageStatus(workspaceId),
+                    getWorkspacePaygSummary()
+                ])
+                if (statusResult.status === 'rejected') throw statusResult.reason
+                const status = statusResult.value
                 // Focus, interval, and usage events can overlap. Ignore a response
                 // from an older request so lower stale counters are never mistaken
                 // for a server-side monthly reset.
                 if (!cancelled && requestId === latestRequestId) {
                     setUsageStatus(status)
+                    if (paygResult.status === 'fulfilled') {
+                        setPaygSummary(paygResult.value.enabled ? paygResult.value : null)
+                    }
                     setUsageHistory((current) => (
                         status
                         && current?.workspaceId === status.workspace_id
@@ -234,7 +249,8 @@ export function useWorkspaceUsageMeter({ enabled, workspaceId }: UseWorkspaceUsa
     }, [enabled, workspaceId])
 
     return {
-        usageMeter: buildWorkspaceUsageMeter(usageStatus, usageHistory, t),
+        usageMeter: buildWorkspaceUsageMeter(usageStatus, usageHistory, t, paygSummary),
+        paygSummary,
         isRefreshingWorkspaceUsage,
         refreshWorkspaceUsage: async () => {
             await refreshUsageRef.current?.()

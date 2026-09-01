@@ -110,9 +110,21 @@ type UpsertWorkspacePaymentConfigurationRequest = {
     subscriptionAmount?: string | number
     isPaymentEnabled?: boolean
     usageEnabled?: boolean
+    paygEnabled?: boolean
     gbPerPayment?: string | number
     usageStartDate?: string | null
     renewalDueAt?: string | null
+}
+
+type GetPaygPricingScheduleRequest = {
+    action: 'getPaygPricingSchedule'
+    passkey?: string
+}
+
+type PublishPaygPricingScheduleRequest = {
+    action: 'publishPaygPricingSchedule'
+    passkey?: string
+    checkpoints?: Array<{ gb?: number; amountIqd?: number }>
 }
 
 type ListWorkspacePaymentTransactionsRequest = {
@@ -148,6 +160,8 @@ type AdminConsoleRequest =
     | SendWorkspaceAdminMessageRequest
     | ListWorkspacePaymentConfigurationsRequest
     | UpsertWorkspacePaymentConfigurationRequest
+    | GetPaygPricingScheduleRequest
+    | PublishPaygPricingScheduleRequest
     | ListWorkspacePaymentTransactionsRequest
     | ReviewWorkspacePaymentTransactionRequest
 
@@ -1043,6 +1057,17 @@ async function grantWorkspaceFreeUsage(
         return errorResponse('A valid workspace is required')
     }
 
+    const { data: billingRows, error: billingError } = await adminClient.rpc(
+        'admin_list_workspace_payment_configurations_v2'
+    )
+    if (billingError) return errorResponse(billingError.message, 400)
+    const billingRow = Array.isArray(billingRows)
+        ? billingRows.find((row) => String(row.workspace_id) === workspaceId)
+        : null
+    if (billingRow?.payg_enabled) {
+        return errorResponse('Free usage cannot change the authoritative PAYG counter', 400)
+    }
+
     const grantedBytes = normalizePositiveGbToBytes(body.gbAmount)
     if (grantedBytes.error) {
         return errorResponse(grantedBytes.error)
@@ -1092,7 +1117,7 @@ async function sendWorkspaceAdminMessage(
 async function listWorkspacePaymentConfigurations(
     adminClient: ReturnType<typeof createAdminClient>
 ) {
-    const { data, error } = await adminClient.rpc('admin_list_workspace_payment_configurations')
+    const { data, error } = await adminClient.rpc('admin_list_workspace_payment_configurations_v2')
 
     if (error) {
         return errorResponse(error.message, 500)
@@ -1100,7 +1125,8 @@ async function listWorkspacePaymentConfigurations(
 
     try {
         const workspaceA2cPhones = await getWorkspaceA2cPhones(adminClient)
-        return jsonResponse((data ?? []).map((row) => ({
+        const rows = Array.isArray(data) ? data as Array<Record<string, unknown>> : []
+        return jsonResponse(rows.map((row) => ({
             ...row,
             a2c_phone: workspaceA2cPhones.get(String(row.workspace_id)) ?? null
         })))
@@ -1120,43 +1146,19 @@ async function upsertWorkspacePaymentConfiguration(
         return errorResponse('A valid workspace is required')
     }
 
-    const hasConfigFields = body.subscriptionAmount !== undefined || body.gbPerPayment !== undefined
-
-    if (!hasConfigFields) {
-        if (typeof body.isPaymentEnabled !== 'boolean' || typeof body.usageEnabled !== 'boolean') {
-            console.error('upsert error: boolean type check failed (date-only path)')
-            return errorResponse('Payment enabled and usage enabled must be true or false')
-        }
-        if (body.usageEnabled && body.renewalDueAt !== undefined && !body.renewalDueAt) {
-            return errorResponse('Renewal due is required for usage-based workspaces')
-        }
-
-        const updates: Record<string, unknown> = {}
-        if (body.usageStartDate !== undefined) {
-            updates.usage_start_date = body.usageStartDate || null
-        }
-        if (body.renewalDueAt !== undefined) {
-            updates.renewal_due_at = body.renewalDueAt || null
-        }
-        if (Object.keys(updates).length === 0) {
-            console.error('upsert error: no fields to update (date-only path)')
-            return errorResponse('No fields to update')
-        }
-        const { error: updateError } = await adminClient
-            .schema('billing')
-            .from('workspace_payment_configurations')
-            .update(updates)
-            .eq('workspace_id', workspaceId)
-        if (updateError) {
-            console.error('upsert error: date-only update failed:', updateError.message)
-            return errorResponse(`Failed to update dates: ${updateError.message}`, 400)
-        }
-        return jsonResponse({ success: true })
-    }
-
-    if (typeof body.isPaymentEnabled !== 'boolean' || typeof body.usageEnabled !== 'boolean') {
+    if (
+        typeof body.isPaymentEnabled !== 'boolean'
+        || typeof body.usageEnabled !== 'boolean'
+        || typeof body.paygEnabled !== 'boolean'
+    ) {
         console.error('upsert error: boolean type check failed (rpc path)')
-        return errorResponse('Payment enabled and usage enabled must be true or false')
+        return errorResponse('Payments, prepaid usage, and PAYG must be true or false')
+    }
+    if (body.paygEnabled && body.usageEnabled) {
+        return errorResponse('PAYG and prepaid usage are exclusive')
+    }
+    if ((body.paygEnabled || body.usageEnabled) && !body.renewalDueAt) {
+        return errorResponse('Renewal due is required for PAYG and prepaid usage')
     }
 
     const amount = normalizePaymentDecimal(body.subscriptionAmount, 'Subscription amount', {
@@ -1184,6 +1186,7 @@ async function upsertWorkspacePaymentConfiguration(
         p_subscription_amount: amount.value,
         p_is_payment_enabled: body.isPaymentEnabled,
         p_usage_enabled: body.usageEnabled,
+        p_payg_enabled: body.paygEnabled,
         p_gb_per_payment: gbPerPayment.value,
         p_usage_start_date: body.usageStartDate ?? null,
         p_renewal_due_at: body.renewalDueAt ?? null
@@ -1194,17 +1197,14 @@ async function upsertWorkspacePaymentConfiguration(
         p_subscription_amount: amount.value,
         p_is_payment_enabled: body.isPaymentEnabled,
         p_usage_enabled: body.usageEnabled,
+        p_payg_enabled: body.paygEnabled,
         p_gb_per_payment: gbPerPayment.value,
-        p_actor: 'admin-console-passkey'
-    }
-    if (body.usageStartDate !== undefined) {
-        rpcParams.p_usage_start_date = body.usageStartDate || null
-    }
-    if (body.renewalDueAt !== undefined) {
-        rpcParams.p_renewal_due_at = body.renewalDueAt || null
+        p_renewal_due_at: body.renewalDueAt || null,
+        p_actor: 'admin-console-passkey',
+        p_usage_start_date: body.usageStartDate || null
     }
 
-    const { data, error } = await adminClient.rpc('admin_upsert_workspace_payment_configuration', rpcParams)
+    const { data, error } = await adminClient.rpc('admin_upsert_workspace_payment_configuration_v2', rpcParams)
 
     if (error) {
         console.error('RPC error:', JSON.stringify({ message: error.message, code: error.code, details: error.details, hint: error.hint }))
@@ -1218,6 +1218,29 @@ async function upsertWorkspacePaymentConfiguration(
     return jsonResponse(data)
 }
 
+async function getPaygPricingSchedule(adminClient: ReturnType<typeof createAdminClient>) {
+    const { data, error } = await adminClient.rpc('admin_get_payg_pricing_schedule')
+    if (error) return errorResponse(error.message, 500)
+    return jsonResponse(data)
+}
+
+async function publishPaygPricingSchedule(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: PublishPaygPricingScheduleRequest
+) {
+    if (!Array.isArray(body.checkpoints)) return errorResponse('Pricing checkpoints are required')
+    const checkpoints = body.checkpoints.map((checkpoint) => ({
+        gb: checkpoint.gb,
+        amount_iqd: checkpoint.amountIqd
+    }))
+    const { data, error } = await adminClient.rpc('admin_publish_payg_pricing_schedule', {
+        p_checkpoints: checkpoints,
+        p_actor: 'admin-console-passkey'
+    })
+    if (error) return errorResponse(error.message, 400)
+    return jsonResponse(data)
+}
+
 async function listWorkspacePaymentTransactions(
     adminClient: ReturnType<typeof createAdminClient>,
     body: ListWorkspacePaymentTransactionsRequest
@@ -1227,7 +1250,7 @@ async function listWorkspacePaymentTransactions(
         return errorResponse('Unsupported payment transaction status')
     }
 
-    const { data, error } = await adminClient.rpc('admin_list_workspace_payment_transactions', {
+    const { data, error } = await adminClient.rpc('admin_list_workspace_payment_transactions_v2', {
         p_status: status
     })
 
@@ -1266,7 +1289,7 @@ async function reviewWorkspacePaymentTransaction(
         return errorResponse(providerPaymentId.error)
     }
 
-    const { data, error } = await adminClient.rpc('admin_review_workspace_payment_transaction', {
+    const { data, error } = await adminClient.rpc('admin_review_workspace_payment_transaction_v2', {
         p_transaction_id: transactionId,
         p_decision: body.decision,
         p_note: note.value,
@@ -1370,6 +1393,14 @@ Deno.serve(async (req) => {
 
         if (body.action === 'upsertWorkspacePaymentConfiguration') {
             return await upsertWorkspacePaymentConfiguration(adminClient, body)
+        }
+
+        if (body.action === 'getPaygPricingSchedule') {
+            return await getPaygPricingSchedule(adminClient)
+        }
+
+        if (body.action === 'publishPaygPricingSchedule') {
+            return await publishPaygPricingSchedule(adminClient, body)
         }
 
         if (body.action === 'listWorkspacePaymentTransactions') {

@@ -38,11 +38,18 @@ export function LockedWorkspace() {
         canRenewSubscription
         && paymentSummary?.configuration
         && !paymentSummary.configuration.usageEnabled
+        && !paymentSummary.configuration.paygEnabled
     )
     const pendingExtraDays = paymentSummary?.pendingExtraDays ?? null
 
     const paymentCopy = (() => {
         switch (paymentAlertKind) {
+            case 'payg_renewal_due':
+                return {
+                    title: t('workspacePayments.payg.renewalDueTitle'),
+                    description: t('workspacePayments.payg.renewalDueDescription'),
+                    icon: CreditCard
+                }
             case 'usage_exhausted':
                 return {
                     title: t('workspacePayments.usageExhaustedTitle'),

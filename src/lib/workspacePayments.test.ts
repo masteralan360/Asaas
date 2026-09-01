@@ -32,10 +32,12 @@ import {
     isValidWorkspacePaymentAccountHolderName,
     normalizeWorkspacePaymentAccountHolderName,
     normalizeWorkspacePaymentSummary,
+    normalizeWorkspacePaygSummary,
     normalizeWorkspaceSubscriptionExtraDays,
     shouldApplyWorkspaceSubscriptionExpiry,
     shouldWorkspacePaymentLockAccess,
     submitWorkspacePayment,
+    submitWorkspacePaygPayment,
     workspacePaymentTestInternals,
     type WorkspacePaymentSummary
 } from './workspacePayments'
@@ -175,6 +177,32 @@ describe('workspace payments', () => {
         expect(getWorkspacePaymentAlertKind(expired)).toBe('subscription_expired')
         expect(shouldWorkspacePaymentLockAccess(expired)).toBe(true)
         expect(shouldWorkspacePaymentLockAccess(null)).toBe(false)
+    })
+
+    it('keeps a due PAYG cycle distinct from Monthly subscription and Prepaid usage alerts', () => {
+        const paygDue = summary({
+            configuration: {
+                id: 'configuration-1',
+                workspace_id: 'workspace-1',
+                subscription_amount: 3_333,
+                currency: 'IQD',
+                is_payment_enabled: true,
+                usage_enabled: false,
+                payg_enabled: true,
+                gb_per_payment: 0,
+                renewal_due_at: '2026-09-01T00:00:00.000Z'
+            },
+            eligibility: {
+                subscription_expired: false,
+                usage_exhausted: false,
+                usage_renewal_due: true,
+                alert_reason: 'usage_renewal_due',
+                payment_enabled: true
+            }
+        })
+
+        expect(getWorkspacePaymentAlertKind(paygDue)).toBe('payg_renewal_due')
+        expect(shouldWorkspacePaymentLockAccess(paygDue)).toBe(true)
     })
 
     it('normalizes a pending temporary extra-days record from the billing summary', () => {
@@ -443,5 +471,61 @@ describe('workspace payments', () => {
 
         expect(result.transactions.map(({ id }) => id)).toEqual(['newer', 'older'])
         expect(result.pendingTransaction?.id).toBe('older')
+    })
+
+    it('normalizes a server-confirmed PAYG cycle without recomputing its charge', () => {
+        const result = normalizeWorkspacePaygSummary({
+            enabled: true,
+            workspace_id: 'branch-1',
+            billing_workspace_id: 'source-1',
+            is_inherited: true,
+            can_submit_payment: false,
+            cycle_id: 'cycle-1',
+            cycle_status: 'open',
+            cycle_started_at: '2026-09-01T00:00:00.000Z',
+            renewal_due_at: '2026-10-01T00:00:00.000Z',
+            charged_usage_bytes: 3_000_300_000,
+            charged_usage_gb: '3.0003',
+            amount_iqd: '3334',
+            pricing_version_id: 'pricing-1',
+            pricing_version: 4,
+            pricing_checkpoints: [
+                { gb: 100, amount_iqd: 40000, protected: true },
+                { gb: 1, amount_iqd: 0, protected: true },
+                { gb: 10, amount_iqd: 15000, protected: true }
+            ],
+            last_updated_at: '2026-09-01T01:00:00.000Z',
+            history: []
+        })
+
+        expect(result).toMatchObject({
+            enabled: true,
+            isInherited: true,
+            canSubmitPayment: false,
+            chargedUsageBytes: 3_000_300_000,
+            chargedUsageGb: '3.0003',
+            amountIqd: '3334',
+            pricingVersion: 4
+        })
+        expect(result.pricingCheckpoints.map(({ gb }) => gb)).toEqual([1, 10, 100])
+    })
+
+    it('submits only the provider and normalized account name for a frozen PAYG amount', async () => {
+        testState.rpc.mockResolvedValue({
+            data: transaction({ payment_type: 'payg', amount: 3333, gb_added: 0 }),
+            error: null
+        })
+
+        await expect(submitWorkspacePaygPayment('fib', ' payg test admin ')).resolves.toMatchObject({
+            paymentType: 'payg',
+            amount: '3333'
+        })
+        expect(testState.rpc).toHaveBeenCalledWith('submit_workspace_payg_payment', {
+            p_provider: 'fib',
+            p_account_holder_name: 'PAYG TEST ADMIN'
+        })
+        await expect(submitWorkspacePaygPayment('qicard', 'two words')).rejects.toThrow(
+            'Account holder name must contain at least three words'
+        )
     })
 })

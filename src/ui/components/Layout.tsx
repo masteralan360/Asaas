@@ -44,7 +44,7 @@ import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateRemind
 import { CurrencyConverterPopup } from './CurrencyConverterPopup'
 import { AtlasAssistantPopup } from './AtlasAssistantPopup'
 import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
-import { WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
+import { WorkspacePaygChargeButton, WorkspaceUsageButton, WorkspaceUsageCircleButton, WorkspaceUsageModal } from './WorkspaceUsageModal'
 import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { LocalAccountSwitcher } from './LocalAccountSwitcher'
@@ -254,6 +254,7 @@ export function Layout({ children }: LayoutProps) {
   const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
   const {
     usageMeter: webUsageMeter,
+    paygSummary: webPaygSummary,
     refreshWorkspaceUsage: refreshWebWorkspaceUsage,
     isRefreshingWorkspaceUsage: isRefreshingWebWorkspaceUsage
   } = useWorkspaceUsageMeter({
@@ -2253,11 +2254,14 @@ export function Layout({ children }: LayoutProps) {
                 )}
               >
                 {!isTauri && webUsageMeter ? (
-                  <WorkspaceUsageButton
-                    usageMeter={webUsageMeter}
-                    onClick={() => setUsageModalOpen(true)}
-                    className="h-9 w-full max-w-[500px] animate-in fade-in slide-in-from-top-2 duration-300"
-                  />
+                  <div className="flex w-full max-w-[500px] items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
+                    {webPaygSummary && <WorkspacePaygChargeButton summary={webPaygSummary} onClick={() => setUsageModalOpen(true)} />}
+                    <WorkspaceUsageButton
+                      usageMeter={webUsageMeter}
+                      onClick={() => setUsageModalOpen(true)}
+                      className="relative z-10 h-9 w-full"
+                    />
+                  </div>
                 ) : (
                   (!isTauri || isFullscreen) &&
                   !isMobile() && (
@@ -2268,11 +2272,14 @@ export function Layout({ children }: LayoutProps) {
 
               <div className="flex items-center gap-1 md:gap-3 ml-auto">
                 {!isTauri && webUsageMeter && (
-                  <WorkspaceUsageCircleButton
-                    usageMeter={webUsageMeter}
-                    onClick={() => setUsageModalOpen(true)}
-                    className="lg:hidden"
-                  />
+                  <div className="flex items-center lg:hidden">
+                    {webPaygSummary && <WorkspacePaygChargeButton compact summary={webPaygSummary} onClick={() => setUsageModalOpen(true)} />}
+                    <WorkspaceUsageCircleButton
+                      usageMeter={webUsageMeter}
+                      onClick={() => setUsageModalOpen(true)}
+                      className="relative z-10"
+                    />
+                  </div>
                 )}
                 <button
                   type="button"
@@ -2464,6 +2471,7 @@ export function Layout({ children }: LayoutProps) {
             usageMeter={webUsageMeter}
             onRefresh={refreshWebWorkspaceUsage}
             isRefreshing={isRefreshingWebWorkspaceUsage}
+            paygSummary={webPaygSummary}
           />
           <AtlasAssistantPopup
             open={assistantOpen}
