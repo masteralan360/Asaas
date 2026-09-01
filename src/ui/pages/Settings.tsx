@@ -3,7 +3,7 @@ import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { db, hasCurrencyExchangeAccountingData, listLocalCustomTemplates, usePriceBookCatalogState } from '@/local-db'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Textarea, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, AppDialog, AppDialogBody, AppDialogContent, AppDialogDescription, AppDialogFooter, AppDialogHeader, AppDialogTitle, Textarea, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
@@ -4161,13 +4161,23 @@ export function Settings() {
                     )}
                 </TabsContent>
 
-                <Dialog open={isThermalDialogOpen} onOpenChange={setIsThermalDialogOpen}>
-                    <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>
+                <AppDialog
+                    open={isThermalDialogOpen}
+                    onOpenChange={(open) => {
+                        if (!open && (isThermalActionPending || isScanningThermalPrinters)) return
+                        setIsThermalDialogOpen(open)
+                    }}
+                >
+                    <AppDialogContent
+                        className="max-w-2xl"
+                        showCloseButton={!isThermalActionPending && !isScanningThermalPrinters}
+                    >
+                        <AppDialogHeader>
+                            <AppDialogTitle className="flex items-center gap-2">
+                                <Printer className="h-5 w-5 text-primary" />
                                 {t('settings.printing.thermalDialogTitle', { defaultValue: 'Thermal Printers' })}
-                            </DialogTitle>
-                            <DialogDescription>
+                            </AppDialogTitle>
+                            <AppDialogDescription>
                                 {isElectron
                                     ? t('settings.printing.thermalDialogDesc', {
                                         defaultValue: 'Scan this device for available thermal printers and choose which one should handle POS receipt printing for this workspace.'
@@ -4179,10 +4189,10 @@ export function Settings() {
                                     : t('settings.printing.thermalPwaDialogDesc', {
                                         defaultValue: 'Connect QZ Tray on this device to scan printers and print POS receipts directly from the installed PWA.'
                                     })}
-                            </DialogDescription>
-                        </DialogHeader>
+                            </AppDialogDescription>
+                        </AppDialogHeader>
 
-                        <div className="space-y-4">
+                        <AppDialogBody className="space-y-4">
                             {isAndroidDirectThermalPwa && (
                                 <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
                                     <div>
@@ -4389,7 +4399,7 @@ export function Settings() {
                                 </div>
                             )}
 
-                            <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+                            <div className="space-y-3">
                                 {displayedThermalPrinters.map((printer) => {
                                     const isCurrentSelection = selectedThermalPrinter?.name === printer.name
 
@@ -4434,15 +4444,16 @@ export function Settings() {
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </AppDialogBody>
 
-                        <DialogFooter className="gap-2 sm:justify-between">
+                        <AppDialogFooter className="gap-2 sm:justify-between">
                             {features.thermal_printing ? (
                                 <Button
                                     type="button"
                                     variant="outline"
                                     onClick={handleDisableThermalPrinting}
                                     disabled={isThermalActionPending}
+                                    className="w-full sm:w-auto"
                                 >
                                     {t('settings.printing.disableThermalPrinting', { defaultValue: 'Disable Thermal Printing' })}
                                 </Button>
@@ -4451,12 +4462,14 @@ export function Settings() {
                                 type="button"
                                 variant="default"
                                 onClick={() => setIsThermalDialogOpen(false)}
+                                disabled={isThermalActionPending || isScanningThermalPrinters}
+                                className="w-full sm:w-auto"
                             >
                                 {t('common.close', { defaultValue: 'Close' })}
                             </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                        </AppDialogFooter>
+                    </AppDialogContent>
+                </AppDialog>
 
                 <Dialog
                     open={isPasswordChangeModalOpen}
