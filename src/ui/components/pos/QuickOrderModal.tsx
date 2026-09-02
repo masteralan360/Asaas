@@ -41,8 +41,11 @@ import {
     useToast
 } from '@/ui/components'
 import { AddPartnerButton } from '@/ui/components/crm/AddPartnerButton'
+import {
+    CompactBusinessPartnerFormDialog,
+    type CompactBusinessPartnerFormPayload
+} from '@/ui/components/crm/CompactBusinessPartnerFormDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
-import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import {
@@ -347,13 +350,10 @@ export function QuickOrderModal({
         setIsCommissionPanelOpen(false)
     }
 
-    const handleCreateCustomer = async (payload: BusinessPartnerFormPayload) => {
+    const handleCreateCustomer = async (payload: CompactBusinessPartnerFormPayload) => {
         setIsCreatingCustomer(true)
         try {
-            const partner = await createBusinessPartner(workspaceId, {
-                ...payload,
-                role: payload.role || 'customer'
-            })
+            const partner = await createBusinessPartner(workspaceId, payload)
             setCustomer(partner)
             setCustomerSearch(partner.partnerName)
             setIsCommissionPanelOpen(false)
@@ -691,12 +691,11 @@ export function QuickOrderModal({
                     </Button>
                 ) : null}
             </AppDialogFooter>
-            <BusinessPartnerFormDialog
+            <CompactBusinessPartnerFormDialog
                 isOpen={isCreateCustomerOpen}
                 onOpenChange={setIsCreateCustomerOpen}
                 defaultCurrency={defaultCurrency}
-                availableCurrencies={availableCurrencies}
-                initialRole="customer"
+                role="customer"
                 title={t('customers.addCustomer')}
                 submitLabel={t('common.create')}
                 isSaving={isCreatingCustomer}
