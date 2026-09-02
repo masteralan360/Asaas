@@ -779,11 +779,25 @@ describe('Atlas Standard order invoice custom print template', () => {
         expect(target).toMatchObject({
             moduleTypeKey: customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
             workspaceModuleKey: 'crm',
-            typeLabel: 'Atlas Standard',
+            typeLabel: 'Orders Atlas Standard',
             nativeTemplateAvailable: true,
             printFormat: 'a4',
             page: { widthMm: 210, heightMm: 297 }
         })
+        expect(customTemplates.getCustomTemplateDisplayName(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY))
+            .toBe('Orders Atlas Standard')
+        expect(customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY).toBe('orders.AtlasStandard')
+        expect(customTemplates.getStoredCustomTemplateLabel({
+            id: 'legacy-order-template',
+            module_type_key: customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+            label: 'My legacy order layout',
+            layout_json: {}
+        })).toBe('My legacy order layout')
+        expect(customTemplates.getStoredCustomTemplateLabel({
+            id: 'unnamed-legacy-order-template',
+            module_type_key: customTemplates.ORDER_ATLAS_STANDARD_TEMPLATE_KEY,
+            layout_json: {}
+        })).toBe('Orders Atlas Standard')
 
         const hiddenFields = {
             'atlasStandard.table.price': true,
@@ -1175,10 +1189,13 @@ describe('Atlas Standard return custom print template', () => {
         expect(standardTarget).toBeDefined()
         expect(returnTarget).toMatchObject({
             moduleTypeKey: customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
-            typeLabel: 'Atlas Standard Return',
+            typeLabel: 'Orders Atlas Standard Return',
             printFormat: 'a4',
             nativeTemplateAvailable: true
         })
+        expect(customTemplates.getCustomTemplateDisplayName(customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY))
+            .toBe('Orders Atlas Standard Return')
+        expect(customTemplates.ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY).toBe('orders.AtlasStandardReturn')
 
         const baseOrder = customTemplates
             .createCustomTemplatePreview(standardTarget!, { printLang: 'en' })

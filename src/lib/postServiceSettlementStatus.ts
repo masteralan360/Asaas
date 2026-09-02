@@ -12,6 +12,13 @@ export interface ShipmentSettlementBreakdown {
   outstanding: number;
 }
 
+export type MerchantSettlementDirection = "payout" | "repayment";
+
+/** A per-post merchant settlement, whether the workspace pays or receives it. */
+export type MerchantAccountSettlementBreakdown = ShipmentSettlementBreakdown & {
+  direction: MerchantSettlementDirection;
+};
+
 /**
  * A delivery post is complete only after delivery and both of its settlement
  * obligations have been cleared.
@@ -49,6 +56,10 @@ function computeSettlementBreakdown(
   obligationKinds: DeliveryLedgerEntry["kind"][],
   clearingKinds: DeliveryLedgerEntry["kind"][],
   partyKey: (entry: DeliveryLedgerEntry) => string | null | undefined,
+  options?: {
+    obligationAmount?: (entry: DeliveryLedgerEntry) => number;
+    clearingAmount?: (entry: DeliveryLedgerEntry) => number;
+  },
 ) {
   const groups = new Map<string, { obligations: FifoObligation[]; clearances: Array<{ occurredAt: string; amount: number; shipmentId: string | null }> }>();
   for (const entry of entries) {
@@ -62,12 +73,12 @@ function computeSettlementBreakdown(
       groups.set(groupKey, group);
     }
     if (obligationKinds.includes(entry.kind)) {
-      const amount = Number(entry.amount || 0);
+      const amount = options?.obligationAmount?.(entry) ?? Number(entry.amount || 0);
       if (Math.abs(amount) > EPSILON) {
         group.obligations.push({ shipmentId: entry.shipmentId ?? "", amount, occurredAt: entry.occurredAt });
       }
     } else if (clearingKinds.includes(entry.kind)) {
-      const credit = -Number(entry.amount || 0);
+      const credit = options?.clearingAmount?.(entry) ?? -Number(entry.amount || 0);
       if (credit > EPSILON) {
         group.clearances.push({ occurredAt: entry.occurredAt, amount: credit, shipmentId: entry.shipmentId ?? null });
       }
@@ -179,6 +190,59 @@ export function courierSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]
   ));
 }
 
+export interface CourierReimbursementBreakdown {
+  shipmentId: string;
+  /** Outstanding amount the workspace owes the courier for this post. */
+  amount: number;
+}
+
+/** Per-courier post reimbursements, in chronological order. */
+export function courierReimbursementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
+  const groups = new Map<string, Map<string, { balance: number; occurredAt: string }>>();
+  for (const entry of entries) {
+    if (
+      entry.isDeleted
+      || !entry.agentId
+      || !entry.shipmentId
+      || ![
+        "courier_collection",
+        "courier_delivery_fee",
+        "courier_recipient_advance",
+        "courier_remittance",
+        "courier_fee_payout",
+        "courier_reimbursement",
+      ].includes(entry.kind)
+    ) continue;
+    const partyKey = `${entry.agentId}:${entry.currency}`;
+    const posts = groups.get(partyKey) ?? new Map<string, { balance: number; occurredAt: string }>();
+    const current = posts.get(entry.shipmentId);
+    posts.set(entry.shipmentId, {
+      balance: (current?.balance ?? 0) + Number(entry.amount || 0),
+      occurredAt: current && current.occurredAt <= entry.occurredAt ? current.occurredAt : entry.occurredAt,
+    });
+    groups.set(partyKey, posts);
+  }
+  const results = new Map<string, CourierReimbursementBreakdown[]>();
+  for (const [partyKey, posts] of groups) {
+    const reimbursements = [...posts.entries()]
+      .filter(([, post]) => post.balance < -EPSILON)
+      .map(([shipmentId, post]) => ({ shipmentId, amount: -post.balance, occurredAt: post.occurredAt }))
+      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+      .map(({ shipmentId, amount }) => ({ shipmentId, amount }));
+    if (reimbursements.length > 0) results.set(partyKey, reimbursements);
+  }
+  return results;
+}
+
+/** Amounts the workspace owes each courier, grouped by courier and currency. */
+export function courierReimbursementOutstandingByParty(entries: DeliveryLedgerEntry[]) {
+  const results = new Map<string, number>();
+  for (const [partyKey, posts] of courierReimbursementBreakdownByParty(entries)) {
+    results.set(partyKey, posts.reduce((total, post) => total + post.amount, 0));
+  }
+  return results;
+}
+
 /** Per-merchant (per-currency) post breakdown with FIFO paid/outstanding amounts. */
 export function merchantSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(
@@ -187,4 +251,57 @@ export function merchantSettlementBreakdownByParty(entries: DeliveryLedgerEntry[
     ["merchant_payout", "adjustment"],
     (entry) => entry.merchantProfileId,
   ));
+}
+
+/**
+ * Per-merchant settlement rows for both directions of the account. Payouts
+ * reduce money owed to the merchant; repayments reduce money owed by them.
+ */
+export function merchantAccountSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
+  const payouts = merchantSettlementBreakdownByParty(entries);
+  const repayments = toBreakdown(computeSettlementBreakdown(
+    entries,
+    ["merchant_cod_payable", "merchant_fee", "merchant_recipient_payout"],
+    ["merchant_repayment"],
+    (entry) => entry.merchantProfileId,
+    {
+      obligationAmount: (entry) => -Number(entry.amount || 0),
+      clearingAmount: (entry) => Number(entry.amount || 0),
+    },
+  ));
+  const results = new Map<string, MerchantAccountSettlementBreakdown[]>();
+  for (const [partyKey, posts] of payouts) {
+    results.set(partyKey, posts.map((post) => ({ ...post, direction: "payout" })));
+  }
+  for (const [partyKey, posts] of repayments) {
+    const rows = results.get(partyKey) ?? [];
+    rows.push(...posts.map((post) => ({ ...post, direction: "repayment" as const })));
+    results.set(partyKey, rows);
+  }
+  return results;
+}
+
+/** Outstanding incoming merchant repayments, keyed by delivery post. */
+export function merchantRepaymentOutstandingByShipment(entries: DeliveryLedgerEntry[]) {
+  const results = new Map<string, number>();
+  for (const posts of merchantAccountSettlementBreakdownByParty(entries).values()) {
+    for (const post of posts) {
+      if (post.direction !== "repayment" || post.outstanding <= EPSILON) continue;
+      results.set(post.shipmentId, (results.get(post.shipmentId) ?? 0) + post.outstanding);
+    }
+  }
+  return results;
+}
+
+/** Outstanding incoming merchant repayments, keyed by merchant and currency. */
+export function merchantRepaymentOutstandingByParty(entries: DeliveryLedgerEntry[]) {
+  const results = new Map<string, number>();
+  for (const [partyKey, posts] of merchantAccountSettlementBreakdownByParty(entries)) {
+    const outstanding = posts.reduce(
+      (total, post) => total + (post.direction === "repayment" ? post.outstanding : 0),
+      0,
+    );
+    if (outstanding > EPSILON) results.set(partyKey, outstanding);
+  }
+  return results;
 }

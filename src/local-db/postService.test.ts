@@ -31,6 +31,7 @@ let reviewDeliveryShipmentCodAdjustment: typeof import("./postService").reviewDe
 
 function installBrowserEnvironment() {
   const rows = new Map<string, string>();
+  const documentHead = { appendChild: () => undefined };
   const storage = {
     get length() { return rows.size; },
     getItem: (key: string) => rows.get(key) ?? null,
@@ -41,8 +42,10 @@ function installBrowserEnvironment() {
   };
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: storage });
-  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: storage, sessionStorage: storage, location: { origin: "http://localhost", hash: "", pathname: "/" }, addEventListener: () => undefined, removeEventListener: () => undefined } });
-  Object.defineProperty(globalThis, "document", { configurable: true, value: { visibilityState: "visible", documentElement: { lang: "en", dir: "ltr" }, addEventListener: () => undefined, removeEventListener: () => undefined } });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: storage, sessionStorage: storage, location: { origin: "http://localhost", hash: "", pathname: "/" }, URL: globalThis.URL, addEventListener: () => undefined, removeEventListener: () => undefined } });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { visibilityState: "visible", documentElement: { lang: "en", dir: "ltr" }, head: documentHead, createElement: () => ({ appendChild: () => undefined }), createTextNode: () => ({}), getElementsByTagName: () => [documentHead], addEventListener: () => undefined, removeEventListener: () => undefined } });
+  Object.defineProperty(globalThis, "DOMMatrix", { configurable: true, value: class DOMMatrix {} });
+  Object.defineProperty(globalThis.URL, "createObjectURL", { configurable: true, value: () => "" });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: false } });
 }
 
@@ -483,7 +486,7 @@ describe("Post Service COD accounting", () => {
     });
   });
 
-  it("records a courier-funded recipient payout as a payable reimbursement, not an immediate workspace payment", async () => {
+  it("records a courier-funded recipient payout as a collective courier reimbursement, not an immediate workspace payment", async () => {
     const merchant = partner(crypto.randomUUID());
     const deliveryCourier = { ...courier(crypto.randomUUID()), courierDeliveryFee: 2000 };
     await db.business_partners.put(merchant);
@@ -505,12 +508,28 @@ describe("Post Service COD accounting", () => {
       deliveryFee: 3000,
       feePayer: "merchant",
     });
+    const secondShipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000001",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      customerPaymentStatus: "prepaid_electronically",
+      codAmount: 0,
+      recipientPayoutAmount: 10000,
+      recipientPayoutFunding: "courier_advance",
+      deliveryFee: 3000,
+      feePayer: "merchant",
+    });
     await createDeliveryRun(WORKSPACE_ID, {
       agentId: deliveryCourier.id,
-      shipmentIds: [shipment.id],
+      shipmentIds: [shipment.id, secondShipment.id],
       courierDeliveryFee: 2000,
     });
     await updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+    });
+    await updateDeliveryShipmentStatus(secondShipment.id, {
       status: "delivered",
       actorAgentId: deliveryCourier.id,
     });
@@ -522,8 +541,8 @@ describe("Post Service COD accounting", () => {
       expect.objectContaining({ kind: "merchant_fee", amount: -3000, shipmentId: shipment.id }),
       expect.objectContaining({ kind: "merchant_recipient_payout", amount: -10000, shipmentId: shipment.id }),
     ]));
-    expect(entriesBeforeReimbursement.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-12000);
-    expect(entriesBeforeReimbursement.filter((entry) => entry.merchantProfileId === profile.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-13000);
+    expect(entriesBeforeReimbursement.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-24000);
+    expect(entriesBeforeReimbursement.filter((entry) => entry.merchantProfileId === profile.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(-26000);
     expect(await db.payment_transactions
       .where("workspaceId")
       .equals(WORKSPACE_ID)
@@ -532,16 +551,16 @@ describe("Post Service COD accounting", () => {
 
     const settlement = await payDeliveryCourierReimbursement(WORKSPACE_ID, {
       agentId: deliveryCourier.id,
-      shipmentId: shipment.id,
       currency: "iqd",
-      actualAmount: 12000,
+      actualAmount: 24000,
       paymentMethod: "fib",
     });
-    expect(settlement).toMatchObject({ type: "courier_reimbursement", expectedAmount: 12000, actualAmount: 12000 });
+    expect(settlement).toMatchObject({ type: "courier_reimbursement", expectedAmount: 24000, actualAmount: 24000, shipmentId: null });
 
     const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
     expect(entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "courier_reimbursement", amount: 12000, shipmentId: shipment.id, settlementId: settlement.id }),
+      expect.objectContaining({ kind: "courier_reimbursement", amount: 12000, shipmentId: secondShipment.id, settlementId: settlement.id }),
     ]));
     expect(entries.filter((entry) => entry.agentId === deliveryCourier.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(0);
 
@@ -552,15 +571,23 @@ describe("Post Service COD accounting", () => {
       .first();
     expect(payment).toMatchObject({
       direction: "outgoing",
-      amount: 12000,
+      amount: 24000,
       currency: "iqd",
       paymentMethod: "fib",
       metadata: expect.objectContaining({
         deliverySettlementType: "courier_reimbursement",
-        deliveryShipmentId: shipment.id,
+        deliveryShipmentId: null,
         deliveryAgentId: deliveryCourier.id,
       }),
     });
+
+    await expect(payDeliveryCourierReimbursement(WORKSPACE_ID, {
+      agentId: deliveryCourier.id,
+      currency: "iqd",
+      actualAmount: 24000,
+      paymentMethod: "fib",
+    })).rejects.toThrow("Settlement amount cannot exceed the outstanding balance");
+    expect(await db.delivery_settlements.where("workspaceId").equals(WORKSPACE_ID).count()).toBe(1);
   });
 
   it("records merchant repayment as an incoming payment and clears the post debt", async () => {
@@ -584,26 +611,38 @@ describe("Post Service COD accounting", () => {
       deliveryFee: 3000,
       feePayer: "merchant",
     });
-    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    const payoutShipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000001",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 50000,
+      deliveryFee: 3000,
+      feePayer: "merchant",
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id, payoutShipment.id] });
     await updateDeliveryShipmentStatus(shipment.id, {
+      status: "delivered",
+      actorAgentId: deliveryCourier.id,
+    });
+    await updateDeliveryShipmentStatus(payoutShipment.id, {
       status: "delivered",
       actorAgentId: deliveryCourier.id,
     });
 
     const settlement = await receiveDeliveryMerchantRepayment(WORKSPACE_ID, {
       merchantProfileId: profile.id,
-      shipmentId: shipment.id,
       currency: "iqd",
       actualAmount: 13000,
       paymentMethod: "fib",
     });
-    expect(settlement).toMatchObject({ type: "merchant_repayment", expectedAmount: 13000, actualAmount: 13000 });
+    expect(settlement).toMatchObject({ type: "merchant_repayment", expectedAmount: 13000, actualAmount: 13000, shipmentId: null });
 
     const entries = await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray();
     expect(entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "merchant_repayment", amount: 13000, shipmentId: shipment.id, settlementId: settlement.id }),
     ]));
-    expect(entries.filter((entry) => entry.merchantProfileId === profile.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(0);
+    expect(entries.filter((entry) => entry.merchantProfileId === profile.id).reduce((sum, entry) => sum + entry.amount, 0)).toBe(47000);
 
     const payment = await db.payment_transactions
       .where("workspaceId")
@@ -618,11 +657,20 @@ describe("Post Service COD accounting", () => {
       paymentMethod: "fib",
       metadata: expect.objectContaining({
         deliverySettlementType: "merchant_repayment",
-        deliveryShipmentId: shipment.id,
+        deliveryShipmentId: null,
         businessPartnerId: merchant.id,
       }),
     });
-    expect(await db.business_partners.get(merchant.id)).toMatchObject({ receivableBalance: 0, payableBalance: 0 });
+    expect(await db.business_partners.get(merchant.id)).toMatchObject({ receivableBalance: 0, payableBalance: 47000 });
+
+    await expect(receiveDeliveryMerchantRepayment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      shipmentId: shipment.id,
+      currency: "iqd",
+      actualAmount: 1,
+      paymentMethod: "fib",
+    })).rejects.toThrow("no outstanding amount to settle");
+    expect(await db.delivery_settlements.where("workspaceId").equals(WORKSPACE_ID).count()).toBe(1);
   });
 
   it("does not duplicate a delivered post's event or ledger obligations when a stale client replays it", async () => {

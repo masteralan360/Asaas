@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeliveryLedgerEntry } from "@/local-db";
 
-import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
+import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
 
 const NOW = "2026-08-17T10:00:00.000Z";
 
@@ -66,6 +66,24 @@ describe("courierHandoverStatusByShipment", () => {
       new Map([["s1", "settled"], ["s2", "outstanding"]]),
     );
   });
+
+  it("totals collective courier reimbursements without offsetting a cash handover", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "courier_delivery_fee", shipmentId: "s1", agentId: "a1", amount: -2_000, currency: "iqd" }),
+      entry({ kind: "courier_recipient_advance", shipmentId: "s2", agentId: "a1", amount: -3_000, currency: "iqd" }),
+      entry({ kind: "courier_reimbursement", shipmentId: "s1", agentId: "a1", amount: 1_000, currency: "iqd" }),
+      entry({ kind: "courier_collection", shipmentId: "s3", agentId: "a1", amount: 5_000, currency: "iqd" }),
+      entry({ kind: "courier_delivery_fee", shipmentId: "s4", agentId: "a2", amount: -4_000, currency: "iqd" }),
+    ];
+
+    expect(courierReimbursementBreakdownByParty(entries).get("a1:iqd")).toEqual([
+      { shipmentId: "s1", amount: 1_000 },
+      { shipmentId: "s2", amount: 3_000 },
+    ]);
+    expect(courierReimbursementOutstandingByParty(entries)).toEqual(
+      new Map([["a1:iqd", 4_000], ["a2:iqd", 4_000]]),
+    );
+  });
 });
 
 describe("merchantPayoutStatusByShipment", () => {
@@ -84,6 +102,31 @@ describe("merchantPayoutStatusByShipment", () => {
       entry({ kind: "merchant_payout", merchantProfileId: "m1", amount: -4_000, currency: "iqd", occurredAt: "2026-08-13T08:00:00.000Z" }),
     ];
     expect(merchantPayoutStatusByShipment(entries)).toEqual(new Map([["s1", "partial"]]));
+  });
+});
+
+describe("merchant repayment settlements", () => {
+  it("counts received merchant payments against their post without mixing them with merchant payouts", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "merchant_fee", shipmentId: "s1", merchantProfileId: "m1", amount: -3_000, currency: "iqd", occurredAt: "2026-08-10T08:00:00.000Z" }),
+      entry({ kind: "merchant_recipient_payout", shipmentId: "s1", merchantProfileId: "m1", amount: -10_000, currency: "iqd", occurredAt: "2026-08-10T08:00:00.000Z" }),
+      entry({ kind: "merchant_repayment", shipmentId: "s1", merchantProfileId: "m1", amount: 8_000, currency: "iqd", occurredAt: "2026-08-13T08:00:00.000Z" }),
+    ];
+
+    expect(merchantAccountSettlementBreakdownByParty(entries).get("m1:iqd")).toEqual([
+      { shipmentId: "s1", amount: 13_000, paid: 8_000, outstanding: 5_000, direction: "repayment" },
+    ]);
+    expect(merchantRepaymentOutstandingByParty(entries)).toEqual(new Map([["m1:iqd", 5_000]]));
+    expect(merchantRepaymentOutstandingByShipment(entries)).toEqual(new Map([["s1", 5_000]]));
+  });
+
+  it("removes fully repaid posts from the receive-payment action map", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "merchant_fee", shipmentId: "s1", merchantProfileId: "m1", amount: -2_750, currency: "iqd" }),
+      entry({ kind: "merchant_repayment", shipmentId: "s1", merchantProfileId: "m1", amount: 2_750, currency: "iqd" }),
+    ];
+
+    expect(merchantRepaymentOutstandingByShipment(entries)).toEqual(new Map());
   });
 });
 

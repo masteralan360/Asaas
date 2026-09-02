@@ -142,7 +142,7 @@ describe('PrintSelectionModal', () => {
                 onCreateReturnTemplate={() => undefined}
                 nativeOptions={[{
                     format: 'a4',
-                    label: 'Atlas Standard Return',
+                    label: 'Orders Atlas Standard Return',
                     description: 'Returned items only',
                     returned: true
                 }]}
@@ -160,7 +160,7 @@ describe('PrintSelectionModal', () => {
             />
         )
 
-        expect(html).toContain('Atlas Standard Return')
+        expect(html).toContain('Orders Atlas Standard Return')
         expect(html).toContain('My Return Layout')
         expect(html).not.toContain('Create return template')
         expect(html).toContain('Primary')
@@ -178,7 +178,7 @@ describe('PrintSelectionModal', () => {
                 onCreateReturnTemplate={() => undefined}
                 nativeOptions={[{
                     format: 'a4',
-                    label: 'Atlas Standard Return',
+                    label: 'Orders Atlas Standard Return',
                     description: 'Returned items only',
                     returned: true
                 }]}
@@ -196,7 +196,7 @@ describe('PrintSelectionModal', () => {
                 onSelect={() => undefined}
                 nativeOptions={[{
                     format: 'a4',
-                    label: 'Atlas Standard',
+                    label: 'Orders Atlas Standard',
                     description: 'Order invoice',
                     returnsReflected: true
                 }]}
@@ -214,7 +214,7 @@ describe('PrintSelectionModal', () => {
             />
         )
 
-        expect(html).toContain('Atlas Standard')
+        expect(html).toContain('Orders Atlas Standard')
         expect(html).toContain('My Normal Layout')
         expect(html.match(/Returns reflected/g) || []).toHaveLength(2)
         expect(html).toContain('Primary')

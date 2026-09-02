@@ -2156,7 +2156,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 title={customOrderPrint.selectedTemplateLabel
                     ? customOrderPrint.selectedTemplateLabel
                     : customOrderPrint.isAtlasStandardReturnSelected
-                        ? t('orders.print.nativeReturnTemplate', { defaultValue: 'Atlas Standard Return' })
+                        ? t('orders.print.nativeAtlasStandardReturnTemplate')
                     : isSales
                         ? (t('orders.tabs.sales') || 'Sales Order')
                         : (t('orders.tabs.purchase') || 'Purchase Order')}

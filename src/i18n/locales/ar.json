@@ -1431,6 +1431,12 @@
       "returnedPrint": "مرتجع",
       "history": "المرتجعات ({{count}})"
     },
+    "print": {
+      "nativeAtlasStandardTemplate": "Orders Atlas Standard",
+      "nativeAtlasStandardTemplateDescription": "استخدم تخطيط فاتورة الطلب A4 المدمج في Orders Atlas Standard.",
+      "nativeAtlasStandardReturnTemplate": "Orders Atlas Standard Return",
+      "nativeAtlasStandardReturnTemplateDescription": "اطبع العناصر المرتجعة فقط ومبالغها المستردة."
+    },
     "table": {
       "orderNumber": "رقم الطلب",
       "customer": "العميل",
@@ -5208,6 +5214,10 @@
     "deleteErrorTitle": "تعذر حذف القالب",
     "supabaseRequired": "يجب تكوين Supabase قبل حفظ القوالب المخصصة.",
     "unknownTarget": "تخطيط طباعة مخصص",
+    "returnClone": {
+      "title": "هل تريد نسخ تخطيط {{templateName}}؟",
+      "description": "استخدم تصميم {{templateName}} الحالي كنقطة بداية لقالب الإرجاع المستقل هذا."
+    },
     "fields": {
       "showNotes": "إظهار الملاحظات",
       "notesFontSize": "حجم الملاحظات"
@@ -6969,7 +6979,9 @@
     },
     "filters": {
       "all": "الكل",
-      "showCompleted": "إظهار المكتملة"
+      "showCompleted": "إظهار المكتملة",
+      "showReturned": "إظهار المرتجعة",
+      "showCancelled": "إظهار الملغاة"
     },
     "status": {
       "received": "تم الاستلام",

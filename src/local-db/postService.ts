@@ -7,7 +7,7 @@ import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toSnakeCase } from "@/lib/utils";
 import { isVisibleDeliveryLedgerEntry } from "@/lib/postServiceLedgerVisibility";
-import { courierSettlementBreakdownByParty, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
+import { courierReimbursementBreakdownByParty, courierSettlementBreakdownByParty, merchantAccountSettlementBreakdownByParty, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
 import { useViewOwnRecordScope, type ViewOwnRecordScope } from "@/permissions/useViewOwnRecordScope";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
@@ -2162,11 +2162,14 @@ async function createSettlement(
       const balance = courierFeeAccountBalance(entries, options.agentId, options.currency);
       expectedAmount = balance < -0.000001 ? -balance : 0;
     } else if (isCourierReimbursement) {
-      const balance = courierDeliveryAccountBalance(entries, options.agentId, options.currency);
-      expectedAmount = balance < -0.000001 ? -balance : 0;
+      expectedAmount = (courierReimbursementBreakdownByParty(entries)
+        .get(`${options.agentId}:${options.currency}`) ?? [])
+        .reduce((total, post) => total + post.amount, 0);
     } else if (isMerchantRepayment) {
-      const balance = merchantDeliveryAccountBalance(entries, options.merchantProfileId, options.currency);
-      expectedAmount = balance < -0.000001 ? -balance : 0;
+      expectedAmount = (merchantAccountSettlementBreakdownByParty(entries)
+        .get(`${options.merchantProfileId}:${options.currency}`) ?? [])
+        .filter((post) => post.direction === "repayment")
+        .reduce((total, post) => total + post.outstanding, 0);
     } else {
       const partyTotals = isCourierRemittance
         ? partyTotalsFromBreakdown(courierSettlementBreakdownByParty(entries)).get(options.agentId ?? "")
@@ -2226,25 +2229,35 @@ async function createSettlement(
     createdBy: options.createdBy ?? null,
   });
 
-  // Merchant-level payouts are a single real payment, but their ledger lines
-  // must be assigned to the posts they clear. That keeps each courier's
-  // limited view accurate without disclosing settlements for other couriers.
+  // Collective payouts, reimbursements, and merchant receipts are each one
+  // real payment, but their ledger lines must be assigned to the posts they
+  // clear. That keeps each courier's limited view accurate without disclosing
+  // other posts.
   const ledgerEntries: DeliveryLedgerEntry[] = [];
-  if (type === "merchant_payout" && !options.shipmentId) {
-    const outstandingPosts = merchantSettlementBreakdownByParty(entries)
-      .get(`${options.merchantProfileId}:${options.currency}`)
-      ?.filter((post) => post.outstanding > 0.000001) ?? [];
+  if ((type === "merchant_payout" || isCourierReimbursement || isMerchantRepayment) && !options.shipmentId) {
+    const outstandingPosts = type === "merchant_payout"
+      ? merchantSettlementBreakdownByParty(entries)
+        .get(`${options.merchantProfileId}:${options.currency}`)
+        ?.filter((post) => post.outstanding > 0.000001)
+        .map((post) => ({ shipmentId: post.shipmentId, amount: post.outstanding })) ?? []
+      : isCourierReimbursement
+        ? courierReimbursementBreakdownByParty(entries)
+          .get(`${options.agentId}:${options.currency}`) ?? []
+        : merchantAccountSettlementBreakdownByParty(entries)
+          .get(`${options.merchantProfileId}:${options.currency}`)
+          ?.filter((post) => post.direction === "repayment" && post.outstanding > 0.000001)
+          .map((post) => ({ shipmentId: post.shipmentId, amount: post.outstanding })) ?? [];
     let unallocatedAmount = actual;
     for (const post of outstandingPosts) {
       if (unallocatedAmount <= 0.000001) break;
-      const allocation = Math.min(post.outstanding, unallocatedAmount);
-      ledgerEntries.push(makeSettlementLedgerEntry(post.shipmentId, -allocation));
+      const allocation = Math.min(post.amount, unallocatedAmount);
+      ledgerEntries.push(makeSettlementLedgerEntry(post.shipmentId, isCourierReimbursement || isMerchantRepayment ? allocation : -allocation));
       unallocatedAmount -= allocation;
     }
     // This should only be reached for a legacy/inconsistent balance. Retain a
-    // merchant-level line rather than losing part of a real payment.
+    // party-level line rather than losing part of a real payment.
     if (unallocatedAmount > 0.000001) {
-      ledgerEntries.push(makeSettlementLedgerEntry(null, -unallocatedAmount));
+      ledgerEntries.push(makeSettlementLedgerEntry(null, isCourierReimbursement || isMerchantRepayment ? unallocatedAmount : -unallocatedAmount));
     }
   } else {
     ledgerEntries.push(makeSettlementLedgerEntry(

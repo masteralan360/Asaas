@@ -246,11 +246,9 @@ export function useOrderCustomPrint({
     const nativeOptions = useMemo(() => [
         {
             format: 'a4' as const,
-            label: 'Atlas Standard',
+            label: t('orders.print.nativeAtlasStandardTemplate'),
             returnsReflected: hasReturnPrintData,
-            description: t('orders.print.nativeA4TemplateDescription', {
-                defaultValue: 'Use the built-in Atlas Standard order invoice A4 layout.'
-            })
+            description: t('orders.print.nativeAtlasStandardTemplateDescription')
         },
         {
             format: 'receipt' as const,
@@ -264,10 +262,8 @@ export function useOrderCustomPrint({
             format: 'a4' as const,
             nativeTemplateKey: ORDER_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
             returned: true,
-            label: t('orders.print.nativeReturnTemplate', { defaultValue: 'Atlas Standard Return' }),
-            description: t('orders.print.nativeReturnTemplateDescription', {
-                defaultValue: 'Print only the returned items and their refunded amounts.'
-            })
+            label: t('orders.print.nativeAtlasStandardReturnTemplate'),
+            description: t('orders.print.nativeAtlasStandardReturnTemplateDescription')
         }] : [])
     ], [hasReturnPrintData, t])
     const templateOptions = useMemo(

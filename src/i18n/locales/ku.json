@@ -1434,6 +1434,12 @@
       "returnedPrint": "گەڕێندراوەتەوە",
       "history": "گەڕاندنەوەکان ({{count}})"
     },
+    "print": {
+      "nativeAtlasStandardTemplate": "Orders Atlas Standard",
+      "nativeAtlasStandardTemplateDescription": "شێوازی بنەڕەتی A4ی پسوڵەی داواکاری لە Orders Atlas Standard بەکاربهێنە.",
+      "nativeAtlasStandardReturnTemplate": "Orders Atlas Standard Return",
+      "nativeAtlasStandardReturnTemplateDescription": "تەنها کاڵا گەڕاوەکان و بڕی پارە گەڕاوەکان چاپ بکە."
+    },
     "table": {
       "orderNumber": "داواکاری #",
       "customer": "کڕیار",
@@ -5209,6 +5215,10 @@
     "deleteErrorTitle": "سڕینەوەی قاڵب سەرکەوتوو نەبوو",
     "supabaseRequired": "Supabase دەبێت ڕێکبخرێت پێش پاشەکەوتکردنی قاڵبە تایبەتەکان.",
     "unknownTarget": "ڕێکخستنی چاپی تایبەت",
+    "returnClone": {
+      "title": "دەتەوێت ڕێکخستنی {{templateName}} کۆپی بکەیت؟",
+      "description": "دیزاینی هەنووکەیی {{templateName}} وەک دەستپێک بۆ ئەم قاڵبی سەربەخۆی گەڕاندنەوەیە بەکاربهێنە."
+    },
     "fields": {
       "showNotes": "پیشاندانی تێبینی",
       "notesFontSize": "قەبارەی تێبینی"
@@ -7020,7 +7030,9 @@
     },
     "filters": {
       "all": "هەموو",
-      "showCompleted": "نیشاندانی تەواوکراوەکان"
+      "showCompleted": "نیشاندانی تەواوکراوەکان",
+      "showReturned": "نیشاندانی گەڕاوەکان",
+      "showCancelled": "نیشاندانی هەڵوەشاوەکان"
     },
     "status": {
       "received": "وەرگیراو",

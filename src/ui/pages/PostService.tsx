@@ -14,7 +14,8 @@ import { cn, formatCurrency, formatDateTime, formatNumericInput, generateId, par
 import { STANDARD_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { isDateInDateRange } from "@/lib/dateRangeFilters";
 import { getLanguageDirection } from "@/lib/i18nRouting";
-import { courierHandoverStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantPayoutStatusByShipment, merchantSettlementBreakdownByParty, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
+import { settlementNetByShipment, type ShipmentSettlementNet } from "@/lib/postServiceSettlementNet";
+import { courierHandoverStatusByShipment, courierReimbursementOutstandingByParty, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantSettlementBreakdownByParty, type MerchantAccountSettlementBreakdown, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
 import { summarizeCourierOutstandingCash, summarizeCourierPayables, summarizeStaffCourierObligationMetrics } from "@/lib/postServiceStaffCourierMetrics";
 import { useWorkspacePermissions } from "@/permissions";
 import { useDateRange } from "@/context/DateRangeContext";
@@ -46,12 +47,6 @@ type StandardPaymentMethod = typeof STANDARD_PAYMENT_METHODS[number];
 type PostStatusFilter = "all" | DeliveryShipmentStatus;
 type PostSettlementFilter = "all" | ShipmentSettlementStatus;
 type PostsViewMode = "details" | "grid";
-type ShipmentSettlementNet = {
-  courierHandover: number;
-  merchantPayout: number;
-  hasCourierHandover: boolean;
-  hasMerchantPayout: boolean;
-};
 
 type PostSettlementDraft = {
   courierAmount: string;
@@ -81,6 +76,8 @@ type CourierPayable = {
   amount: number;
 };
 
+type CourierReimbursement = Omit<CourierPayable, "shipmentId">;
+
 type CourierRow = {
   agent: Agent;
   name: string;
@@ -89,6 +86,7 @@ type CourierRow = {
   deliveredPosts: number;
   balances: Array<{ currency: CurrencyCode; amount: number }>;
   payables: CourierPayable[];
+  reimbursements: CourierReimbursement[];
 };
 
 const statusFilterIcons = {
@@ -148,41 +146,6 @@ function currencySuffix(currency: CurrencyCode, iqdPreference: "IQD" | "د.ع") 
 function numericValue(value: string) {
   const parsed = parseFormattedNumber(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function settlementNetByShipment(
-  courierBreakdownByParty: ReadonlyMap<string, readonly ShipmentSettlementBreakdown[]>,
-  merchantBreakdownByParty: ReadonlyMap<string, readonly ShipmentSettlementBreakdown[]>,
-) {
-  const results = new Map<string, ShipmentSettlementNet>();
-  const getOrCreate = (shipmentId: string) => results.get(shipmentId) ?? {
-      courierHandover: 0,
-      merchantPayout: 0,
-      hasCourierHandover: false,
-      hasMerchantPayout: false,
-    };
-  // These are the same FIFO allocations used by the settlement cards. This
-  // means a whole-courier/merchant settlement still updates the matching post
-  // rows, while an unallocated post intentionally stays as ---.
-  for (const posts of courierBreakdownByParty.values()) {
-    for (const post of posts) {
-      if (post.paid <= 0.000001) continue;
-      const current = getOrCreate(post.shipmentId);
-      current.courierHandover += post.paid;
-      current.hasCourierHandover = true;
-      results.set(post.shipmentId, current);
-    }
-  }
-  for (const posts of merchantBreakdownByParty.values()) {
-    for (const post of posts) {
-      if (post.paid <= 0.000001) continue;
-      const current = getOrCreate(post.shipmentId);
-      current.merchantPayout += post.paid;
-      current.hasMerchantPayout = true;
-      results.set(post.shipmentId, current);
-    }
-  }
-  return results;
 }
 
 function localizedError(t: TFunction, error: unknown) {
@@ -277,6 +240,8 @@ export function PostService() {
   const [handoverFilter, setHandoverFilter] = useState<PostSettlementFilter>("all");
   const [payoutFilter, setPayoutFilter] = useState<PostSettlementFilter>("all");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showReturned, setShowReturned] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
   const [completedOnly, setCompletedOnly] = useState(false);
   // A post is "completed" once it is delivered, its collected cash has been
   // fully handed over by the courier, and the merchant has been paid out.
@@ -288,7 +253,7 @@ export function PostService() {
     }
     return result;
   }, [codAdjustmentRequests]);
-  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (completedOnly ? isCompletedShipment(shipment) : showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "all" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, completedOnly, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
+  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (completedOnly ? isCompletedShipment(shipment) : showCompleted || !isCompletedShipment(shipment)) && (showReturned || shipment.status !== "returned") && (showCancelled || shipment.status !== "cancelled") && (statusFilter === "all" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, showReturned, showCancelled, completedOnly, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
   const [showRecipientPayout, setShowRecipientPayout] = useState(false);
@@ -310,6 +275,7 @@ export function PostService() {
   const [merchantEditDialogOpen, setMerchantEditDialogOpen] = useState(false);
   const [merchantDeleteTarget, setMerchantDeleteTarget] = useState<DeliveryMerchantProfile | null>(null);
   const [isDeletingMerchant, setIsDeletingMerchant] = useState(false);
+  const [expandedMerchantIds, setExpandedMerchantIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedShipmentIds, setSelectedShipmentIds] = useState<Set<string>>(new Set());
   const [dispatchAgentId, setDispatchAgentId] = useState("");
   const [dispatchCourierDeliveryFee, setDispatchCourierDeliveryFee] = useState("");
@@ -388,29 +354,21 @@ export function PostService() {
   }, [merchantAccountBalances]);
   const merchantRepaymentsByProfile = useMemo(() => {
     const result = new Map<string, Array<{ currency: CurrencyCode; amount: number }>>();
-    for (const balance of merchantAccountBalances) {
-      if (balance.amount >= -0.000001) continue;
-      const repayments = result.get(balance.id) ?? [];
-      repayments.push({ currency: balance.currency, amount: Math.abs(balance.amount) });
-      result.set(balance.id, repayments);
+    for (const [partyKey, amount] of merchantRepaymentOutstandingByParty(ledgerEntries)) {
+      const separatorIndex = partyKey.lastIndexOf(":");
+      if (separatorIndex < 1) continue;
+      const profileId = partyKey.slice(0, separatorIndex);
+      const currency = partyKey.slice(separatorIndex + 1) as CurrencyCode;
+      const repayments = result.get(profileId) ?? [];
+      repayments.push({ currency, amount });
+      result.set(profileId, repayments);
     }
     for (const repayments of result.values()) {
       repayments.sort((left, right) => left.currency.localeCompare(right.currency));
     }
     return result;
-  }, [merchantAccountBalances]);
-  const merchantRepaymentAmountByShipment = useMemo(() => {
-    const balances = new Map<string, number>();
-    for (const entry of ledgerEntries) {
-      if (!entry.shipmentId || !entry.merchantProfileId || entry.isDeleted) continue;
-      balances.set(entry.shipmentId, (balances.get(entry.shipmentId) ?? 0) + Number(entry.amount || 0));
-    }
-    const results = new Map<string, number>();
-    for (const [shipmentId, balance] of balances) {
-      if (balance < -0.000001) results.set(shipmentId, Math.abs(balance));
-    }
-    return results;
   }, [ledgerEntries]);
+  const merchantRepaymentAmountByShipment = useMemo(() => merchantRepaymentOutstandingByShipment(ledgerEntries), [ledgerEntries]);
   const merchantShipmentStatsByProfile = useMemo(() => {
     const stats = new Map<string, { openPosts: number; deliveredPosts: number }>();
     for (const shipment of shipments) {
@@ -424,9 +382,24 @@ export function PostService() {
   const shipmentLabelById = useMemo(() => new Map(shipments.map((shipment) => [shipment.id, `${shipment.trackingNumber} · ${shipment.recipientPhone}`])), [shipments]);
   const courierBreakdownByParty = useMemo(() => courierSettlementBreakdownByParty(ledgerEntries), [ledgerEntries]);
   const merchantBreakdownByParty = useMemo(() => merchantSettlementBreakdownByParty(ledgerEntries), [ledgerEntries]);
+  const merchantAccountBreakdownByParty = useMemo(() => merchantAccountSettlementBreakdownByParty(ledgerEntries), [ledgerEntries]);
+  const merchantSettlementPostsByProfile = useMemo(() => {
+    const result = new Map<string, Array<MerchantAccountSettlementBreakdown & { currency: CurrencyCode }>>();
+    for (const [partyKey, posts] of merchantAccountBreakdownByParty) {
+      const separatorIndex = partyKey.lastIndexOf(":");
+      if (separatorIndex < 1) continue;
+      const profileId = partyKey.slice(0, separatorIndex);
+      const currency = partyKey.slice(separatorIndex + 1) as CurrencyCode;
+      result.set(profileId, [
+        ...(result.get(profileId) ?? []),
+        ...posts.map((post) => ({ ...post, currency })),
+      ]);
+    }
+    return result;
+  }, [merchantAccountBreakdownByParty]);
   const perShipmentSettlementNet = useMemo(
-    () => settlementNetByShipment(courierBreakdownByParty, merchantBreakdownByParty),
-    [courierBreakdownByParty, merchantBreakdownByParty],
+    () => settlementNetByShipment(courierBreakdownByParty, merchantBreakdownByParty, merchantAccountBreakdownByParty),
+    [courierBreakdownByParty, merchantBreakdownByParty, merchantAccountBreakdownByParty],
   );
   const voiceReasonEventByShipment = useMemo(() => {
     const results = new Map<string, DeliveryShipmentEvent>();
@@ -500,6 +473,22 @@ export function PostService() {
     }
     return results;
   }, [courierPayables]);
+  const courierReimbursementsByAgent = useMemo(() => {
+    const results = new Map<string, CourierReimbursement[]>();
+    for (const [partyKey, amount] of courierReimbursementOutstandingByParty(ledgerEntries)) {
+      const separatorIndex = partyKey.lastIndexOf(":");
+      if (separatorIndex < 1) continue;
+      const agentId = partyKey.slice(0, separatorIndex);
+      const currency = partyKey.slice(separatorIndex + 1) as CurrencyCode;
+      const reimbursements = results.get(agentId) ?? [];
+      reimbursements.push({ agentId, currency, amount });
+      results.set(agentId, reimbursements);
+    }
+    for (const reimbursements of results.values()) {
+      reimbursements.sort((left, right) => left.currency.localeCompare(right.currency));
+    }
+    return results;
+  }, [ledgerEntries]);
   const courierRows = useMemo<CourierRow[]>(() => courierAgents.map((agent) => {
     const agentShipments = shipments.filter((shipment) => shipment.assignedAgentId === agent.id);
     const balances = courierBalances
@@ -514,8 +503,9 @@ export function PostService() {
       deliveredPosts: agentShipments.filter((shipment) => shipment.status === "delivered").length,
       balances,
       payables: courierPayablesByAgent.get(agent.id) ?? [],
+      reimbursements: courierReimbursementsByAgent.get(agent.id) ?? [],
     };
-  }), [courierAgents, shipments, courierBalances, courierPayablesByAgent, agentNameById, partnerById, t]);
+  }), [courierAgents, shipments, courierBalances, courierPayablesByAgent, courierReimbursementsByAgent, agentNameById, partnerById, t]);
   const [courierSearchQuery, setCourierSearchQuery] = useState("");
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [editingAgentPartner, setEditingAgentPartner] = useState<BusinessPartner | null>(null);
@@ -527,11 +517,12 @@ export function PostService() {
   }, [courierRows, courierSearchQuery]);
   // Footer aggregates mirror the Post settlement net dialog: gross courier cash
   // handover (net remitted + retained fee) for posts with a recorded handover,
-  // the retained courier delivery fees, and FIFO-paid merchant payouts.
+  // the retained courier delivery fees, FIFO-paid merchant payouts, and
+  // merchant repayments received by the workspace.
   const postsFooterTotals = useMemo(() => {
-    const totals = new Map<CurrencyCode, { collected: number; courierFees: number; merchantPayouts: number }>();
+    const totals = new Map<CurrencyCode, { collected: number; courierFees: number; merchantPayouts: number; merchantRepayments: number }>();
     for (const shipment of searchedShipments) {
-      const current = totals.get(shipment.currency) ?? { collected: 0, courierFees: 0, merchantPayouts: 0 };
+      const current = totals.get(shipment.currency) ?? { collected: 0, courierFees: 0, merchantPayouts: 0, merchantRepayments: 0 };
       const net = perShipmentSettlementNet.get(shipment.id);
       if (net?.hasCourierHandover) {
         const courierFee = shipment.courierDeliveryFee ?? 0;
@@ -539,23 +530,25 @@ export function PostService() {
         current.courierFees += courierFee;
       }
       current.merchantPayouts += Math.max(0, net?.merchantPayout ?? 0);
+      current.merchantRepayments += Math.max(0, net?.merchantRepayment ?? 0);
       totals.set(shipment.currency, current);
     }
     return totals;
   }, [searchedShipments, perShipmentSettlementNet]);
   const postsFooterSegments = useMemo(() => {
     const currencies = [...postsFooterTotals.keys()].sort((left, right) => left.localeCompare(right));
-    const formatTotal = (pick: (row: { collected: number; courierFees: number; merchantPayouts: number }) => number) =>
+    const formatTotal = (pick: (row: { collected: number; courierFees: number; merchantPayouts: number; merchantRepayments: number }) => number) =>
       (currencies.length === 0 ? [features.default_currency] : currencies)
-        .map((currency) => formatCurrency(pick(postsFooterTotals.get(currency) ?? { collected: 0, courierFees: 0, merchantPayouts: 0 }), currency, features.iqd_display_preference))
+        .map((currency) => formatCurrency(pick(postsFooterTotals.get(currency) ?? { collected: 0, courierFees: 0, merchantPayouts: 0, merchantRepayments: 0 }), currency, features.iqd_display_preference))
         .join(" + ");
     let profitSum = 0;
-    for (const row of postsFooterTotals.values()) profitSum += row.collected - row.courierFees - row.merchantPayouts;
+    for (const row of postsFooterTotals.values()) profitSum += row.collected + row.merchantRepayments - row.courierFees - row.merchantPayouts;
     return [
       { label: t("postService.dialogs.settlementNet.cashHandover"), value: formatTotal((row) => row.collected), tone: "positive" as const },
+      { label: t("postService.messages.merchantRepaymentRecorded"), value: formatTotal((row) => row.merchantRepayments), tone: "positive" as const },
       { label: t("postService.form.courierDeliveryFee"), value: formatTotal((row) => row.courierFees), tone: "negative" as const },
       { label: t("postService.dialogs.settlementNet.merchantPayout"), value: formatTotal((row) => row.merchantPayouts), tone: "negative" as const },
-      { label: t("postService.dialogs.settlementNet.profit"), value: formatTotal((row) => row.collected - row.courierFees - row.merchantPayouts), tone: profitSum >= -0.000001 ? ("positive" as const) : ("negative" as const), emphasized: true },
+      { label: t("postService.dialogs.settlementNet.profit"), value: formatTotal((row) => row.collected + row.merchantRepayments - row.courierFees - row.merchantPayouts), tone: profitSum >= -0.000001 ? ("positive" as const) : ("negative" as const), emphasized: true },
     ];
   }, [postsFooterTotals, t, features.default_currency, features.iqd_display_preference]);
   const postsTotalsFooter = (
@@ -630,7 +623,7 @@ export function PostService() {
     : 0;
   const settlementNetGrossCourierHandover = (settlementNetSummary?.courierHandover ?? 0) + settlementNetCourierFee + settlementNetCourierAdvance;
   const settlementNetAmount = settlementNetSummary
-    ? settlementNetSummary.courierHandover - settlementNetSummary.merchantPayout - settlementNetWorkspaceRecipientPayout
+    ? settlementNetSummary.courierHandover + settlementNetSummary.merchantRepayment - settlementNetSummary.merchantPayout - settlementNetWorkspaceRecipientPayout
     : 0;
   const postSettlementCourier = postSettlementTarget?.assignedAgentId
     ? courierBreakdownByParty.get(`${postSettlementTarget.assignedAgentId}:${postSettlementTarget.currency}`)?.find((post) => post.shipmentId === postSettlementTarget.id)
@@ -650,7 +643,7 @@ export function PostService() {
     : 0;
   const postSettlementGrossCourierHandover = (postSettlementNet?.courierHandover ?? 0) + postSettlementCourierFee + postSettlementCourierAdvance;
   const postSettlementNetAmount = postSettlementNet
-    ? postSettlementNet.courierHandover - postSettlementNet.merchantPayout - postSettlementWorkspaceRecipientPayout
+    ? postSettlementNet.courierHandover + postSettlementNet.merchantRepayment - postSettlementNet.merchantPayout - postSettlementWorkspaceRecipientPayout
     : 0;
   const isCodAdjustmentRequestValid = Boolean(
     codAdjustmentRequestTarget
@@ -678,16 +671,44 @@ export function PostService() {
     setPendingCodChangeFilter(false);
     setCompletedOnly(false);
     setShowCompleted(false);
+    setShowReturned(false);
+    setShowCancelled(false);
     setStatusFilter((current) => current === status ? "all" : status);
     handleTabChange("posts");
     setPendingPostsStatusShortcut(true);
   }, [handleTabChange]);
+
+  const handleReturnedPostMetricClick = useCallback(() => {
+    const nextReturnedOnly = statusFilter !== "returned";
+    setPendingCodChangeFilter(false);
+    setCompletedOnly(false);
+    setShowCompleted(false);
+    setShowCancelled(false);
+    setShowReturned(nextReturnedOnly);
+    setStatusFilter(nextReturnedOnly ? "returned" : "all");
+    handleTabChange("posts");
+    setPendingPostsStatusShortcut(true);
+  }, [handleTabChange, statusFilter]);
+
+  const handleCancelledPostMetricClick = useCallback(() => {
+    const nextCancelledOnly = statusFilter !== "cancelled";
+    setPendingCodChangeFilter(false);
+    setCompletedOnly(false);
+    setShowCompleted(false);
+    setShowReturned(false);
+    setShowCancelled(nextCancelledOnly);
+    setStatusFilter(nextCancelledOnly ? "cancelled" : "all");
+    handleTabChange("posts");
+    setPendingPostsStatusShortcut(true);
+  }, [handleTabChange, statusFilter]);
 
   const handleCompletedPostMetricClick = useCallback(() => {
     const nextCompletedOnly = !completedOnly;
     setPendingCodChangeFilter(false);
     setCompletedOnly(nextCompletedOnly);
     setShowCompleted(nextCompletedOnly);
+    setShowReturned(false);
+    setShowCancelled(false);
     setStatusFilter(nextCompletedOnly ? "delivered" : "all");
     handleTabChange("posts");
     setPendingPostsStatusShortcut(true);
@@ -695,6 +716,8 @@ export function PostService() {
 
   const handlePendingCodChangeMetricClick = useCallback(() => {
     setCompletedOnly(false);
+    setShowReturned(false);
+    setShowCancelled(false);
     setPendingCodChangeFilter((current) => !current);
     setStatusFilter("all");
     handleTabChange("posts");
@@ -711,6 +734,24 @@ export function PostService() {
     });
     return () => cancelAnimationFrame(frame);
   }, [activeTab, pendingPostsStatusShortcut]);
+
+  const isStatusMetricActive = (status: DeliveryShipmentStatus) => (
+    (status === "returned" ? showReturned : status === "cancelled" ? showCancelled : true)
+    && !pendingCodChangeFilter
+    && !completedOnly
+    && statusFilter === status
+  );
+  const handleStatusMetricClick = (status: DeliveryShipmentStatus) => {
+    if (status === "returned") {
+      handleReturnedPostMetricClick();
+      return;
+    }
+    if (status === "cancelled") {
+      handleCancelledPostMetricClick();
+      return;
+    }
+    handlePostStatusMetricClick(status);
+  };
 
   function updateShipmentForm<Key extends keyof ShipmentForm>(key: Key, value: ShipmentForm[Key]) {
     setShipmentForm((current) => ({ ...current, [key]: value }));
@@ -781,6 +822,14 @@ export function PostService() {
   function toggleShipment(shipmentId: string, checked: boolean) {
     setSelectedShipmentIds((current) => { const next = new Set(current); if (checked) next.add(shipmentId); else next.delete(shipmentId); return next; });
   }
+  function toggleMerchantSettlement(profileId: string) {
+    setExpandedMerchantIds((current) => {
+      const next = new Set(current);
+      if (next.has(profileId)) next.delete(profileId);
+      else next.add(profileId);
+      return next;
+    });
+  }
   function openStatusDialog(shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") {
     setStatusTarget(shipment);
     setNextStatus(status);
@@ -825,6 +874,15 @@ export function PostService() {
       name: agentNameById.get(payable.agentId) ?? t("postService.unknownCourier"),
       shipmentId: payable.shipmentId,
       shipmentLabel: shipmentLabelById.get(payable.shipmentId) ?? "",
+    });
+  }
+  function openCollectiveCourierReimbursement(reimbursement: CourierReimbursement) {
+    openSettlement({
+      kind: "courier_reimbursement",
+      id: reimbursement.agentId,
+      currency: reimbursement.currency,
+      amount: reimbursement.amount,
+      name: agentNameById.get(reimbursement.agentId) ?? t("postService.unknownCourier"),
     });
   }
   function openPostSettlement(balance: { kind: "courier" | "merchant"; id: string; currency: CurrencyCode; name: string }, post: ShipmentSettlementBreakdown) {
@@ -1266,8 +1324,8 @@ export function PostService() {
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden" dir={pageDirection}>
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><PackageCheck className="h-6 w-6 text-primary" />{t("postService.title")}</h1><p className="text-muted-foreground">{t("postService.subtitle")} <ModulePageFreshness className="ms-2" /></p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" className="gap-2" onClick={() => setMerchantDialogOpen(true)}><Store className="h-4 w-4" />{t("postService.actions.enableMerchant")}</Button><Button className="gap-2" onClick={() => setShipmentDialogOpen(true)}><Plus className="h-4 w-4" />{t("postService.actions.newPost")}</Button></div>}</div>
     <div className="space-y-3">
-      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-6")}>{postStatusMetrics.filter(({ status }) => !isAdmin ? status !== "cancelled" : !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /></> : <><StatusMetric icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} />{postStatusMetrics.filter(({ status }) => status === "cancelled").map(({ status, value }) => <StatusMetric key={status} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}</>}</div>
-      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{postStatusMetrics.filter(({ status }) => status === "returned" || status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={!pendingCodChangeFilter && !completedOnly && statusFilter === status} onClick={() => handlePostStatusMetricClick(status)} />)}{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : isStaff ? <div className="grid gap-4 sm:grid-cols-2">{staffCourierObligationMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
+      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-6")}>{postStatusMetrics.filter(({ status }) => !isAdmin ? status !== "cancelled" : !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} onClick={() => handleStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /></> : <><StatusMetric icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} />{postStatusMetrics.filter(({ status }) => status === "cancelled").map(({ status, value }) => <StatusMetric key={status} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} onClick={() => handleStatusMetricClick(status)} />)}</>}</div>
+      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{postStatusMetrics.filter(({ status }) => status === "returned" || status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} onClick={() => handleStatusMetricClick(status)} />)}{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : isStaff ? <div className="grid gap-4 sm:grid-cols-2">{staffCourierObligationMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
     </div>
     <Tabs value={activeTab} onValueChange={handleTabChange} dir={pageDirection} className="min-w-0"><TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 sm:w-auto"><TabsTrigger value="posts"><ClipboardList className="me-2 h-4 w-4" />{t("postService.tabs.posts")}</TabsTrigger>{isAdmin && <><TabsTrigger value="dispatch"><Send className="me-2 h-4 w-4" />{t("postService.tabs.dispatch")}</TabsTrigger><TabsTrigger value="my-deliveries"><Route className="me-2 h-4 w-4" />{t("postService.tabs.myDeliveries")}</TabsTrigger><TabsTrigger value="merchants"><Store className="me-2 h-4 w-4" />{t("postService.tabs.merchants")}</TabsTrigger><TabsTrigger value="courier"><Truck className="me-2 h-4 w-4" />{t("postService.tabs.courier")}</TabsTrigger><TabsTrigger value="settlements"><Banknote className="me-2 h-4 w-4" />{t("postService.tabs.settlements")}</TabsTrigger></>}</TabsList>
       <TabsContent ref={postsPanelRef} value="posts" tabIndex={-1} className="mt-4 min-w-0 scroll-mt-24 outline-none">
@@ -1283,12 +1341,20 @@ export function PostService() {
             <div className="flex flex-col gap-2 sm:items-end">
               <span className="text-sm text-muted-foreground">{t("postService.selectedForDispatch", { count: selectedCount })}</span>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { setPendingCodChangeFilter(false); setCompletedOnly(false); setStatusFilter(value as PostStatusFilter); }} />
+                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { const nextStatus = value as PostStatusFilter; setPendingCodChangeFilter(false); setCompletedOnly(false); if (nextStatus === "returned") setShowReturned(true); if (nextStatus === "cancelled") setShowCancelled(true); setStatusFilter(nextStatus); }} />
                 <FilterDropdown dir={pageDirection} value={handoverFilter} icon={settlementFilterIcons[handoverFilter]} label={t("postService.table.cashHandover")} options={settlementFilterOptions(t, t("postService.settlementStatus.handedOver"))} onChange={(value) => setHandoverFilter(value as PostSettlementFilter)} />
                 <FilterDropdown dir={pageDirection} value={payoutFilter} icon={settlementFilterIcons[payoutFilter]} label={t("postService.table.merchantPayout")} options={settlementFilterOptions(t, t("postService.settlementStatus.paid"))} onChange={(value) => setPayoutFilter(value as PostSettlementFilter)} />
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
                   <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCompleted} onCheckedChange={(checked) => { const nextShowCompleted = checked === true; setShowCompleted(nextShowCompleted); if (!nextShowCompleted) setCompletedOnly(false); }} />
                   {t("postService.filters.showCompleted")}
+                </label>
+                <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
+                  <Checkbox className="h-5 w-5 rounded-[6px]" checked={showReturned} onCheckedChange={(checked) => { const nextShowReturned = checked === true; setShowReturned(nextShowReturned); if (!nextShowReturned && statusFilter === "returned") setStatusFilter("all"); }} />
+                  {t("postService.filters.showReturned")}
+                </label>
+                <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
+                  <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCancelled} onCheckedChange={(checked) => { const nextShowCancelled = checked === true; setShowCancelled(nextShowCancelled); if (!nextShowCancelled && statusFilter === "cancelled") setStatusFilter("all"); }} />
+                  {t("postService.filters.showCancelled")}
                 </label>
               </div>
             </div>
@@ -1315,7 +1381,54 @@ export function PostService() {
             <div className="relative mb-4"><Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={merchantSearchQuery} onChange={(event) => setMerchantSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchMerchants")} /></div>
             <Table>
               <TableHeader><TableRow><TableHead>{t("postService.table.merchant")}</TableHead><TableHead>{t("postService.table.defaultFee")}</TableHead><TableHead>{t("postService.table.feePayer")}</TableHead><TableHead>{t("postService.table.payoutSchedule")}</TableHead><TableHead className="text-end">{t("postService.table.openPosts")}</TableHead><TableHead className="text-end">{t("postService.table.deliveredPosts")}</TableHead><TableHead>{t("postService.table.merchantBalance")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead className="text-end">{t("postService.table.actions")}</TableHead></TableRow></TableHeader>
-              <TableBody>{merchantProfiles.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchants")} /> : searchedMerchants.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchantSearchResults")} /> : searchedMerchants.map((profile) => { const merchantStats = merchantShipmentStatsByProfile.get(profile.id) ?? { openPosts: 0, deliveredPosts: 0 }; const merchantName = profileNameById.get(profile.id) ?? t("postService.unknownMerchant"); return <TableRow key={profile.id}><TableCell className="font-medium">{merchantName}</TableCell><TableCell>{formatCurrency(profile.defaultFeeAmount, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{t(`postService.feePayer.${profile.defaultFeePayer}`)}</TableCell><TableCell>{t(`postService.payoutSchedule.${profile.payoutSchedule}`)}</TableCell><TableCell className="text-end tabular-nums">{merchantStats.openPosts}</TableCell><TableCell className="text-end tabular-nums">{merchantStats.deliveredPosts}</TableCell><TableCell><MerchantAccountBalanceAmounts t={t} balances={merchantAccountBalancesByProfile.get(profile.id) ?? []} iqdPreference={features.iqd_display_preference} /></TableCell><TableCell><Badge variant="outline" className={profile.isActive ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700" : "text-muted-foreground"}>{t(profile.isActive ? "postService.active" : "postService.inactive")}</Badge></TableCell><TableCell className="text-end"><div className="flex flex-wrap justify-end gap-1">{canSettle && (merchantPayablesByProfile.get(profile.id) ?? []).map((payable) => <Button key={`payout-${payable.currency}`} type="button" size="sm" className="gap-1.5" onClick={() => openSettlement({ kind: "merchant", id: profile.id, currency: payable.currency, amount: payable.amount, name: merchantName })}><Banknote className="h-4 w-4" />{t("postService.actions.payMerchant")}<span className="tabular-nums">{formatCurrency(payable.amount, payable.currency, features.iqd_display_preference)}</span></Button>)}{canSettle && (merchantRepaymentsByProfile.get(profile.id) ?? []).map((repayment) => <Button key={`repayment-${repayment.currency}`} type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => openMerchantRepayment({ id: profile.id, currency: repayment.currency, amount: repayment.amount, name: merchantName })}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}<span className="tabular-nums">{formatCurrency(repayment.amount, repayment.currency, features.iqd_display_preference)}</span></Button>)}{isEditor && <><Button type="button" size="icon" variant="ghost" title={t("postService.actions.editMerchant")} onClick={() => openMerchantEditor(profile)}><Pencil className="h-4 w-4" /></Button><Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive" title={t("postService.actions.deleteMerchant")} onClick={() => setMerchantDeleteTarget(profile)}><Trash2 className="h-4 w-4" /></Button></>}</div></TableCell></TableRow>; })}</TableBody>
+              <TableBody>
+                {merchantProfiles.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchants")} /> : searchedMerchants.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noMerchantSearchResults")} /> : searchedMerchants.map((profile) => {
+                  const merchantStats = merchantShipmentStatsByProfile.get(profile.id) ?? { openPosts: 0, deliveredPosts: 0 };
+                  const merchantName = profileNameById.get(profile.id) ?? t("postService.unknownMerchant");
+                  const merchantPosts = (merchantSettlementPostsByProfile.get(profile.id) ?? []).slice().reverse();
+                  const expanded = expandedMerchantIds.has(profile.id);
+                  return (
+                    <Fragment key={profile.id}>
+                      <TableRow>
+                        <TableCell>
+                          <button type="button" className="flex items-center gap-2 font-medium hover:underline" aria-expanded={expanded} title={t("postService.actions.settlements")} onClick={() => toggleMerchantSettlement(profile.id)}>
+                            <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !expanded && "-rotate-90")} />
+                            {merchantName}
+                          </button>
+                        </TableCell>
+                        <TableCell>{formatCurrency(profile.defaultFeeAmount, features.default_currency, features.iqd_display_preference)}</TableCell>
+                        <TableCell>{t(`postService.feePayer.${profile.defaultFeePayer}`)}</TableCell>
+                        <TableCell>{t(`postService.payoutSchedule.${profile.payoutSchedule}`)}</TableCell>
+                        <TableCell className="text-end tabular-nums">{merchantStats.openPosts}</TableCell>
+                        <TableCell className="text-end tabular-nums">{merchantStats.deliveredPosts}</TableCell>
+                        <TableCell><MerchantAccountBalanceAmounts t={t} balances={merchantAccountBalancesByProfile.get(profile.id) ?? []} iqdPreference={features.iqd_display_preference} /></TableCell>
+                        <TableCell><Badge variant="outline" className={profile.isActive ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700" : "text-muted-foreground"}>{t(profile.isActive ? "postService.active" : "postService.inactive")}</Badge></TableCell>
+                        <TableCell className="text-end">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {canSettle && (merchantPayablesByProfile.get(profile.id) ?? []).map((payable) => <Button key={`payout-${payable.currency}`} type="button" size="sm" className="gap-1.5" onClick={() => openSettlement({ kind: "merchant", id: profile.id, currency: payable.currency, amount: payable.amount, name: merchantName })}><Banknote className="h-4 w-4" />{t("postService.actions.payMerchant")}<span className="tabular-nums">{formatCurrency(payable.amount, payable.currency, features.iqd_display_preference)}</span></Button>)}
+                            {canSettle && (merchantRepaymentsByProfile.get(profile.id) ?? []).map((repayment) => <Button key={`repayment-${repayment.currency}`} type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => openMerchantRepayment({ id: profile.id, currency: repayment.currency, amount: repayment.amount, name: merchantName })}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}<span className="tabular-nums">{formatCurrency(repayment.amount, repayment.currency, features.iqd_display_preference)}</span></Button>)}
+                            {isEditor && <><Button type="button" size="icon" variant="ghost" title={t("postService.actions.editMerchant")} onClick={() => openMerchantEditor(profile)}><Pencil className="h-4 w-4" /></Button><Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive" title={t("postService.actions.deleteMerchant")} onClick={() => setMerchantDeleteTarget(profile)}><Trash2 className="h-4 w-4" /></Button></>}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {expanded && (merchantPosts.length === 0 ? (
+                        <TableRow className="bg-muted/30"><TableCell colSpan={9} className="ps-10 text-xs text-muted-foreground">{t("postService.empty.noBalances")}</TableCell></TableRow>
+                      ) : merchantPosts.map((post) => {
+                        const isRepayment = post.direction === "repayment";
+                        return (
+                        <TableRow key={`${post.direction}:${post.currency}:${post.shipmentId}`} className="bg-muted/30">
+                          <TableCell className="ps-10 text-xs font-medium">{shipmentLabelById.get(post.shipmentId) ?? "—"}</TableCell>
+                          <TableCell colSpan={5} className="text-xs text-muted-foreground">{t(isRepayment ? "postService.form.amountReceived" : "postService.table.paid")}: <span className="font-medium tabular-nums text-foreground">{formatCurrency(post.paid, post.currency, features.iqd_display_preference)}</span></TableCell>
+                          <TableCell className="text-xs font-medium tabular-nums">{formatCurrency(post.outstanding, post.currency, features.iqd_display_preference)}</TableCell>
+                          <TableCell />
+                          <TableCell className="text-end">{canSettle && post.outstanding > 0.000001 && (isRepayment ? <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => openMerchantRepayment({ id: profile.id, currency: post.currency, amount: post.outstanding, name: merchantName, shipmentId: post.shipmentId, shipmentLabel: shipmentLabelById.get(post.shipmentId) ?? "" })}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button> : <Button type="button" size="sm" variant="outline" onClick={() => openPostSettlement({ kind: "merchant", id: profile.id, currency: post.currency, name: merchantName }, post)}>{t("postService.actions.payMerchant")}</Button>)}</TableCell>
+                        </TableRow>
+                        );
+                      }))}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
             </Table>
           </CardContent>
         </Card>
@@ -1336,6 +1449,7 @@ export function PostService() {
           onSettleParty={openSettlement}
           onSettlePost={openPostSettlement}
           onReimburseCourier={openCourierReimbursement}
+          onReimburseCourierCollectively={openCollectiveCourierReimbursement}
         />
       </TabsContent>
       <TabsContent value="settlements" className="mt-4 space-y-4"><SettlementBalances t={t} title={t("postService.cards.courierHandovers")} icon={WalletCards} kind="courier" balances={courierBalances} breakdownByParty={courierBreakdownByParty} shipmentLabelById={shipmentLabelById} obligationLabel={t("postService.table.collected")} getName={(id) => agentNameById.get(id) ?? t("postService.unknownCourier")} action={t("postService.actions.recordHandover")} canSettle={canSettle} onSettleParty={openSettlement} onSettlePost={openPostSettlement} iqdPreference={features.iqd_display_preference} /><CourierPayableBalances t={t} payables={courierPayables} shipmentLabelById={shipmentLabelById} getName={(id) => agentNameById.get(id) ?? t("postService.unknownCourier")} canSettle={canSettle} onPay={openCourierReimbursement} iqdPreference={features.iqd_display_preference} /><SettlementBalances t={t} title={t("postService.cards.merchantPayouts")} icon={CircleDollarSign} kind="merchant" balances={merchantBalances} breakdownByParty={merchantBreakdownByParty} shipmentLabelById={shipmentLabelById} obligationLabel={t("postService.table.paid")} getName={(id) => profileNameById.get(id) ?? t("postService.unknownMerchant")} action={t("postService.actions.payMerchant")} canSettle={canSettle} onSettleParty={openSettlement} onSettlePost={openPostSettlement} iqdPreference={features.iqd_display_preference} /><Card><CardHeader><CardTitle>{t("postService.cards.settlementHistory")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.reference")}</TableHead><TableHead>{t("postService.table.type")}</TableHead><TableHead>{t("postService.table.amount")}</TableHead><TableHead>{t("postService.table.time")}</TableHead></TableRow></TableHeader><TableBody>{settlements.length === 0 ? <EmptyRow columns={4} label={t("postService.empty.noSettlements")} /> : settlements.slice(0, 20).map((settlement) => <TableRow key={settlement.id}><TableCell className="font-medium">{settlement.settlementNumber}</TableCell><TableCell>{t(`postService.settlementType.${settlement.type === "courier_remittance" ? "courierRemittance" : settlement.type === "courier_fee_payout" ? "courierFeePayout" : settlement.type === "courier_reimbursement" ? "courierReimbursement" : settlement.type === "merchant_repayment" ? "merchantRepayment" : "merchantPayout"}`)}</TableCell><TableCell>{formatCurrency(settlement.actualAmount, settlement.currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(settlement.settledAt)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
@@ -1698,6 +1812,7 @@ export function PostService() {
             {postSettlementCourierFee > 0.000001 ? <SettlementCalculationLine label={t("postService.form.courierDeliveryFee")} amount={postSettlementCourierFee} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
             {postSettlementCourierAdvance > 0.000001 ? <SettlementCalculationLine label={t("postService.dialogs.settlementNet.courierRecipientAdvance")} amount={postSettlementCourierAdvance} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
             {postSettlementWorkspaceRecipientPayout > 0.000001 ? <SettlementCalculationLine label={t("postService.table.recipientPayout")} amount={postSettlementWorkspaceRecipientPayout} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
+            {postSettlementNet && postSettlementNet.merchantRepayment > 0.000001 ? <SettlementCalculationLine label={t("postService.messages.merchantRepaymentRecorded")} amount={postSettlementNet.merchantRepayment} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="+" /> : null}
             <SettlementCalculationLine label={t("postService.dialogs.settlementNet.merchantPayout")} amount={postSettlementNet?.merchantPayout ?? 0} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative />
             <div className="border-t border-dashed" />
             <SettlementCalculationLine label={t("postService.dialogs.settlementNet.profit")} amount={postSettlementNetAmount} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="=" emphasized />
@@ -1766,6 +1881,7 @@ export function PostService() {
                 {settlementNetCourierFee > 0.000001 ? <SettlementCalculationLine label={t("postService.form.courierDeliveryFee")} amount={settlementNetCourierFee} currency={settlementNetTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
                 {settlementNetCourierAdvance > 0.000001 ? <SettlementCalculationLine label={t("postService.dialogs.settlementNet.courierRecipientAdvance")} amount={settlementNetCourierAdvance} currency={settlementNetTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
                 {settlementNetWorkspaceRecipientPayout > 0.000001 ? <SettlementCalculationLine label={t("postService.table.recipientPayout")} amount={settlementNetWorkspaceRecipientPayout} currency={settlementNetTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
+                {settlementNetSummary.merchantRepayment > 0.000001 ? <SettlementCalculationLine label={t("postService.messages.merchantRepaymentRecorded")} amount={settlementNetSummary.merchantRepayment} currency={settlementNetTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="+" /> : null}
                 <SettlementCalculationLine label={t("postService.dialogs.settlementNet.merchantPayout")} amount={settlementNetSummary.merchantPayout} currency={settlementNetTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative />
                 <div className="border-t border-dashed" />
                 <SettlementCalculationLine label={t("postService.dialogs.settlementNet.profit")} amount={settlementNetAmount} currency={settlementNetTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="=" emphasized />
@@ -2043,7 +2159,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
     })}
   </>;
 }
-function CourierRegistry({ t, couriers, search, onSearchChange, breakdownByParty, shipmentLabelById, iqdPreference, canSettle, canManage, onAddCourier, onEditCourier, onSettleParty, onSettlePost, onReimburseCourier }: {
+function CourierRegistry({ t, couriers, search, onSearchChange, breakdownByParty, shipmentLabelById, iqdPreference, canSettle, canManage, onAddCourier, onEditCourier, onSettleParty, onSettlePost, onReimburseCourier, onReimburseCourierCollectively }: {
   t: TFunction;
   couriers: CourierRow[];
   search: string;
@@ -2058,6 +2174,7 @@ function CourierRegistry({ t, couriers, search, onSearchChange, breakdownByParty
   onSettleParty: (balance: { kind: "courier"; id: string; currency: CurrencyCode; amount: number; name: string }) => void;
   onSettlePost: (balance: { kind: "courier"; id: string; currency: CurrencyCode; name: string }, post: ShipmentSettlementBreakdown) => void;
   onReimburseCourier: (payable: CourierPayable) => void;
+  onReimburseCourierCollectively: (reimbursement: CourierReimbursement) => void;
 }) {
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set());
   const toggleExpanded = (id: string) => setExpandedIds((current) => {
@@ -2066,12 +2183,6 @@ function CourierRegistry({ t, couriers, search, onSearchChange, breakdownByParty
     else next.add(id);
     return next;
   });
-  const currencyFor = (courier: CourierRow, shipmentId: string): CurrencyCode | null => {
-    for (const balance of courier.balances) {
-      if ((breakdownByParty.get(`${courier.agent.id}:${balance.currency}`) ?? []).some((row) => row.shipmentId === shipmentId)) return balance.currency;
-    }
-    return null;
-  };
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
@@ -2084,10 +2195,22 @@ function CourierRegistry({ t, couriers, search, onSearchChange, breakdownByParty
           <TableHeader><TableRow><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.zone")}</TableHead><TableHead>{t("postService.table.contact")}</TableHead><TableHead className="text-end">{t("postService.table.openPosts")}</TableHead><TableHead className="text-end">{t("postService.table.deliveredPosts")}</TableHead><TableHead>{t("postService.table.outstandingCash")}</TableHead><TableHead>{t("postService.table.courierPayable")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead className="text-end">{t("postService.table.actions")}</TableHead></TableRow></TableHeader>
           <TableBody>
             {couriers.length === 0 ? <EmptyRow columns={9} label={t("postService.empty.noCouriers")} /> : couriers.map((courier) => {
-              const partyKeys = courier.balances.map((balance) => `${courier.agent.id}:${balance.currency}`);
-              const courierPosts = partyKeys.flatMap((key) => [...(breakdownByParty.get(key) ?? [])]).reverse();
+              const courierPostsByShipment = new Map<string, { post: ShipmentSettlementBreakdown; currency: CurrencyCode }>();
+              for (const balance of courier.balances) {
+                for (const post of breakdownByParty.get(`${courier.agent.id}:${balance.currency}`) ?? []) {
+                  courierPostsByShipment.set(post.shipmentId, { post, currency: balance.currency });
+                }
+              }
+              for (const payable of courier.payables) {
+                if (!courierPostsByShipment.has(payable.shipmentId)) {
+                  courierPostsByShipment.set(payable.shipmentId, {
+                    post: { shipmentId: payable.shipmentId, amount: 0, paid: 0, outstanding: 0 },
+                    currency: payable.currency,
+                  });
+                }
+              }
+              const courierPosts = [...courierPostsByShipment.values()].reverse();
               const expanded = expandedIds.has(courier.agent.id);
-              const fallbackCurrency = courier.balances[0]?.currency ?? "iqd";
               return (
                 <Fragment key={courier.agent.id}>
                   <TableRow>
@@ -2104,20 +2227,20 @@ function CourierRegistry({ t, couriers, search, onSearchChange, breakdownByParty
                     <TableCell><MerchantPayableAmounts payables={courier.balances} iqdPreference={iqdPreference} /></TableCell>
                     <TableCell><CourierPayableAmounts payables={courier.payables} iqdPreference={iqdPreference} /></TableCell>
                     <TableCell><Badge variant="outline" className={courier.agent.status === "active" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700" : "text-muted-foreground"}>{t(courier.agent.status === "active" ? "postService.active" : "postService.inactive")}</Badge></TableCell>
-                    <TableCell className="text-end"><div className="flex flex-wrap justify-end gap-1">{canSettle && courier.balances.map((balance) => <Button key={balance.currency} type="button" size="sm" className="gap-1.5" onClick={() => onSettleParty({ kind: "courier", id: courier.agent.id, currency: balance.currency, amount: balance.amount, name: courier.name })}><Banknote className="h-4 w-4" />{t("postService.actions.recordHandover")}<span className="tabular-nums">{formatCurrency(balance.amount, balance.currency, iqdPreference)}</span></Button>)}{canSettle && courier.payables.map((payable) => <Button key={`${payable.currency}:${payable.shipmentId}`} type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" title={shipmentLabelById.get(payable.shipmentId)} onClick={() => onReimburseCourier(payable)}><HandCoins className="h-4 w-4" />{t("postService.actions.reimburseCourier")}<span className="tabular-nums">{formatCurrency(payable.amount, payable.currency, iqdPreference)}</span></Button>)}{canManage && <Button type="button" size="icon" variant="ghost" title={t("postService.actions.editCourier")} onClick={() => onEditCourier(courier)}><Pencil className="h-4 w-4" /></Button>}</div></TableCell>
+                    <TableCell className="text-end"><div className="flex flex-wrap justify-end gap-1">{canSettle && courier.balances.map((balance) => <Button key={balance.currency} type="button" size="sm" className="gap-1.5" onClick={() => onSettleParty({ kind: "courier", id: courier.agent.id, currency: balance.currency, amount: balance.amount, name: courier.name })}><Banknote className="h-4 w-4" />{t("postService.actions.recordHandover")}<span className="tabular-nums">{formatCurrency(balance.amount, balance.currency, iqdPreference)}</span></Button>)}{canSettle && courier.reimbursements.map((reimbursement) => <Button key={`reimbursement-${reimbursement.currency}`} type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onReimburseCourierCollectively(reimbursement)}><HandCoins className="h-4 w-4" />{t("postService.actions.reimburseCourier")}<span className="tabular-nums">{formatCurrency(reimbursement.amount, reimbursement.currency, iqdPreference)}</span></Button>)}{canManage && <Button type="button" size="icon" variant="ghost" title={t("postService.actions.editCourier")} onClick={() => onEditCourier(courier)}><Pencil className="h-4 w-4" /></Button>}</div></TableCell>
                   </TableRow>
                   {expanded && (courierPosts.length === 0 ? (
                     <TableRow className="bg-muted/30"><TableCell colSpan={9} className="ps-10 text-xs text-muted-foreground">{t("postService.empty.noCourierPosts")}</TableCell></TableRow>
-                  ) : courierPosts.map((post) => {
-                    const currency = currencyFor(courier, post.shipmentId) ?? fallbackCurrency;
+                  ) : courierPosts.map(({ post, currency }) => {
+                    const reimbursement = courier.payables.find((payable) => payable.shipmentId === post.shipmentId && payable.currency === currency);
                     return (
                       <TableRow key={`${currency}:${post.shipmentId}`} className="bg-muted/30">
                         <TableCell className="ps-10 text-xs font-medium">{shipmentLabelById.get(post.shipmentId) ?? "—"}</TableCell>
                         <TableCell colSpan={4} className="text-xs text-muted-foreground">{t("postService.table.collected")}: <span className="font-medium tabular-nums text-foreground">{formatCurrency(post.paid, currency, iqdPreference)}</span></TableCell>
                         <TableCell className="text-xs font-medium tabular-nums">{formatCurrency(post.outstanding, currency, iqdPreference)}</TableCell>
+                        <TableCell className="text-xs font-medium tabular-nums text-rose-700 dark:text-rose-300">{reimbursement ? formatCurrency(reimbursement.amount, currency, iqdPreference) : "—"}</TableCell>
                         <TableCell />
-                        <TableCell />
-                        <TableCell className="text-end">{canSettle && post.outstanding > 0.000001 && <Button type="button" size="sm" variant="outline" onClick={() => onSettlePost({ kind: "courier", id: courier.agent.id, currency, name: courier.name }, post)}>{t("postService.actions.recordHandover")}</Button>}</TableCell>
+                        <TableCell className="text-end"><div className="flex flex-wrap justify-end gap-1">{canSettle && post.outstanding > 0.000001 && <Button type="button" size="sm" variant="outline" onClick={() => onSettlePost({ kind: "courier", id: courier.agent.id, currency, name: courier.name }, post)}>{t("postService.actions.recordHandover")}</Button>}{canSettle && reimbursement && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onReimburseCourier(reimbursement)}><HandCoins className="h-4 w-4" />{t("postService.actions.reimburseCourier")}</Button>}</div></TableCell>
                       </TableRow>
                     );
                   }))}
@@ -2154,7 +2277,7 @@ function MerchantAccountBalanceAmounts({ t, balances, iqdPreference }: { t: TFun
 }
 function SettlementNetButton({ t, shipment, settlementNet, iqdPreference, onClick, className }: { t: TFunction; shipment: DeliveryShipment; settlementNet?: ShipmentSettlementNet; iqdPreference: "IQD" | "د.ع"; onClick: () => void; className?: string }) {
   if (!settlementNet) return <Button type="button" variant="outline" size="sm" className={cn("min-w-20 border-dashed text-muted-foreground", className)} onClick={onClick}>---</Button>;
-  const net = settlementNet.courierHandover - settlementNet.merchantPayout;
+  const net = settlementNet.courierHandover + settlementNet.merchantRepayment - settlementNet.merchantPayout;
   const isComplete = settlementNet.hasCourierHandover && settlementNet.hasMerchantPayout;
   const settlementClass = !isComplete
     ? "border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"

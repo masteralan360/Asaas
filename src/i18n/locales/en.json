@@ -2459,6 +2459,12 @@
       "returnedPrint": "Returned",
       "history": "Returns ({{count}})"
     },
+    "print": {
+      "nativeAtlasStandardTemplate": "Orders Atlas Standard",
+      "nativeAtlasStandardTemplateDescription": "Use the built-in Orders Atlas Standard order invoice A4 layout.",
+      "nativeAtlasStandardReturnTemplate": "Orders Atlas Standard Return",
+      "nativeAtlasStandardReturnTemplateDescription": "Print only the returned items and their refunded amounts."
+    },
     "table": {
       "orderNumber": "Order #",
       "customer": "Customer",
@@ -3184,6 +3190,10 @@
     "deleteErrorTitle": "Could not delete template",
     "supabaseRequired": "Supabase must be configured before custom templates can be saved.",
     "unknownTarget": "Custom print layout",
+    "returnClone": {
+      "title": "Copy your {{templateName}} layout?",
+      "description": "Use your existing {{templateName}} design as the starting point for this independent return template."
+    },
     "fields": {
       "showNotes": "Show notes",
       "notesFontSize": "Notes size"
@@ -7223,7 +7233,9 @@
     },
     "filters": {
       "all": "All",
-      "showCompleted": "Show completed"
+      "showCompleted": "Show completed",
+      "showReturned": "Show returned",
+      "showCancelled": "Show cancelled"
     },
     "status": {
       "received": "Received",

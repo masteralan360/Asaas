@@ -875,7 +875,7 @@ export function CustomTemplates() {
                                         <SelectLabel>{t('customTemplates.availableTypes', { defaultValue: 'Available Print Types' })}</SelectLabel>
                                         {availableTargets.map((target) => (
                                             <SelectItem key={target.moduleTypeKey} value={target.moduleTypeKey}>
-                                                {target.moduleLabel} - {target.typeLabel}
+                                                {getCustomTemplateDisplayName(target.moduleTypeKey)}
                                             </SelectItem>
                                         ))}
                                     </SelectGroup>
@@ -915,10 +915,12 @@ export function CustomTemplates() {
             }}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>{t('customTemplates.returnClone.title', { defaultValue: 'Copy your Atlas Standard layout?' })}</DialogTitle>
+                        <DialogTitle>{t('customTemplates.returnClone.title', {
+                            templateName: getCustomTemplateDisplayName(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
+                        })}</DialogTitle>
                         <DialogDescription>
                             {t('customTemplates.returnClone.description', {
-                                defaultValue: 'Use your existing Orders - Atlas Standard design as the starting point for this independent return template.'
+                                templateName: getCustomTemplateDisplayName(ORDER_ATLAS_STANDARD_TEMPLATE_KEY)
                             })}
                         </DialogDescription>
                     </DialogHeader>
