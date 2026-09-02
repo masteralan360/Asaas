@@ -1139,6 +1139,22 @@
       "description": "پێویستە شوێنی کۆگا دروست بکەیت پێش زیادکردنی بەرهەم.",
       "goToStorage": "بڕۆ بۆ ڕێکخستنەکانی کۆگا"
     },
+    "export": {
+      "printButton": "چاپی خشتە",
+      "printTitle": "خشتی ناردنی بەرهەمەکان",
+      "printDescription": "خشتی ناردنی ئێستا لەسەر پەڕەکانی A4 چاپ بکە.",
+      "workspaceFallback": "بەرهەمەکان",
+      "generatedAt": "{{date}} دروستکرا",
+      "rows": "{{count}} ڕیز",
+      "columnGroup": "ستوونەکانی {{start}}-{{end}} لە {{total}}",
+      "continued": "بەردەوامە",
+      "empty": "هیچ ڕیزێک بۆ چاپ نەماوە.",
+      "clearRows": "سڕینەوەی ڕیزەکان",
+      "deleteColumn": "سڕینەوەی ستوون",
+      "selectColumnForPrint": "ستوونی {{column}} بۆ چاپ هەڵبژێرە",
+      "selectColumnsForPrint": "یەک یان چەند ستوونێک دیاری بکە بۆ چالاککردنی چاپ.",
+      "selectedColumnsForPrint": "{{count}} ستوون بۆ چاپ هەڵبژێردرا"
+    },
     "filters": {
       "title": "فلتەرەکان",
       "clear": "فلتەرەکان بسڕەوە",
@@ -2617,7 +2633,8 @@
     "progressBuildingPdf": "دروستکردنی PDF (پەڕەی {{page}}/{{total}})…",
     "progressSavingInvoice": "پاشەکەوتکردنی تۆماری پسوڵە…"
   },
-  "pdfPreview": {
+  "printPreviewEditor": {
+    "title": "دەستکاریکەری پێشبینینی چاپ",
     "fitPage": "لەگونج بکە",
     "bottomWarning": "خۆت لە دانانی پێکهاتەکان لێرە بپارێزە — لەوانەیە لە کاتی چاپکردن لە A4دا ببڕدرێن."
   },

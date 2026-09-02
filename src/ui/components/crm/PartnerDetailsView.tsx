@@ -24,7 +24,7 @@ import {
 import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { getLoanDetailsPath, getLoanDirection, getLoanDirectionLabel, isSimpleLoan } from '@/lib/loanPresentation'
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
-import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
 
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import {

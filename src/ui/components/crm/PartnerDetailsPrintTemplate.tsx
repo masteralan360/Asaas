@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react'
 import type { BusinessPartnerRole, IQDDisplayPreference } from '@/local-db'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
 

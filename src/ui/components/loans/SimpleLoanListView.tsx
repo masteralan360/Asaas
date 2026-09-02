@@ -16,7 +16,7 @@ import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { deleteLoan, isLoanDeletionAllowed, type Loan, useLoanInstallments, useLoanPayments, useLoans } from '@/local-db'
 import { db } from '@/local-db/database'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/printPreviewEditorStore'
 import {
     AppPagination,
     Button,

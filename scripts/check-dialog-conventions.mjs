@@ -94,7 +94,7 @@ const legacyGenericDialogBaseline = {
   'src/ui/pages/ManualEntryTemplates.tsx': 1,
   'src/ui/pages/Members.tsx': 3,
   'src/ui/pages/Orders.tsx': 2,
-  'src/ui/pages/PdfPreviewPage.tsx': 1,
+  'src/ui/pages/PrintPreviewEditorPage.tsx': 1,
   'src/ui/pages/POS.tsx': 8,
   'src/ui/pages/PostService.tsx': 2,
   'src/ui/pages/ProductFormPage.tsx': 4,

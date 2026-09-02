@@ -1,15 +1,30 @@
-import { lazy, Suspense, useCallback, useState, useMemo, useEffect } from 'react'
-import { EntireColumnsSelection, type CellBase, type Matrix, type Selection } from 'react-spreadsheet'
+import { createContext, lazy, Suspense, useCallback, useContext, useState, useMemo, useEffect, useRef } from 'react'
+import { EntireColumnsSelection, EntireRowsSelection, type CellBase, type ColumnIndicatorProps, type Matrix, type Selection } from 'react-spreadsheet'
 import { useTranslation } from 'react-i18next'
-import { FileSpreadsheet, Download, ArrowLeft, Loader2 } from 'lucide-react'
+import { FileSpreadsheet, Download, ArrowLeft, Eraser, Loader2, Printer, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import { db } from '@/local-db'
 import { Button } from '@/ui/components/button'
+import { Checkbox } from '@/ui/components/checkbox'
+import { ProductExportPrintTemplate } from '@/ui/components/ProductExportPrintTemplate'
 import { exportToExcel, mapFinanceForExport, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
+import {
+    buildExportPreviewTable,
+    clearExportPreviewColumnRows,
+    deleteExportPreviewColumn,
+    exportPreviewTableToRows,
+    remapSelectedPrintColumnsAfterDeletion,
+    selectExportPreviewTableColumns,
+} from '@/lib/productExportPrintTable'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/ui/components/ui/context-menu'
+import { generateTemplatePdf } from '@/services/pdfGenerator'
+import { printPdfBlob } from '@/services/pdfPrintService'
+import { setPrintPreviewEditorSource, type TemplatePreview } from '@/lib/printPreviewEditorStore'
 import { supabase } from '@/auth/supabase'
 import { useHideCosts, useViewOwnRecordScope } from '@/permissions'
 import { getDateRangeBounds } from '@/lib/dateRangeFilters'
+import { useLocation } from 'wouter'
 
 const SpreadsheetPreview = lazy(() =>
     import('react-spreadsheet').then((module) => ({ default: module.default }))
@@ -17,6 +32,126 @@ const SpreadsheetPreview = lazy(() =>
 
 type PreviewCell = CellBase<string | number | boolean | null | undefined>
 type PreviewMatrix = Matrix<PreviewCell>
+
+type ExportPreviewColumnMenuActions = {
+    clearColumnRows: (columnIndex: number) => void
+    deleteColumn: (columnIndex: number) => void
+    isPrintColumnSelected: (columnIndex: number) => boolean
+    setPrintColumnSelected: (columnIndex: number, checked: boolean) => void
+    clearRowsLabel: string
+    deleteColumnLabel: string
+    selectColumnForPrintLabel: (column: string) => string
+}
+
+const ExportPreviewColumnMenuContext = createContext<ExportPreviewColumnMenuActions | null>(null)
+
+function getSpreadsheetColumnLabel(column: number) {
+    let label = ''
+    let index = column
+
+    while (index >= 0) {
+        label = String.fromCharCode(65 + (index % 26)) + label
+        index = Math.floor(index / 26) - 1
+    }
+
+    return label
+}
+
+function ProductExportPreviewColumnMenuContent({ column }: { column: number }) {
+    const menuActions = useContext(ExportPreviewColumnMenuContext)
+
+    if (!menuActions) {
+        return null
+    }
+
+    return (
+        <ContextMenuContent className="w-48">
+            <ContextMenuItem
+                className="gap-2"
+                onSelect={() => menuActions.clearColumnRows(column)}
+            >
+                <Eraser className="h-4 w-4" />
+                {menuActions.clearRowsLabel}
+            </ContextMenuItem>
+            <ContextMenuItem
+                className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+                onSelect={() => menuActions.deleteColumn(column)}
+            >
+                <Trash2 className="h-4 w-4" />
+                {menuActions.deleteColumnLabel}
+            </ContextMenuItem>
+        </ContextMenuContent>
+    )
+}
+
+function ExportPreviewColumnIndicator({
+    column,
+    label,
+    selected,
+    onSelect,
+}: ColumnIndicatorProps) {
+    const menuActions = useContext(ExportPreviewColumnMenuContext)
+    const columnLabel = label !== undefined ? String(label) : getSpreadsheetColumnLabel(column)
+    const handleClick = useCallback((event: React.MouseEvent<HTMLTableCellElement>) => {
+        onSelect(column, event.shiftKey)
+    }, [column, onSelect])
+    const handleContextMenu = useCallback(() => {
+        onSelect(column, false)
+    }, [column, onSelect])
+
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <th
+                    className={cn('Spreadsheet__header', {
+                        'Spreadsheet__header--selected': selected,
+                    })}
+                    onClick={handleClick}
+                    onContextMenu={handleContextMenu}
+                    tabIndex={0}
+                >
+                    <span className="inline-flex items-center gap-1">
+                        {menuActions ? (
+                            <span onClick={(event) => event.stopPropagation()}>
+                                <Checkbox
+                                    checked={menuActions.isPrintColumnSelected(column)}
+                                    onCheckedChange={(checked) => menuActions.setPrintColumnSelected(column, checked)}
+                                    aria-label={menuActions.selectColumnForPrintLabel(columnLabel)}
+                                    className="h-3.5 w-3.5"
+                                />
+                            </span>
+                        ) : null}
+                        <span>{label !== undefined ? label : getSpreadsheetColumnLabel(column)}</span>
+                    </span>
+                </th>
+            </ContextMenuTrigger>
+            <ProductExportPreviewColumnMenuContent column={column} />
+        </ContextMenu>
+    )
+}
+
+function ProductExportPreviewHeaderViewer({
+    cell,
+    evaluatedCell,
+    column,
+}: {
+    cell: PreviewCell | undefined
+    evaluatedCell: PreviewCell | undefined
+    column: number
+}) {
+    const value = evaluatedCell?.value ?? cell?.value ?? ''
+
+    return (
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <span className="Spreadsheet__data-viewer cursor-context-menu">
+                    {String(value)}
+                </span>
+            </ContextMenuTrigger>
+            <ProductExportPreviewColumnMenuContent column={column} />
+        </ContextMenu>
+    )
+}
 
 function getSelectedColumnRange(selection: Selection | null, columnCount: number) {
     if (!(selection instanceof EntireColumnsSelection) || columnCount === 0) {
@@ -29,20 +164,15 @@ function getSelectedColumnRange(selection: Selection | null, columnCount: number
     return start <= end ? { start, end } : null
 }
 
-function matrixToExportRows(matrix: PreviewMatrix) {
-    const headerRow = matrix[0] || []
-    const headers = headerRow.map((cell) => String(cell?.value ?? '').trim())
-    const activeColumns = headers
-        .map((header, index) => ({ header, index }))
-        .filter(({ header }) => header.length > 0)
-
-    if (activeColumns.length === 0) {
-        return []
+function getSelectedRowRange(selection: Selection | null, rowCount: number) {
+    if (!(selection instanceof EntireRowsSelection) || rowCount <= 1) {
+        return null
     }
 
-    return matrix.slice(1).map((row) => Object.fromEntries(
-        activeColumns.map(({ header, index }) => [header, row?.[index]?.value ?? ''])
-    ))
+    const start = Math.max(1, Math.min(selection.start, selection.end))
+    const end = Math.min(rowCount - 1, Math.max(selection.start, selection.end))
+
+    return start <= end ? { start, end } : null
 }
 
 interface ExportPreviewModalProps {
@@ -64,8 +194,9 @@ export function ExportPreviewModal({
     type = 'sales',
     records
 }: ExportPreviewModalProps) {
-    const { t } = useTranslation()
-    const { activeWorkspace, isLocalMode } = useWorkspace()
+    const { t, i18n } = useTranslation()
+    const { activeWorkspace, isLocalMode, features, workspaceName } = useWorkspace()
+    const [, setLocation] = useLocation()
     const hideCosts = useHideCosts()
     const salesViewOwnScope = useViewOwnRecordScope('sales.view_own')
     const [isExporting, setIsExporting] = useState(false)
@@ -73,14 +204,25 @@ export function ExportPreviewModal({
     const [data, setData] = useState<any[]>([])
     const [previewData, setPreviewData] = useState<PreviewMatrix>([])
     const [selectedPreviewCells, setSelectedPreviewCells] = useState<Selection | null>(null)
+    const [selectedProductPrintColumns, setSelectedProductPrintColumns] = useState<Set<number>>(() => new Set())
+    const hasCapturedProductSourceRef = useRef(false)
+    const hasSeededPreviewRef = useRef(false)
 
     useEffect(() => {
         if (isOpen && (type === 'revenue' || type === 'finance' || type === 'products' || type === 'inventory-product-summary') && records) {
+            if (type === 'products' && hasCapturedProductSourceRef.current) {
+                return
+            }
+
+            if (type === 'products') {
+                hasCapturedProductSourceRef.current = true
+            }
             setData(records)
             setIsLoading(false)
         } else if (isOpen && filters) {
             fetchExportData()
         } else if (!isOpen) {
+            hasCapturedProductSourceRef.current = false
             setData([])
         }
     }, [
@@ -281,25 +423,81 @@ export function ExportPreviewModal({
 
     const spreadsheetData = useMemo<PreviewMatrix>(() => {
         if (exportData.length === 0) return []
-        const headers = Object.keys(exportData[0]).map(header => ({ value: header, readOnly: true }))
+        const headers = Object.keys(exportData[0]).map(header => ({
+            value: header,
+            readOnly: true,
+            ...(type === 'products' ? { DataViewer: ProductExportPreviewHeaderViewer } : {})
+        }))
         const rows = exportData.map(row =>
             Object.values(row).map(val => ({ value: String(val ?? '') }))
         )
         return [headers, ...rows]
-    }, [exportData])
+    }, [exportData, type])
 
     useEffect(() => {
         if (!isOpen) {
+            hasSeededPreviewRef.current = false
             setPreviewData([])
             setSelectedPreviewCells(null)
+            setSelectedProductPrintColumns(new Set())
             return
         }
 
+        if (hasSeededPreviewRef.current || spreadsheetData.length === 0) {
+            return
+        }
+
+        hasSeededPreviewRef.current = true
         setPreviewData(spreadsheetData)
         setSelectedPreviewCells(null)
     }, [isOpen, spreadsheetData])
 
-    const previewExportData = useMemo(() => matrixToExportRows(previewData), [previewData])
+    const previewTable = useMemo(() => buildExportPreviewTable(previewData), [previewData])
+    const previewExportData = useMemo(() => exportPreviewTableToRows(previewTable), [previewTable])
+    const selectedProductPrintTable = useMemo(() => selectExportPreviewTableColumns(
+        previewTable,
+        selectedProductPrintColumns
+    ), [previewTable, selectedProductPrintColumns])
+    const printLang = features.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const productPrintButtonLabel = t('products.export.printButton') === 'products.export.printButton'
+        ? t('common.print')
+        : t('products.export.printButton')
+    const productPrintTitle = t('products.export.printTitle') === 'products.export.printTitle'
+        ? t('sales.export.previewTitle')
+        : t('products.export.printTitle')
+
+    const clearPreviewColumnRows = useCallback((columnIndex: number) => {
+        setPreviewData((current) => clearExportPreviewColumnRows(current, columnIndex))
+        setSelectedPreviewCells(null)
+    }, [])
+
+    const removePreviewColumn = useCallback((columnIndex: number) => {
+        setPreviewData((current) => deleteExportPreviewColumn(current, columnIndex))
+        setSelectedProductPrintColumns((current) => remapSelectedPrintColumnsAfterDeletion(current, columnIndex))
+        setSelectedPreviewCells(null)
+    }, [])
+
+    const setPrintColumnSelected = useCallback((columnIndex: number, checked: boolean) => {
+        setSelectedProductPrintColumns((current) => {
+            const next = new Set(current)
+            if (checked) {
+                next.add(columnIndex)
+            } else {
+                next.delete(columnIndex)
+            }
+            return next
+        })
+    }, [])
+
+    const previewColumnMenuActions = useMemo<ExportPreviewColumnMenuActions>(() => ({
+        clearColumnRows: clearPreviewColumnRows,
+        deleteColumn: removePreviewColumn,
+        isPrintColumnSelected: (columnIndex) => selectedProductPrintColumns.has(columnIndex),
+        setPrintColumnSelected,
+        clearRowsLabel: t('products.export.clearRows'),
+        deleteColumnLabel: t('products.export.deleteColumn'),
+        selectColumnForPrintLabel: (column) => t('products.export.selectColumnForPrint', { column }),
+    }), [clearPreviewColumnRows, removePreviewColumn, selectedProductPrintColumns, setPrintColumnSelected, t])
 
     const handlePreviewKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key !== 'Delete') {
@@ -311,10 +509,18 @@ export function ExportPreviewModal({
             return
         }
 
-        const columnRange = getSelectedColumnRange(selectedPreviewCells, previewData[0]?.length ?? 0)
-        if (!columnRange) {
+        const rowRange = getSelectedRowRange(selectedPreviewCells, previewData.length)
+        if (rowRange) {
+            event.preventDefault()
+            event.stopPropagation()
+
+            setPreviewData((current) => current.filter((_, rowIndex) => rowIndex < rowRange.start || rowIndex > rowRange.end))
+            setSelectedPreviewCells(null)
             return
         }
+
+        const columnRange = getSelectedColumnRange(selectedPreviewCells, previewData[0]?.length ?? 0)
+        if (!columnRange) return
 
         event.preventDefault()
         event.stopPropagation()
@@ -322,8 +528,51 @@ export function ExportPreviewModal({
         setPreviewData((current) => current.map((row) =>
             row?.filter((_, columnIndex) => columnIndex < columnRange.start || columnIndex > columnRange.end) ?? []
         ))
+        setSelectedProductPrintColumns((current) => {
+            let remapped = current
+            for (let columnIndex = columnRange.end; columnIndex >= columnRange.start; columnIndex -= 1) {
+                remapped = remapSelectedPrintColumnsAfterDeletion(remapped, columnIndex)
+            }
+            return remapped
+        })
         setSelectedPreviewCells(null)
     }, [previewData, selectedPreviewCells])
+
+    const openProductExportPrintFlow = useCallback(() => {
+        if (selectedProductPrintTable.columns.length === 0 || selectedProductPrintTable.rows.length === 0) return
+
+        const snapshot = {
+            table: selectedProductPrintTable,
+            generatedAt: new Date().toISOString()
+        }
+        const printTemplate: TemplatePreview = {
+            fields: [],
+            page: { widthMm: 210, heightMm: 297 },
+            createElement: (_fieldValues, _effectiveId, printLangOverride) => (
+                <ProductExportPrintTemplate
+                    workspaceName={workspaceName}
+                    printLang={printLangOverride || printLang}
+                    table={snapshot.table}
+                    generatedAt={snapshot.generatedAt}
+                />
+            ),
+            buildPdf: (element, printLangOverride) => generateTemplatePdf({
+                element,
+                format: 'a4',
+                printLang: printLangOverride || printLang
+            })
+        }
+
+        setPrintPreviewEditorSource({
+            title: productPrintTitle,
+            printFormat: 'a4',
+            workspaceName: workspaceName || undefined,
+            templatePreview: printTemplate,
+            onPrint: (blob) => printPdfBlob(blob, { title: productPrintTitle }),
+            printActionLabel: productPrintButtonLabel
+        })
+        setLocation('/print-preview-editor')
+    }, [printLang, productPrintButtonLabel, productPrintTitle, selectedProductPrintTable, setLocation, workspaceName])
 
     const handleExport = async () => {
         setIsExporting(true)
@@ -382,16 +631,28 @@ export function ExportPreviewModal({
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <Button
+                <div className="flex flex-col items-end gap-1">
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                        {type === 'products' ? (
+                        <Button
+                            type="button"
+                            onClick={openProductExportPrintFlow}
+                            disabled={isExporting || isLoading || selectedProductPrintColumns.size === 0 || selectedProductPrintTable.rows.length === 0}
+                            className="h-10 gap-2 rounded-xl bg-violet-600 px-6 font-black text-white shadow-lg shadow-violet-500/20 transition-all hover:bg-violet-700 active:scale-95 disabled:bg-violet-500/40 disabled:text-white/70 disabled:shadow-none"
+                        >
+                            <Printer className="h-4 w-4" />
+                            {productPrintButtonLabel}
+                        </Button>
+                        ) : null}
+                        <Button
                         variant="ghost"
                         onClick={onClose}
                         disabled={isExporting}
                         className="h-10 px-6 rounded-xl font-bold"
                     >
                         {t('common.cancel') || 'Cancel'}
-                    </Button>
-                    <Button
+                        </Button>
+                        <Button
                         onClick={handleExport}
                         disabled={isExporting || isLoading || previewExportData.length === 0}
                         className={cn(
@@ -405,7 +666,15 @@ export function ExportPreviewModal({
                             <Download className="w-4 h-4" />
                         )}
                         {t('sales.export.downloadBtn')}
-                    </Button>
+                        </Button>
+                    </div>
+                    {type === 'products' ? (
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            {selectedProductPrintColumns.size > 0
+                                ? t('products.export.selectedColumnsForPrint', { count: selectedProductPrintColumns.size })
+                                : t('products.export.selectColumnsForPrint')}
+                        </p>
+                    ) : null}
                 </div>
             </div>
 
@@ -426,13 +695,16 @@ export function ExportPreviewModal({
                                     </div>
                                 )}
                             >
-                                <SpreadsheetPreview
-                                    data={previewData}
-                                    onChange={setPreviewData}
-                                    onSelect={setSelectedPreviewCells}
-                                    onKeyDown={handlePreviewKeyDown}
-                                    className="atlas-spreadsheet text-sm font-medium"
-                                />
+                                <ExportPreviewColumnMenuContext.Provider value={type === 'products' ? previewColumnMenuActions : null}>
+                                    <SpreadsheetPreview
+                                        data={previewData}
+                                        onChange={setPreviewData}
+                                        onSelect={setSelectedPreviewCells}
+                                        onKeyDown={handlePreviewKeyDown}
+                                        ColumnIndicator={type === 'products' ? ExportPreviewColumnIndicator : undefined}
+                                        className="atlas-spreadsheet text-sm font-medium"
+                                    />
+                                </ExportPreviewColumnMenuContext.Provider>
                             </Suspense>
                         </div>
                     </div>
@@ -448,6 +720,7 @@ export function ExportPreviewModal({
                     {Math.max(0, previewData.length - 1)} rows &middot; {previewData[0]?.length ?? 0} columns
                 </div>
             )}
+
         </div>
     )
 }

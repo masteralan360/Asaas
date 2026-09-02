@@ -246,7 +246,7 @@ export type CustomTemplatePreviewTarget = {
     label?: string
 }
 
-export type InvoicePreviewSource = {
+export type PrintPreviewEditorSource = {
     data?: UniversalInvoice
     features?: any
     workspaceId?: string
@@ -274,47 +274,47 @@ export type InvoicePreviewSource = {
     onSaveTemplateLayout?: (layout: CustomTemplateLayout, options?: { label?: string }) => Promise<void>
 }
 
-let _source: InvoicePreviewSource | null = null
+let _printPreviewEditorSource: PrintPreviewEditorSource | null = null
 
-export function setInvoicePreviewSource(source: InvoicePreviewSource) {
-    _source = source
+export function setPrintPreviewEditorSource(source: PrintPreviewEditorSource) {
+    _printPreviewEditorSource = source
 }
 
-export function getInvoicePreviewSource(): InvoicePreviewSource | null {
-    return _source
+export function getPrintPreviewEditorSource(): PrintPreviewEditorSource | null {
+    return _printPreviewEditorSource
 }
 
-export function clearInvoicePreviewSource() {
-    _source = null
+export function clearPrintPreviewEditorSource() {
+    _printPreviewEditorSource = null
 }
 
-export type PendingInvoiceView = {
+export type PendingPrintPreviewEditorView = {
     url: string
     title: string
 }
 
-let _pendingView: PendingInvoiceView | null = null
-let _pendingViewListeners: Set<() => void> = new Set()
+let _pendingPrintPreviewEditorView: PendingPrintPreviewEditorView | null = null
+const _pendingPrintPreviewEditorViewListeners = new Set<() => void>()
 
-function notifyPendingViewListeners() {
-    _pendingViewListeners.forEach(cb => cb())
+function notifyPendingPrintPreviewEditorViewListeners() {
+    _pendingPrintPreviewEditorViewListeners.forEach(cb => cb())
 }
 
-export function subscribeToPendingInvoiceView(callback: () => void): () => void {
-    _pendingViewListeners.add(callback)
-    return () => { _pendingViewListeners.delete(callback) }
+export function subscribeToPendingPrintPreviewEditorView(callback: () => void): () => void {
+    _pendingPrintPreviewEditorViewListeners.add(callback)
+    return () => { _pendingPrintPreviewEditorViewListeners.delete(callback) }
 }
 
-export function setPendingInvoiceView(view: PendingInvoiceView) {
-    _pendingView = view
-    notifyPendingViewListeners()
+export function setPendingPrintPreviewEditorView(view: PendingPrintPreviewEditorView) {
+    _pendingPrintPreviewEditorView = view
+    notifyPendingPrintPreviewEditorViewListeners()
 }
 
-export function getPendingInvoiceView(): PendingInvoiceView | null {
-    return _pendingView
+export function getPendingPrintPreviewEditorView(): PendingPrintPreviewEditorView | null {
+    return _pendingPrintPreviewEditorView
 }
 
-export function clearPendingInvoiceView() {
-    _pendingView = null
-    notifyPendingViewListeners()
+export function clearPendingPrintPreviewEditorView() {
+    _pendingPrintPreviewEditorView = null
+    notifyPendingPrintPreviewEditorViewListeners()
 }

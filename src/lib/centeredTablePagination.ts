@@ -7,7 +7,7 @@
  * marked table so it lands vertically centered on its own page instead of
  * starting right after the previous page's content.
  *
- * The same DOM routine is used by the PDF preview (`PdfPreviewPage`) and by
+ * The same DOM routine is used by the print preview editor (`PrintPreviewEditorPage`) and by
  * the canvas→PDF generator (`pdfGenerator`), which keeps the on-screen preview
  * and the exported document in sync.
  */

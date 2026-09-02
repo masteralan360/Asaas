@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'wouter'
 
 import { useAuth } from '@/auth'
+import { usePartnerAccountStatementClosingBalances } from '@/hooks/usePartnerAccountStatement'
 import {
     recordObligationSettlement,
     type OrderInstallment,
@@ -18,7 +19,7 @@ import {
     useWorkspaceOrderInstallments
 } from '@/local-db'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview } from '@/lib/printPreviewEditorStore'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     Button,
@@ -143,6 +144,10 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
             ? (printTarget.order as SalesOrder).customerId
             : (printTarget?.order as PurchaseOrder | undefined)?.supplierId)
     const printPartner = useBusinessPartner(printPartnerId)
+    const partnerAccountStatementBalances = usePartnerAccountStatementClosingBalances(
+        printTarget ? workspaceId : undefined,
+        printTarget ? printPartnerId : undefined
+    )
     const counterpartyPhone = printPartner?.phone || ''
     const counterpartyAddress = printPartner?.address || ''
 
@@ -276,6 +281,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
                 businessPartner={printPartner}
+                partnerAccountStatementBalances={partnerAccountStatementBalances}
                 printedBy={user?.name}
                 productImageUrls={productImageUrls}
             />
@@ -373,6 +379,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         productUnits,
         counterpartyAddress,
         counterpartyPhone,
+        partnerAccountStatementBalances,
         t,
         workspaceName
     ])
@@ -465,6 +472,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     iqdPreference={features.iqd_display_preference}
                     logoUrl={features.logo_url}
                     businessPartner={printPartner}
+                    partnerAccountStatementBalances={partnerAccountStatementBalances}
                     printedBy={user?.name}
                     productImageUrls={productImageUrls}
                     hiddenFields={renderOptions?.hiddenFields}
@@ -487,6 +495,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         printInstallments,
         printLang,
         printPartner,
+        partnerAccountStatementBalances,
         printTarget,
         productImageUrls,
         user?.name,
@@ -502,6 +511,7 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         order: printTarget?.order,
         orderKind: printTarget?.kind,
         installments: printInstallments,
+        partnerAccountStatementBalances,
         productUnits,
         productImageUrls,
         t

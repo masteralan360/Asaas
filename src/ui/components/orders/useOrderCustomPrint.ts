@@ -18,8 +18,9 @@ import {
     resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
-import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
 import type { OrderInstallment, PurchaseOrder, SalesOrder } from '@/local-db'
+import type { PartnerAccountStatementClosingBalance } from '@/lib/partnerAccountStatement'
 import type { SalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
 import type { OrderPrintVersion } from '@/lib/orderPrintReturnState'
 import { useBusinessPartner } from '@/local-db'
@@ -45,6 +46,7 @@ interface UseOrderCustomPrintOptions {
     orderKind?: OrderKind
     returnPrintData?: SalesOrderReturnPrintData | null
     installments: OrderInstallment[]
+    partnerAccountStatementBalances?: PartnerAccountStatementClosingBalance[]
     productUnits?: Record<string, string | null | undefined>
     productImageUrls?: ProductPrintImageUrls
     printedBy?: string | null
@@ -62,6 +64,7 @@ export function useOrderCustomPrint({
     orderKind,
     returnPrintData,
     installments,
+    partnerAccountStatementBalances,
     productUnits,
     productImageUrls,
     printedBy,
@@ -155,6 +158,7 @@ export function useOrderCustomPrint({
             orderPrintVersion: selectedPrintVersion,
             orderInstallments: installments,
             businessPartner: bizPartner,
+            partnerAccountStatementBalances,
             productUnits,
             productImageUrls,
             counterpartyPhone,
@@ -162,7 +166,7 @@ export function useOrderCustomPrint({
             printedBy,
             printLang: currentPrintLanguage
         })
-    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
+    }, [bizPartner, currentPrintLanguage, features, installments, isCustomSelected, order, orderKind, partnerAccountStatementBalances, printedBy, productImageUrls, productUnits, returnPrintData, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName, counterpartyPhone, counterpartyAddress])
 
     const buildPdf = useCallback(async ({
         effectiveId,
@@ -190,6 +194,7 @@ export function useOrderCustomPrint({
                 orderPrintVersion: selectedPrintVersion,
                 orderInstallments: installments,
                 businessPartner: bizPartner,
+                partnerAccountStatementBalances,
                 productUnits,
                 productImageUrls,
                 counterpartyPhone,
@@ -200,7 +205,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedLayout, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, partnerAccountStatementBalances, printedBy, productImageUrls, productUnits, returnPrintData, selectedLayout, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName])
 
     const buildEditablePdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -225,6 +230,7 @@ export function useOrderCustomPrint({
                 orderPrintVersion: selectedPrintVersion,
                 orderInstallments: installments,
                 businessPartner: bizPartner,
+                partnerAccountStatementBalances,
                 productUnits,
                 productImageUrls,
                 counterpartyPhone,
@@ -235,7 +241,7 @@ export function useOrderCustomPrint({
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, printedBy, productImageUrls, productUnits, returnPrintData, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName])
+    }, [bizPartner, counterpartyAddress, counterpartyPhone, currentPrintLanguage, features, installments, order, orderKind, partnerAccountStatementBalances, printedBy, productImageUrls, productUnits, returnPrintData, selectedPrintVersion, selectedTemplateTarget, workspaceId, workspaceName])
 
     const nativeOptions = useMemo(() => [
         {

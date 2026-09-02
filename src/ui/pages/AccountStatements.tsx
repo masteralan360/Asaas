@@ -31,7 +31,7 @@ import {
 } from '@/lib/partnerAccountStatementPresentation'
 import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
-import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { usePartnerAccountStatement } from '@/hooks/usePartnerAccountStatement'
 import { isAgentBusinessPartnerRole, useWorkspaceContacts } from '@/local-db'

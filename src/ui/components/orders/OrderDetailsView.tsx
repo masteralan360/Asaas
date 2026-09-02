@@ -8,6 +8,7 @@ import { Link, useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
+import { usePartnerAccountStatementClosingBalances } from '@/hooks/usePartnerAccountStatement'
 import { useProfileData } from '@/hooks/useProfileData'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
 import {
@@ -23,7 +24,7 @@ import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } fr
 import { normalizeUnitCode } from '@/local-db/models'
 import { buildWorkflowGradientFill } from '@/lib/workflowProgressGradient'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
+import { setPrintPreviewEditorSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/printPreviewEditorStore'
 import {
     db,
     approvePurchaseOrderRequest,
@@ -107,6 +108,7 @@ import {
     ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS
 } from './AtlasStandardOrderInvoiceTemplate'
 import { OrderStatusBadge } from './OrderStatusBadge'
+import { OrderProductAvatar } from './OrderProductAvatars'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 import { PostReturnAdjustmentDialog } from './PostReturnAdjustmentDialog'
 import { OrderAgentCommissionCard } from '@/ui/components/commissions/OrderAgentCommissionCard'
@@ -333,6 +335,10 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const partnerId = resolved?.order.businessPartnerId
         || (resolved?.kind === 'sales' ? (resolved?.order as SalesOrder)?.customerId : (resolved?.order as PurchaseOrder)?.supplierId)
     const bizPartner = useBusinessPartner(partnerId)
+    const partnerAccountStatementBalances = usePartnerAccountStatementClosingBalances(
+        showPrintPreview ? workspaceId : undefined,
+        showPrintPreview ? partnerId : undefined
+    )
     const counterpartyPhone = bizPartner?.phone || ''
     const counterpartyAddress = bizPartner?.address || ''
 
@@ -396,6 +402,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
         orderKind: resolved?.kind,
         returnPrintData,
         installments,
+        partnerAccountStatementBalances,
         productUnits,
         productImageUrls,
         printedBy: creatorName,
@@ -518,11 +525,11 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
 
             if (!url) return
 
-            setInvoicePreviewSource({
+            setPrintPreviewEditorSource({
                 url,
                 title: `Invoice ${orderInvoice.invoiceid}`
             })
-            navigate('/pdf-preview')
+            navigate('/print-preview-editor')
         } catch (error) {
             console.error('[OrderDetailsView] Failed to load invoice PDF:', error)
             toast({
@@ -690,6 +697,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         logoUrl={features.logo_url}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
                         businessPartner={bizPartner}
+                        partnerAccountStatementBalances={partnerAccountStatementBalances}
                         printedBy={creatorName}
                         productImageUrls={productImageUrls}
                         hiddenFields={renderOptions?.hiddenFields}
@@ -709,7 +717,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
             }
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, customOrderPrint.selectedPrintVersion])
+    }, [resolved, features, installments, workspaceName, t, i18n, bizPartner, partnerAccountStatementBalances, workspaceFooterContacts, creatorName, productImageUrls, customOrderPrint.selectedPrintVersion])
 
     const orderAtlasStandardReturnPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved || resolved.kind !== 'sales' || !returnPrintData) return undefined
@@ -730,6 +738,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         logoUrl={features.logo_url}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
                         businessPartner={bizPartner}
+                        partnerAccountStatementBalances={partnerAccountStatementBalances}
                         printedBy={creatorName}
                         productImageUrls={productImageUrls}
                         hiddenFields={renderOptions?.hiddenFields}
@@ -749,7 +758,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 return generateTemplatePdf({ element, format: 'a4', printLang: printLangOverride || baseLang })
             }
         }
-    }, [resolved, features, installments, workspaceName, i18n, bizPartner, workspaceFooterContacts, creatorName, productImageUrls, returnPrintData])
+    }, [resolved, features, installments, workspaceName, i18n, bizPartner, partnerAccountStatementBalances, workspaceFooterContacts, creatorName, productImageUrls, returnPrintData])
 
     if (!resolved) {
         return (
@@ -1827,17 +1836,26 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                                  const freeBonusItemUnitLabel = freeBonusItemUnit ? t(`products.units.${freeBonusItemUnit}`, freeBonusItemUnit) : ''
 
                                                  return (
-                                                     <TableRow key={item.id} className={cn(
-                                                         isItemFullyReturned ? 'bg-rose-500/5' : hasItemPartialReturn ? 'bg-orange-500/5' : ''
-                                                     )}>
+                                                    <TableRow key={item.id} className={cn(
+                                                        isItemFullyReturned ? 'bg-rose-500/5' : hasItemPartialReturn ? 'bg-orange-500/5' : ''
+                                                    )}>
                                                         <TableCell>
-                                                             <div className={cn('font-semibold', isItemFullyReturned && 'line-through opacity-50')}>{item.productName}</div>
-                                                            <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
-                                                            {isSales && salesItem.batchAllocations?.length ? (
-                                                                <div className="mt-1 text-xs font-medium text-primary">
-                                                                    {t('orders.form.batch', { defaultValue: 'Batch' })}: {salesItem.batchAllocations.map((allocation) => `${allocation.batchNumber} (${allocation.quantity})`).join(', ')}
+                                                            <div className="flex min-w-[12rem] items-start gap-3">
+                                                                <OrderProductAvatar
+                                                                    productId={item.productId}
+                                                                    productName={item.productName}
+                                                                    productImageUrls={productImageUrls}
+                                                                />
+                                                                <div className="min-w-0">
+                                                                    <div className={cn('font-semibold', isItemFullyReturned && 'line-through opacity-50')}>{item.productName}</div>
+                                                                    <div className="text-xs text-muted-foreground">{item.productSku || 'N/A'}</div>
+                                                                    {isSales && salesItem.batchAllocations?.length ? (
+                                                                        <div className="mt-1 text-xs font-medium text-primary">
+                                                                            {t('orders.form.batch', { defaultValue: 'Batch' })}: {salesItem.batchAllocations.map((allocation) => `${allocation.batchNumber} (${allocation.quantity})`).join(', ')}
+                                                                        </div>
+                                                                    ) : null}
                                                                 </div>
-                                                            ) : null}
+                                                            </div>
                                                         </TableCell>
                                                         <TableCell>{storageName(item.storageId || mainStorageId)}</TableCell>
                                                          <TableCell className="text-end">
@@ -2194,6 +2212,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                         workspaceFooterContacts={workspaceFooterContacts}
                                         printVersion={customOrderPrint.selectedPrintVersion}
                                         businessPartner={bizPartner}
+                                        partnerAccountStatementBalances={partnerAccountStatementBalances}
                                         printedBy={creatorName}
                                         productImageUrls={productImageUrls}
                                         returnPrintData={customOrderPrint.isAtlasStandardReturnSelected ? returnPrintData : undefined}
@@ -2249,6 +2268,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                             workspaceFooterContacts={workspaceFooterContacts}
                             printVersion={customOrderPrint.selectedPrintVersion}
                             businessPartner={bizPartner}
+                            partnerAccountStatementBalances={partnerAccountStatementBalances}
                             printedBy={creatorName}
                             productImageUrls={productImageUrls}
                             returnPrintData={customOrderPrint.isAtlasStandardReturnSelected ? returnPrintData : undefined}

@@ -13,7 +13,7 @@ import {
     LOAN_ACCOUNT_STATEMENT_TEMPLATE_KEY
 } from '@/lib/customTemplates'
 import type { PartnerAccountStatementPeriod } from '@/lib/partnerAccountStatement'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview } from '@/lib/printPreviewEditorStore'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import type { WorkspaceFeatures } from '@/workspace'
 import { PrintPreviewModal } from '@/ui/components'

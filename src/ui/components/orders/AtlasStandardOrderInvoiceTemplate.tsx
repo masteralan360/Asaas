@@ -12,6 +12,8 @@ import {
     type PurchaseOrder,
     type SalesOrder
 } from '@/local-db'
+import type { PartnerAccountStatementClosingBalance } from '@/lib/partnerAccountStatement'
+import { formatAtlasStandardPartnerCurrentBalance } from '@/lib/atlasStandardPartnerBalance'
 import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity } from '@/lib/orderLineItems'
 import {
     getOrderTotalWithPostReturnAdjustments,
@@ -42,7 +44,7 @@ import {
     ContextMenuSeparator,
     ContextMenuTrigger
 } from '@/ui/components/ui/context-menu'
-import type { CustomTemplateComponentPosition, CustomTemplateBackground } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition, CustomTemplateBackground } from '@/lib/printPreviewEditorStore'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import { ReorderablePickerGrid } from '@/ui/components/ReorderablePickerGrid'
 
@@ -72,6 +74,8 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
     logoUrl?: string | null
     workspaceFooterContacts?: WorkspaceFooterContacts
     businessPartner?: BusinessPartner | null
+    /** All original-currency balances from the Partner Account Statement. */
+    partnerAccountStatementBalances?: PartnerAccountStatementClosingBalance[]
     printedBy?: string | null
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
@@ -1091,6 +1095,7 @@ export function AtlasStandardOrderInvoiceTemplate({
     logoUrl,
     workspaceFooterContacts,
     businessPartner,
+    partnerAccountStatementBalances,
     printedBy,
     componentPositions,
     editableComponents,
@@ -1142,16 +1147,13 @@ export function AtlasStandardOrderInvoiceTemplate({
     const tableItemRowMm = Math.max(TABLE_ITEM_ROW_MIN_MM, productImageSizeMm + 1)
     const returnLineByOrderItemId = new Map(returnPrintData?.lines.map((line) => [line.orderItemId, line]) || [])
     const currency = order.currency
-    const balanceCurrency = businessPartner?.defaultCurrency || currency
     const noteValue = order.notes?.trim() || '-'
     const outstanding = getOrderBalanceAmount(order)
     const paidAmount = getOrderPaidAmount(order)
-    const currentPartnerBalance = businessPartner
-        ? (isSales ? businessPartner.receivableBalance : businessPartner.payableBalance)
-        : null
-    const formatPartnerBalance = (value: number | null) => value === null
-        ? '-'
-        : formatCurrency(value, balanceCurrency, iqdPreference)
+    const currentPartnerBalance = formatAtlasStandardPartnerCurrentBalance(
+        partnerAccountStatementBalances,
+        iqdPreference
+    )
     const salesperson = printedBy?.trim() || '-'
     const partnerAddress = businessPartner?.address?.trim() || '-'
     const partnerPhone = businessPartner?.phone?.trim() || '-'
@@ -1597,10 +1599,10 @@ export function AtlasStandardOrderInvoiceTemplate({
         {
             key: financialKeys.currentBalance,
             label: labels.currentBalance,
-            value: formatPartnerBalance(currentPartnerBalance),
+            value: currentPartnerBalance,
             className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatPartnerBalance(currentPartnerBalance)}</div>
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{currentPartnerBalance}</div>
         },
         {
             key: financialKeys.paymentMethod,

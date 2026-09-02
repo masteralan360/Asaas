@@ -9,7 +9,7 @@
  * header row, so the second page reads as a clear continuation of its parent
  * section.
  *
- * The same DOM routine is used by the PDF preview (`PdfPreviewPage`) and by the
+ * The same DOM routine is used by the print preview editor (`PrintPreviewEditorPage`) and by the
  * canvas→PDF generator (`pdfGenerator`), which keeps the on-screen preview and
  * the exported document in sync.
  */

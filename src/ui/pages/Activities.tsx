@@ -31,7 +31,7 @@ import { formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview } from '@/lib/printPreviewEditorStore'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
@@ -193,7 +193,7 @@ function resolveWorkspaceLogoSrc(logoUrl?: string | null) {
     return /^(https?:|data:|blob:)/i.test(logoUrl) ? logoUrl : platformService.convertFileSrc(logoUrl)
 }
 
-/** @deprecated Activities now print through PrintPreviewModal and /pdf-preview. */
+/** @deprecated Activities now print through PrintPreviewModal and /print-preview-editor. */
 export function printActivityReceipt(
     transaction: ActivityTransaction,
     lines: ActivityTransactionLine[],

@@ -114,7 +114,7 @@ import {
     type ReverseTransactionDetails
 } from '@/ui/components/payments/ReverseTransactionCofirmationDialog'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview } from '@/lib/printPreviewEditorStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { suppressExpenseReminderForSession } from '@/lib/budgetReminderSession'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'

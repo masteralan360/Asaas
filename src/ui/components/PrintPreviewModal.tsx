@@ -30,11 +30,11 @@ import { persistInvoiceVersion } from '@/services/invoiceVersionService'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
-    setInvoicePreviewSource,
+    setPrintPreviewEditorSource,
     type CustomTemplateLayout,
     type CustomTemplatePreviewTarget,
     type TemplatePreview
-} from '@/lib/pdfPreviewStore'
+} from '@/lib/printPreviewEditorStore'
 import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 import {
     PrintSelectionModal,
@@ -540,7 +540,7 @@ export function PrintPreviewModal({
                     })
                 }
 
-                setInvoicePreviewSource({
+                setPrintPreviewEditorSource({
                     data: pdfData || { id: effectiveId, items: [], total_amount: 0, settlement_currency: 'usd', created_at: new Date().toISOString() },
                     features: printableFeatures || {},
                     workspaceId,
@@ -555,7 +555,7 @@ export function PrintPreviewModal({
                 })
             } else if (hasPdfBuilder) {
                 if (templatePreviewProp) {
-                    setInvoicePreviewSource({
+                    setPrintPreviewEditorSource({
                         title: title || t('print.previewTitle') || 'Print Preview',
                         onSave: showSaveButton || enableTemplatePreviewSave ? handleSave : undefined,
                         onPrint: onPreviewPrint,
@@ -577,7 +577,7 @@ export function PrintPreviewModal({
                     const blob = printFormat === 'receipt' ? blobs.receipt : blobs.a4
                     if (!blob) throw new Error('Failed to generate PDF')
                     const url = await blobToDataUrl(blob)
-                    setInvoicePreviewSource({
+                    setPrintPreviewEditorSource({
                         url,
                         title: title || t('print.previewTitle') || 'Print Preview',
                         onSave: showSaveButton ? handleSave : undefined,
@@ -587,7 +587,7 @@ export function PrintPreviewModal({
                 }
             }
 
-            setLocation('/pdf-preview')
+            setLocation('/print-preview-editor')
         } catch (err) {
             console.error('Failed to open preview:', err)
         }

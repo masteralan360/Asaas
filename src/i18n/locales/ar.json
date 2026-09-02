@@ -1137,6 +1137,22 @@
       "description": "تحتاج إلى إنشاء مخزن قبل إضافة المنتجات.",
       "goToStorage": "الانتقال إلى إعدادات المخازن"
     },
+    "export": {
+      "printButton": "طباعة الجدول",
+      "printTitle": "جدول تصدير المنتجات",
+      "printDescription": "طباعة جدول التصدير الحالي على صفحات A4.",
+      "workspaceFallback": "المنتجات",
+      "generatedAt": "تم الإنشاء {{date}}",
+      "rows": "{{count}} صفاً",
+      "columnGroup": "الأعمدة {{start}}-{{end}} من {{total}}",
+      "continued": "تابع",
+      "empty": "لا توجد صفوف متبقية للطباعة.",
+      "clearRows": "مسح الصفوف",
+      "deleteColumn": "حذف العمود",
+      "selectColumnForPrint": "تضمين العمود {{column}} في الطباعة",
+      "selectColumnsForPrint": "حدد عموداً واحداً أو أكثر لتمكين الطباعة.",
+      "selectedColumnsForPrint": "تم تحديد {{count}} أعمدة للطباعة"
+    },
     "filters": {
       "title": "تصفية",
       "clear": "مسح التصفية",
@@ -2601,7 +2617,8 @@
     "progressBuildingPdf": "جارٍ إنشاء PDF (الصفحة {{page}}/{{total}})…",
     "progressSavingInvoice": "جارٍ حفظ سجل الفاتورة…"
   },
-  "pdfPreview": {
+  "printPreviewEditor": {
+    "title": "محرر معاينة الطباعة",
     "fitPage": "ملائمة",
     "bottomWarning": "تجنب وضع المكونات هنا — قد يتم قصها عند الطباعة على A4."
   },

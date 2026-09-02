@@ -46,7 +46,7 @@ import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberI
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { isMobile } from '@/lib/platform'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/printPreviewEditorStore'
 import {
     Button,
     Card,

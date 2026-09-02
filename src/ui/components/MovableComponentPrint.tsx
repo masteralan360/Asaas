@@ -1,6 +1,6 @@
 import { Maximize2, Move } from 'lucide-react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 
 export function MovableOrderPrintBlock({
     componentKey,
@@ -152,7 +152,7 @@ export function MovableOrderPrintBlock({
             }}
             data-order-print-component={componentKey}
             data-pdf-keep-together
-            data-pdf-preview-page-break-mode={previewPageBreakMode}
+            data-print-preview-editor-page-break-mode={previewPageBreakMode}
             data-pdf-template-object-id={`component:${componentKey}`}
             data-pdf-template-object-kind="component"
         >

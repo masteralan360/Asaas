@@ -4,7 +4,7 @@ import { ReactQRCode } from '@lglab/react-qr-code'
 
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/config'
-import type { TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
+import type { TemplatePreviewDataKey } from '@/lib/printPreviewEditorStore'
 import { getRealEstateNativePrintLabels } from '@/lib/realEstateParties'
 import { platformService } from '@/services/platformService'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/components/dialog'

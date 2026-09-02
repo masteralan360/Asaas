@@ -60,7 +60,7 @@ import {
     resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
-import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import { getRealEstatePartyLabels } from '@/lib/realEstateParties'
 

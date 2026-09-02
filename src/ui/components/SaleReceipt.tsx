@@ -9,7 +9,7 @@ import { useAuth } from '@/auth'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { EditableField } from '@/ui/components/EditableField'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 import type { ReactNode } from 'react'
 
 export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {

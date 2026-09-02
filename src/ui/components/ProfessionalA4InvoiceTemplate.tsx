@@ -3,7 +3,7 @@ import { ReactQRCode } from '@lglab/react-qr-code'
 import { MapPin, Phone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import type { CustomTemplateBackground, CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateBackground, CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'

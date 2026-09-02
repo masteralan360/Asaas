@@ -5,13 +5,13 @@ import type {
     CustomTemplatePrintLanguage,
     TemplatePreview,
     TemplatePreviewDataKey
-} from '@/lib/pdfPreviewStore'
+} from '@/lib/printPreviewEditorStore'
 import {
     getCustomTemplateLayoutHeightMm,
     getCustomTemplateLayoutOverflowHeightMm,
     getCustomTemplateLayoutPageCount,
     shouldReflowCustomTemplateText
-} from '@/lib/pdfPreviewStore'
+} from '@/lib/printPreviewEditorStore'
 import { PdfShapeGraphic } from '@/ui/components/PdfShapeGraphic'
 import { getPdfShapeHeight, getPdfShapeZIndex } from '@/types'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -70,6 +70,7 @@ import {
     ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS,
     ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS
 } from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
+import type { PartnerAccountStatementClosingBalance } from '@/lib/partnerAccountStatement'
 import {
     createSampleSalesOrderReturnPrintData,
     type SalesOrderReturnPrintData
@@ -568,6 +569,7 @@ export type CustomTemplatePreviewOptions = {
     orderPrintVersion?: OrderPrintVersion
     orderInstallments?: OrderInstallment[]
     businessPartner?: BusinessPartner | null
+    partnerAccountStatementBalances?: PartnerAccountStatementClosingBalance[]
     productUnits?: Record<string, string | null | undefined>
     productImageUrls?: ProductPrintImageUrls
     counterpartyPhone?: string
@@ -1738,6 +1740,7 @@ function createAtlasStandardOrderInvoicePreview(
                 logoUrl={options.features?.logo_url}
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 businessPartner={options.businessPartner}
+                partnerAccountStatementBalances={options.partnerAccountStatementBalances}
                 printedBy={options.printedBy}
                 productImageUrls={options.productImageUrls}
                 componentPositions={renderOptions?.componentPositions}

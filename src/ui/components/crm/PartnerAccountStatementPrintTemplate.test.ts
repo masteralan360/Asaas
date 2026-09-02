@@ -24,6 +24,7 @@ vi.mock('react-i18next', () => ({
 import type { PartnerOrderItemsPrintData } from './PartnerOrderItemsPrintTemplate'
 import {
     buildPartnerAccountStatementLedger,
+    getPartnerAccountStatementClosingBalances,
     type PartnerAccountStatementData
 } from '@/lib/partnerAccountStatement'
 import {
@@ -127,6 +128,36 @@ function statementData(): PartnerOrderItemsPrintData & PartnerAccountStatementDa
 }
 
 describe('buildPartnerAccountStatementLedger', () => {
+    it('returns each original-currency closing balance from the statement ledger', () => {
+        const data = statementData()
+        data.period = { type: 'allTime' }
+        data.statementOrders = [
+            {
+                id: 'usd-sale', orderNumber: 'SO-USD', customerId: 'partner-1', total: 100,
+                currency: 'usd', status: 'completed', createdAt: '2026-01-04T10:00:00.000Z', isDeleted: false, linkedLoanId: null
+            },
+            {
+                id: 'iqd-purchase', orderNumber: 'PO-IQD', supplierId: 'partner-1', total: 500,
+                currency: 'iqd', status: 'received', createdAt: '2026-01-05T10:00:00.000Z', isDeleted: false, linkedLoanId: null
+            }
+        ] as any
+        data.settlementTransactions = [
+            {
+                id: 'usd-payment', sourceType: 'sales_order', sourceRecordId: 'usd-sale', direction: 'incoming', amount: 25,
+                currency: 'usd', paidAt: '2026-01-06T10:00:00.000Z', createdAt: '2026-01-06T10:00:00.000Z', isDeleted: false
+            },
+            {
+                id: 'iqd-payment', sourceType: 'purchase_order', sourceRecordId: 'iqd-purchase', direction: 'outgoing', amount: 200,
+                currency: 'iqd', paidAt: '2026-01-06T10:00:00.000Z', createdAt: '2026-01-06T10:00:00.000Z', isDeleted: false
+            }
+        ] as any
+
+        expect(getPartnerAccountStatementClosingBalances(data)).toEqual([
+            { currency: 'iqd', closingBalance: -300 },
+            { currency: 'usd', closingBalance: 75 }
+        ])
+    })
+
     it('labels pre-completion sales payments as advances and financed upfront amounts as order-loan down payments', () => {
         const data = statementData()
         data.statementOrders = [{

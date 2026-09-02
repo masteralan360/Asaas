@@ -12,27 +12,27 @@ import {
     DialogFooter,
 } from './dialog'
 import {
-    subscribeToPendingInvoiceView,
-    getPendingInvoiceView,
-    clearPendingInvoiceView,
-    setInvoicePreviewSource,
-} from '@/lib/pdfPreviewStore'
+    subscribeToPendingPrintPreviewEditorView,
+    getPendingPrintPreviewEditorView,
+    clearPendingPrintPreviewEditorView,
+    setPrintPreviewEditorSource,
+} from '@/lib/printPreviewEditorStore'
 
 export function PostSaveInvoiceDialog() {
     const { t } = useTranslation()
     const [, setLocation] = useLocation()
 
-    const pendingView = useSyncExternalStore(
-        subscribeToPendingInvoiceView,
-        getPendingInvoiceView,
-        getPendingInvoiceView,
+    const pendingPrintPreviewEditorView = useSyncExternalStore(
+        subscribeToPendingPrintPreviewEditorView,
+        getPendingPrintPreviewEditorView,
+        getPendingPrintPreviewEditorView,
     )
 
-    if (!pendingView) return null
+    if (!pendingPrintPreviewEditorView) return null
 
     return (
         <Dialog open={true} onOpenChange={(open) => {
-            if (!open) clearPendingInvoiceView()
+            if (!open) clearPendingPrintPreviewEditorView()
         }}>
             <DialogContent className={cn(
                 "max-w-md w-[95vw] sm:w-full overflow-hidden p-0 rounded-[2.5rem]",
@@ -66,26 +66,26 @@ export function PostSaveInvoiceDialog() {
                             {t('common.invoice') || 'Invoice'}
                         </span>
                         <p className="text-base font-bold text-foreground truncate mt-1">
-                            {pendingView.title}
+                            {pendingPrintPreviewEditorView.title}
                         </p>
                     </div>
 
                     <DialogFooter className="w-full grid grid-cols-2 gap-3 sm:gap-4 !flex-row sm:!flex-row">
                         <Button
                             variant="ghost"
-                            onClick={() => clearPendingInvoiceView()}
+                            onClick={() => clearPendingPrintPreviewEditorView()}
                             className="h-12 rounded-2xl font-bold bg-secondary/30 hover:bg-secondary/50 border border-transparent hover:border-border/50 transition-all"
                         >
                             {t('common.close') || 'Close'}
                         </Button>
                         <Button
                             onClick={() => {
-                                setInvoicePreviewSource({
-                                    url: pendingView.url,
-                                    title: pendingView.title
+                                setPrintPreviewEditorSource({
+                                    url: pendingPrintPreviewEditorView.url,
+                                    title: pendingPrintPreviewEditorView.title
                                 })
-                                clearPendingInvoiceView()
-                                setLocation('/pdf-preview')
+                                clearPendingPrintPreviewEditorView()
+                                setLocation('/print-preview-editor')
                             }}
                             className="h-12 rounded-2xl font-black shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90 border-t border-white/10 flex gap-2 items-center justify-center transition-all active:scale-95"
                         >

@@ -166,9 +166,9 @@ const CurrencyConverter = lazy(() =>
 const Notebook = lazy(() =>
   import("@/ui/pages/Notebook").then((m) => ({ default: m.Notebook })),
 );
-const PdfPreviewPage = lazy(() =>
-  import("@/ui/pages/PdfPreviewPage").then((m) => ({
-    default: m.PdfPreviewPage,
+const PrintPreviewEditorPage = lazy(() =>
+  import("@/ui/pages/PrintPreviewEditorPage").then((m) => ({
+    default: m.PrintPreviewEditorPage,
   })),
 );
 const CustomTemplates = lazy(() =>
@@ -2350,10 +2350,10 @@ function App() {
                           </Layout>
                         </ProtectedRoute>
                       </Route>
-                      <Route path="/pdf-preview">
+                      <Route path="/print-preview-editor">
                         <ProtectedRoute>
                           <Suspense fallback={null}>
-                            <PdfPreviewPage />
+                            <PrintPreviewEditorPage />
                           </Suspense>
                         </ProtectedRoute>
                       </Route>

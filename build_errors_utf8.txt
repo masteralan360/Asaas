@@ -17,4 +17,4 @@ src/ui/pages/Loans.tsx(313,17): error TS2322: Type 'ReactNode' is not assignable
   Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
 src/ui/pages/Loans.tsx(950,17): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
   Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
-src/ui/pages/PdfPreviewPage.tsx(344,26): error TS2554: Expected 1 arguments, but got 0.
+src/ui/pages/PrintPreviewEditorPage.tsx(344,26): error TS2554: Expected 1 arguments, but got 0.

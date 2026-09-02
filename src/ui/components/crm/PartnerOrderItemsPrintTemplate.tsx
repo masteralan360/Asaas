@@ -9,7 +9,7 @@ import type {
     SalesOrder
 } from '@/local-db'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 import { platformService } from '@/services/platformService'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 

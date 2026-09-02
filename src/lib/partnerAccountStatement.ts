@@ -138,6 +138,16 @@ export type PartnerAccountStatementCurrencyLedger = {
     entries: Array<PartnerAccountStatementEntry & { runningBalance: number }>
 }
 
+/**
+ * The current, signed balance for each original currency in a partner's
+ * account statement. A positive amount is due from the partner; a negative
+ * amount is due to the partner.
+ */
+export type PartnerAccountStatementClosingBalance = Pick<
+    PartnerAccountStatementCurrencyLedger,
+    'currency' | 'closingBalance'
+>
+
 function isSalesOrder(order: StatementOrder): order is SalesOrder {
     return 'customerId' in order
 }
@@ -791,6 +801,20 @@ export function buildPartnerAccountStatementLedger(data: PartnerAccountStatement
         })
         .filter((ledger) => ledger.entries.length > 0 || Math.abs(ledger.openingBalance) > 0.000001)
         .sort((left, right) => left.currency.localeCompare(right.currency))
+}
+
+/**
+ * Gets the all-currency closing balances from the exact same derived ledger
+ * used by Partner Account Statements. Consumers must not convert or net these
+ * values, because each currency is an independently auditable account.
+ */
+export function getPartnerAccountStatementClosingBalances(
+    data: PartnerAccountStatementData
+): PartnerAccountStatementClosingBalance[] {
+    return buildPartnerAccountStatementLedger(data).map(({ currency, closingBalance }) => ({
+        currency,
+        closingBalance
+    }))
 }
 
 export function getPartnerAccountStatementDescriptionTranslationKey(

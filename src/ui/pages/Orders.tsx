@@ -20,7 +20,6 @@ import { ORDER_DECIMAL_STEP, roundOrderValue } from '@/lib/orderPrecision'
 import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import { platformService } from '@/services/platformService'
 import {
     createPurchaseOrder,
     createSalesOrder,
@@ -116,6 +115,7 @@ import {
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { OrderDetailsView } from '@/ui/components/orders/OrderDetailsView'
+import { OrderProductMosaic } from '@/ui/components/orders/OrderProductAvatars'
 import { OrderListPrintTemplate } from '@/ui/components/orders/OrderPrintTemplates'
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
@@ -152,70 +152,6 @@ const ecommerceFilterIcons = {
     ecommerce: ShoppingCart,
     nonEcommerce: List
 } satisfies Record<EcommerceFilter, LucideIcon>
-
-type OrderMosaicItem = {
-    productId: string
-    productName: string
-}
-
-function getProductImageSource(imageUrl?: string) {
-    if (!imageUrl) return ''
-    return /^(https?:|data:|blob:)/i.test(imageUrl) ? imageUrl : platformService.convertFileSrc(imageUrl)
-}
-
-function OrderProductMosaic({ items, productImageUrls }: { items: OrderMosaicItem[]; productImageUrls: Record<string, string> }) {
-    const [failedProductIds, setFailedProductIds] = useState<Set<string>>(() => new Set())
-    const products = Array.from(new Map(items.map((item) => [item.productId, item])).values()).slice(0, 4)
-    const layoutClass = products.length === 1
-        ? 'grid-cols-1 grid-rows-1'
-        : products.length === 2
-            ? 'grid-cols-2 grid-rows-1'
-            : 'grid-cols-2 grid-rows-2'
-
-    return (
-        <div
-            className={cn('grid h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/40', layoutClass)}
-            title={products.map((item) => item.productName).join(', ')}
-            aria-label={products.map((item) => item.productName).join(', ')}
-        >
-            {products.map((item, index) => {
-                const imageSource = getProductImageSource(productImageUrls[item.productId])
-                const hasImage = Boolean(imageSource && !failedProductIds.has(item.productId))
-                const hasStartDivider = products.length === 2
-                    ? index === 1
-                    : products.length === 3
-                        ? index > 0
-                        : index === 1 || index === 3
-                const hasTopDivider = products.length > 2 && index >= 2
-
-                return (
-                    <div
-                        key={item.productId}
-                        className={cn(
-                            'relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-muted',
-                            products.length === 3 && index === 0 && 'row-span-2',
-                            hasStartDivider && 'border-s border-border',
-                            hasTopDivider && 'border-t border-border'
-                        )}
-                    >
-                        {hasImage ? (
-                            <img
-                                src={imageSource}
-                                alt={item.productName}
-                                loading="lazy"
-                                decoding="async"
-                                className="h-full w-full object-cover"
-                                onError={() => setFailedProductIds((current) => new Set(current).add(item.productId))}
-                            />
-                        ) : (
-                            <Package className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                        )}
-                    </div>
-                )
-            })}
-        </div>
-    )
-}
 
 type FormItem = {
     id: string

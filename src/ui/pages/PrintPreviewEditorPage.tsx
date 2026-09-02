@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check, Shapes } from 'lucide-react'
 import {
     A4_PAGE_HEIGHT_MM,
-    getInvoicePreviewSource,
-    clearInvoicePreviewSource,
-    setPendingInvoiceView,
+    getPrintPreviewEditorSource,
+    clearPrintPreviewEditorSource,
+    setPendingPrintPreviewEditorView,
     getCustomTemplateLayoutHeightMm,
     getFixedPageCountForHeight,
     shouldReflowCustomTemplateText,
@@ -16,7 +16,7 @@ import {
     type CustomTemplateLayout,
     type CustomTemplateShape,
     type CustomTemplateText
-} from '@/lib/pdfPreviewStore'
+} from '@/lib/printPreviewEditorStore'
 import { platformService } from '@/services/platformService'
 import { paginateOrderItemsStatementPages, paginateOrderItemsTables } from '@/lib/orderItemsTablePagination'
 import { centerTablesOnPages } from '@/lib/centeredTablePagination'
@@ -63,12 +63,12 @@ const PREVIEW_PAGE_BREAK_SELECTOR = [
     '.break-inside-avoid',
     '.page-break-inside-avoid'
 ].join(', ')
-const PREVIEW_PAGE_BREAK_MARGIN = 'pdfPreviewPageBreakMargin'
-const PREVIEW_PAGE_BREAK_ORIGINAL_MARGIN = 'pdfPreviewPageBreakOriginalMargin'
-const PREVIEW_PAGE_BREAK_MARGIN_ATTRIBUTE = 'data-pdf-preview-page-break-margin'
-const PREVIEW_PAGE_BREAK_TRANSFORM = 'pdfPreviewPageBreakTransform'
-const PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE = 'pdfPreviewPageBreakOriginalTranslate'
-const PREVIEW_PAGE_BREAK_TRANSFORM_ATTRIBUTE = 'data-pdf-preview-page-break-transform'
+const PREVIEW_PAGE_BREAK_MARGIN = 'printPreviewEditorPageBreakMargin'
+const PREVIEW_PAGE_BREAK_ORIGINAL_MARGIN = 'printPreviewEditorPageBreakOriginalMargin'
+const PREVIEW_PAGE_BREAK_MARGIN_ATTRIBUTE = 'data-print-preview-editor-page-break-margin'
+const PREVIEW_PAGE_BREAK_TRANSFORM = 'printPreviewEditorPageBreakTransform'
+const PREVIEW_PAGE_BREAK_ORIGINAL_TRANSLATE = 'printPreviewEditorPageBreakOriginalTranslate'
+const PREVIEW_PAGE_BREAK_TRANSFORM_ATTRIBUTE = 'data-print-preview-editor-page-break-transform'
 const PAGE_BREAK_EPSILON_MM = 0.05
 
 function getClipboardImageFile(event: ClipboardEvent): File | null {
@@ -230,7 +230,7 @@ const ShapeToolbarButton = ({ onAdd }: { onAdd: (kind: PdfShapeKind) => void }) 
 }
 
 
-function EditableInvoicePreview({
+function EditablePrintPreviewEditor({
     data,
     features,
     workspaceId,
@@ -364,7 +364,7 @@ function EditableInvoicePreview({
     )
 }
 
-export function PdfPreviewPage() {
+export function PrintPreviewEditorPage() {
     const { t } = useTranslation()
     const { hasRole } = useAuth()
     const isAdmin = hasRole(['admin'])
@@ -422,7 +422,7 @@ export function PdfPreviewPage() {
         unsubscribeProgressRef.current?.()
     }, [])
 
-    const sourceRef = useRef(getInvoicePreviewSource())
+    const sourceRef = useRef(getPrintPreviewEditorSource())
     const source = sourceRef.current
     const templateStageRef = useRef<HTMLDivElement>(null)
     const templateContentLayerRef = useRef<HTMLDivElement>(null)
@@ -439,7 +439,7 @@ export function PdfPreviewPage() {
     const [templateSaveLabel, setTemplateSaveLabel] = useState('')
     const [pendingTemplateLayout, setPendingTemplateLayout] = useState<CustomTemplateLayout | null>(null)
     const [measuredTemplateHeightMm, setMeasuredTemplateHeightMm] = useState(0)
-    const title = source?.title || t('pdfPreview.title') || 'Invoice Preview'
+    const title = source?.title || t('printPreviewEditor.title') || 'Print Preview Editor'
 
     const handleZoomIn = useCallback(() => {
         setZoom(prev => Math.min(prev + 10, 200))
@@ -747,10 +747,10 @@ export function PdfPreviewPage() {
 
             const movableComponent = block.closest<HTMLElement>('[data-order-print-component]')
             const independentlyPositionedComponent = movableComponent?.closest<HTMLElement>(
-                '[data-pdf-preview-isolate-components]'
+                '[data-print-preview-editor-isolate-components]'
             )
                 ? movableComponent
-                : block.closest<HTMLElement>('[data-pdf-preview-page-break-mode="transform"]')
+                : block.closest<HTMLElement>('[data-print-preview-editor-page-break-mode="transform"]')
             const anchor = independentlyPositionedComponent
                 || getPreviewPageBreakAnchor(block, stage, millimetersPerPixel)
             const pageBreakOffsetMm = currentPageEndMm - topMm
@@ -892,7 +892,7 @@ export function PdfPreviewPage() {
     )
 
     const handleBack = useCallback(() => {
-        clearInvoicePreviewSource()
+        clearPrintPreviewEditorSource()
         window.history.back()
     }, [])
 
@@ -905,7 +905,7 @@ export function PdfPreviewPage() {
                 const langOverride = tempPrintLang !== 'auto' ? tempPrintLang : undefined
                 const blob = await source.generatePdfBlob(editableData, langOverride)
                 const invoiceId = await source.onSave?.(blob)
-                setPendingInvoiceView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
+                setPendingPrintPreviewEditorView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
                 return
             } else {
                 await source.onSave?.(new Blob())
@@ -915,7 +915,7 @@ export function PdfPreviewPage() {
         } finally {
             finishProgressToast()
             setIsSaving(false)
-            clearInvoicePreviewSource()
+            clearPrintPreviewEditorSource()
             window.history.back()
         }
     }, [source, editableData, isSaving, tempPrintLang, beginProgressToast, finishProgressToast, title, t])
@@ -936,17 +936,17 @@ export function PdfPreviewPage() {
             const invoiceId = await source.onSave?.(new Blob([]))
             const viewUrl = source.url
             if (viewUrl) {
-                setPendingInvoiceView({ url: viewUrl, title: invoiceId ? `Invoice ${invoiceId}` : title })
+                setPendingPrintPreviewEditorView({ url: viewUrl, title: invoiceId ? `Invoice ${invoiceId}` : title })
             }
             setIsSaving(false)
-            clearInvoicePreviewSource()
+            clearPrintPreviewEditorSource()
             window.history.back()
             return
         } catch (err) {
             console.error('Failed to save:', err)
         }
         setIsSaving(false)
-        clearInvoicePreviewSource()
+        clearPrintPreviewEditorSource()
         window.history.back()
     }, [source, isSaving])
 
@@ -1044,11 +1044,11 @@ export function PdfPreviewPage() {
                 }
 
                 const invoiceId = await source.onSave(blob)
-                setPendingInvoiceView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
+                setPendingPrintPreviewEditorView({ url: URL.createObjectURL(blob), title: invoiceId ? `Invoice ${invoiceId}` : title })
                 setIsSaving(false)
                 setIsTemplateLabelDialogOpen(false)
                 setPendingTemplateLayout(null)
-                clearInvoicePreviewSource()
+                clearPrintPreviewEditorSource()
                 window.history.back()
                 return
             }
@@ -1061,7 +1061,7 @@ export function PdfPreviewPage() {
             if (shouldCloseAfterAction) {
                 setIsTemplateLabelDialogOpen(false)
                 setPendingTemplateLayout(null)
-                clearInvoicePreviewSource()
+                clearPrintPreviewEditorSource()
                 window.history.back()
             }
         }
@@ -2080,7 +2080,7 @@ export function PdfPreviewPage() {
                                                 <div className="absolute bottom-0 left-0 right-0 h-14 bg-red-500/20 z-[35] cursor-help select-none" />
                                             </TooltipTrigger>
                                             <TooltipContent side="top" className="max-w-[260px] p-3 text-xs">
-                                                {t('pdfPreview.bottomWarning')}
+                                                {t('printPreviewEditor.bottomWarning')}
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
@@ -2104,7 +2104,7 @@ export function PdfPreviewPage() {
                                 <div className="space-y-3 border-t pt-3">
                                     <div className="flex items-center justify-between">
                                         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {t('pdfPreview.commonEdit', { defaultValue: 'Common edit' })}
+                                            {t('printPreviewEditor.commonEdit', { defaultValue: 'Common edit' })}
                                         </h4>
                                         {templateBackground ? (
                                             <button
@@ -2118,7 +2118,7 @@ export function PdfPreviewPage() {
                                         ) : null}
                                     </div>
                                     <p className="text-[11px] leading-4 text-muted-foreground">
-                                        {t('pdfPreview.backgroundWatermarkHint', {
+                                        {t('printPreviewEditor.backgroundWatermarkHint', {
                                             defaultValue: 'Add a photo behind every component as a low-opacity watermark.'
                                         })}
                                     </p>
@@ -2129,15 +2129,15 @@ export function PdfPreviewPage() {
                                     >
                                         <ImagePlus className="h-3.5 w-3.5" />
                                         {templateBackground
-                                            ? t('pdfPreview.changeBackgroundWatermark', { defaultValue: 'Change background photo' })
-                                            : t('pdfPreview.uploadBackgroundWatermark', { defaultValue: 'Upload background photo' })}
+                                            ? t('printPreviewEditor.changeBackgroundWatermark', { defaultValue: 'Change background photo' })
+                                            : t('printPreviewEditor.uploadBackgroundWatermark', { defaultValue: 'Upload background photo' })}
                                     </button>
                                     {templateBackground ? (
                                         <div className="space-y-3">
                                             <div className="space-y-1.5">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <label className="text-[11px] font-medium text-muted-foreground" htmlFor="template-background-opacity">
-                                                        {t('pdfPreview.watermarkOpacity', { defaultValue: 'Opacity' })}
+                                                        {t('printPreviewEditor.watermarkOpacity', { defaultValue: 'Opacity' })}
                                                     </label>
                                                     <output className="text-xs tabular-nums text-muted-foreground">
                                                         {templateBackground.opacity}%
@@ -2159,7 +2159,7 @@ export function PdfPreviewPage() {
                                             <div className="space-y-1.5">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <label className="text-[11px] font-medium text-muted-foreground" htmlFor="template-background-size">
-                                                        {t('pdfPreview.watermarkSize', { defaultValue: 'Size' })}
+                                                        {t('printPreviewEditor.watermarkSize', { defaultValue: 'Size' })}
                                                     </label>
                                                     <output className="text-xs tabular-nums text-muted-foreground">
                                                         {templateBackground.size}%
@@ -2666,7 +2666,7 @@ export function PdfPreviewPage() {
                         )}
 
                         {editableData && source.features && source.printFormat && (
-                            <EditableInvoicePreview
+                            <EditablePrintPreviewEditor
                                 data={editableData}
                                 features={{
                                     ...source.features,
@@ -2693,7 +2693,7 @@ export function PdfPreviewPage() {
                                         <div className="absolute bottom-0 left-0 right-0 h-14 bg-red-500/20 z-[35] cursor-help select-none" />
                                     </TooltipTrigger>
                                     <TooltipContent side="top" className="max-w-[260px] p-3 text-xs">
-                                        {t('pdfPreview.bottomWarning')}
+                                        {t('printPreviewEditor.bottomWarning')}
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>

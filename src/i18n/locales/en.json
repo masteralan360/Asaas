@@ -1183,6 +1183,22 @@
       "title": "No Storage Found",
       "description": "You need to create a storage location before adding products.",
       "goToStorage": "Go to Storage Settings"
+    },
+    "export": {
+      "printButton": "Print Table",
+      "printTitle": "Product Export Table",
+      "printDescription": "Print the current export table on A4 pages.",
+      "workspaceFallback": "Products",
+      "generatedAt": "Generated {{date}}",
+      "rows": "{{count}} rows",
+      "columnGroup": "Columns {{start}}-{{end}} of {{total}}",
+      "continued": "continued",
+      "empty": "No rows remain to print.",
+      "clearRows": "Clear rows",
+      "deleteColumn": "Delete column",
+      "selectColumnForPrint": "Include column {{column}} in print",
+      "selectColumnsForPrint": "Check one or more columns to enable printing.",
+      "selectedColumnsForPrint": "{{count}} columns selected for printing"
     }
   },
   "services": {
@@ -3905,7 +3921,8 @@
     "progressBuildingPdf": "Building PDF (page {{page}}/{{total}})…",
     "progressSavingInvoice": "Saving invoice record…"
   },
-  "pdfPreview": {
+  "printPreviewEditor": {
+    "title": "Print Preview Editor",
     "fitPage": "Fit",
     "bottomWarning": "Avoid placing components here — they may be cut off when printing on A4."
   },

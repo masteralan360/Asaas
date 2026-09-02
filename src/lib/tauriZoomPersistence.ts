@@ -35,9 +35,9 @@ let accumulatedWheelDelta = 0
 let lastWheelAt = 0
 let zoomRuntime: 'tauri' | 'pwa' | null = null
 
-const isPdfPreviewRoute = () => {
+const isPrintPreviewEditorRoute = () => {
     const hashPath = window.location.hash.replace(/^#/, '').split('?')[0] || '/'
-    return /^(?:\/(?:en|ar|ku))?\/pdf-preview\/?$/.test(hashPath)
+    return /^(?:\/(?:en|ar|ku))?\/print-preview-editor\/?$/.test(hashPath)
 }
 
 const clampZoom = (zoom: number): number => {
@@ -131,8 +131,8 @@ const stopNativeZoom = (event: KeyboardEvent | WheelEvent) => {
 }
 
 const handleKeyDown = (event: KeyboardEvent) => {
-    // The PDF preview owns Ctrl/⌘ keyboard zoom so it can scale only its document.
-    if (isPdfPreviewRoute()) return
+    // The print preview editor owns Ctrl/⌘ keyboard zoom so it can scale only its document.
+    if (isPrintPreviewEditorRoute()) return
 
     if ((!event.ctrlKey && !event.metaKey) || event.altKey) return
 
@@ -170,8 +170,8 @@ const normalizeWheelDelta = (event: WheelEvent) => {
 }
 
 const handleWheel = (event: WheelEvent) => {
-    // The PDF preview owns Ctrl/⌘ + wheel zoom so it can scale only its document.
-    if (isPdfPreviewRoute()) return
+    // The print preview editor owns Ctrl/⌘ + wheel zoom so it can scale only its document.
+    if (isPrintPreviewEditorRoute()) return
 
     if (!event.ctrlKey && !event.metaKey) return
 

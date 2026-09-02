@@ -29,7 +29,7 @@ import { ReactQRCode } from '@lglab/react-qr-code'
 import { MapPin, Phone } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
 import type { ReactNode } from 'react'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 import { MovableOrderPrintBlock } from '../MovableComponentPrint'
 import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
 import { OrderPrintReturnValue } from './OrderPrintReturnValue'
@@ -997,7 +997,7 @@ export function OrderDetailsPrintTemplate({
             style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
             data-order-print-page
             data-page-width-mm="210"
-            data-pdf-preview-isolate-components
+            data-print-preview-editor-isolate-components
         >
             <style
                 dangerouslySetInnerHTML={{

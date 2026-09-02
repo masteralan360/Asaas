@@ -47,7 +47,7 @@ import {
     resolveCustomTemplatePrintLanguage,
     stampCustomTemplatePrintLanguage
 } from '@/lib/customTemplates'
-import { setInvoicePreviewSource, type CustomTemplateBackground, type CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import { setPrintPreviewEditorSource, type CustomTemplateBackground, type CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
 import { formatDateTime } from '@/lib/utils'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { useWorkspace } from '@/workspace'
@@ -426,7 +426,7 @@ export function CustomTemplates() {
         if (!target || !workspaceId) return
         const resolvedInitialLayout = initialTemplateLayout || readStoredLayout(template)
 
-        setInvoicePreviewSource({
+        setPrintPreviewEditorSource({
             title: t('customTemplates.previewTitle', {
                 defaultValue: '{{name}} Custom Template',
                 name: getCustomTemplateDisplayName(moduleTypeKey)
@@ -454,7 +454,7 @@ export function CustomTemplates() {
         })
 
         setIsAddOpen(false)
-        setLocation('/pdf-preview')
+        setLocation('/print-preview-editor')
     }, [availableTargets, features, i18n.language, saveTemplateLayout, setLocation, t, workspaceFooterContacts, workspaceId, workspaceName])
 
     const openSelectedTemplatePreview = useCallback(() => {

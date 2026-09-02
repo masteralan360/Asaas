@@ -8,7 +8,7 @@ import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
 import { AttachedShapesOverlay } from '@/ui/components/AttachedShapesOverlay'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
-import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 
 export const MODERN_A4_MOVABLE_COMPONENT_KEYS = {

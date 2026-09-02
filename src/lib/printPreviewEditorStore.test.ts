@@ -1,12 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
     A4_PAGE_HEIGHT_MM,
+    clearPendingPrintPreviewEditorView,
+    clearPrintPreviewEditorSource,
     getCustomTemplateLayoutHeightMm,
     getCustomTemplateLayoutOverflowHeightMm,
     getCustomTemplateLayoutPageCount,
-    shouldReflowCustomTemplateText
-} from './pdfPreviewStore'
-import type { CustomTemplateLayout } from './pdfPreviewStore'
+    getPendingPrintPreviewEditorView,
+    getPrintPreviewEditorSource,
+    setPendingPrintPreviewEditorView,
+    setPrintPreviewEditorSource,
+    shouldReflowCustomTemplateText,
+    subscribeToPendingPrintPreviewEditorView
+} from './printPreviewEditorStore'
+import type { CustomTemplateLayout } from './printPreviewEditorStore'
 
 function createLayout(overrides: Partial<CustomTemplateLayout> = {}): CustomTemplateLayout {
     return {
@@ -22,6 +29,38 @@ function createLayout(overrides: Partial<CustomTemplateLayout> = {}): CustomTemp
         ...overrides
     }
 }
+
+afterEach(() => {
+    clearPrintPreviewEditorSource()
+    clearPendingPrintPreviewEditorView()
+})
+
+describe('print preview editor state', () => {
+    it('stores and clears the active editor source', () => {
+        const source = { title: 'Print Preview Editor' }
+
+        setPrintPreviewEditorSource(source)
+        expect(getPrintPreviewEditorSource()).toBe(source)
+
+        clearPrintPreviewEditorSource()
+        expect(getPrintPreviewEditorSource()).toBeNull()
+    })
+
+    it('publishes pending editor view changes to subscribers', () => {
+        const listener = vi.fn()
+        const unsubscribe = subscribeToPendingPrintPreviewEditorView(listener)
+        const view = { url: 'blob:print-preview-editor', title: 'Saved document' }
+
+        setPendingPrintPreviewEditorView(view)
+        expect(getPendingPrintPreviewEditorView()).toBe(view)
+        expect(listener).toHaveBeenCalledTimes(1)
+
+        unsubscribe()
+        clearPendingPrintPreviewEditorView()
+        expect(getPendingPrintPreviewEditorView()).toBeNull()
+        expect(listener).toHaveBeenCalledTimes(1)
+    })
+})
 
 describe('custom template page extents', () => {
     it('keeps an empty A4 template to one fixed page', () => {

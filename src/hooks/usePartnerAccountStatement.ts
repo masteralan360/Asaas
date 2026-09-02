@@ -19,9 +19,14 @@ import {
     useSalesOrders
 } from '@/local-db'
 import { isDirectTransactionPartnerAccountEffect } from '@/local-db/payments'
-import type { PartnerAccountStatementData } from '@/lib/partnerAccountStatement'
+import {
+    getPartnerAccountStatementClosingBalances,
+    type PartnerAccountStatementClosingBalance,
+    type PartnerAccountStatementData
+} from '@/lib/partnerAccountStatement'
 
 const EMPTY_LOAN_PAYMENTS: NonNullable<PartnerAccountStatementData['loanPayments']> = []
+const ALL_TIME_PERIOD: PartnerAccountStatementData['period'] = { type: 'allTime' }
 
 /**
  * Loads the source documents for one business partner's derived subledger.
@@ -208,4 +213,23 @@ export function usePartnerAccountStatement(
             payments: settlementTransactions.length + loanPayments.length + merchantDeliveryEntries.length
         }
     }
+}
+
+/**
+ * Supplies invoice and print views with the Account Statement's current
+ * all-time balances without collapsing currencies or falling back to cached
+ * partner summary fields.
+ */
+export function usePartnerAccountStatementClosingBalances(
+    workspaceId: string | undefined,
+    partnerId: string | null | undefined
+): PartnerAccountStatementClosingBalance[] | undefined {
+    const { statementData } = usePartnerAccountStatement(workspaceId, partnerId, ALL_TIME_PERIOD)
+
+    return useMemo(
+        () => statementData
+            ? getPartnerAccountStatementClosingBalances(statementData)
+            : undefined,
+        [statementData]
+    )
 }
