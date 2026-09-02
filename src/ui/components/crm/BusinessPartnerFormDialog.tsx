@@ -47,13 +47,10 @@ import { useWorkspace } from '@/workspace'
 import { PartnerLocationField } from '@/ui/components/crm/PartnerLocationField'
 
 type BusinessPartnerFormState = {
-    name: string
-    contactName: string
-    email: string
+    partnerName: string
     phone: string
     address: string
     city: string
-    country: string
     defaultCurrency: CurrencyCode
     notes: string
     latitude: number | null
@@ -76,13 +73,10 @@ const DEFAULT_ROLE: BusinessPartnerRole = 'both'
 
 function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRole, agentType: AgentType = 'field_agent'): BusinessPartnerFormState {
     return {
-        name: '',
-        contactName: '',
-        email: '',
+        partnerName: '',
         phone: '',
         address: '',
         city: '',
-        country: '',
         defaultCurrency,
         notes: '',
         latitude: null,
@@ -104,13 +98,10 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
 
 function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPartnerFormState {
     return {
-        name: partner.name,
-        contactName: partner.contactName || '',
-        email: partner.email || '',
+        partnerName: partner.partnerName,
         phone: partner.phone || '',
         address: partner.address || '',
         city: partner.city || '',
-        country: partner.country || '',
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes || '',
         latitude: partner.latitude ?? null,
@@ -135,13 +126,10 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
 }
 
 export interface BusinessPartnerFormPayload {
-    name: string
-    contactName?: string
-    email?: string
+    partnerName: string
     phone?: string
     address?: string
     city?: string
-    country?: string
     defaultCurrency: CurrencyCode
     notes?: string
     latitude: number | null
@@ -284,6 +272,9 @@ export function BusinessPartnerFormDialog({
 
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
+        if (!formState.partnerName.trim()) {
+            return
+        }
         if (
             !partner
             && priceBooksEnabled
@@ -304,13 +295,10 @@ export function BusinessPartnerFormDialog({
             ? null
             : Number(formState.payableCreditLimit)
         await onSubmit({
-            name: formState.name.trim(),
-            contactName: formState.contactName.trim() || undefined,
-            email: formState.email.trim() || undefined,
+            partnerName: formState.partnerName.trim(),
             phone: formState.phone.trim(),
             address: formState.address.trim(),
             city: formState.city.trim() || undefined,
-            country: formState.country.trim() || undefined,
             defaultCurrency: formState.defaultCurrency,
             notes: formState.notes.trim() || undefined,
             latitude: formState.latitude,
@@ -338,6 +326,7 @@ export function BusinessPartnerFormDialog({
     }
 
     const isAgentRole = isAgentBusinessPartnerRole(formState.role)
+    const canSubmit = formState.partnerName.trim().length > 0
     const lockedRoleLabel = lockedRole
         ? roleOptions.find((role) => role.value === lockedRole)?.label || lockedRole
         : null
@@ -359,33 +348,16 @@ export function BusinessPartnerFormDialog({
                             <div className="space-y-2">
                                 <Label htmlFor="business-partner-name">
                                     {isAgentRole
-                                        ? t('businessPartners.agent.name')
-                                        : (t('suppliers.form.name') || 'Company Name')}{' '}
+                                        ? t('businessPartners.agent.partnerName')
+                                        : t('businessPartners.form.partnerName')}{' '}
                                     <span className="text-destructive">*</span>
                                 </Label>
                                 <Input
                                     data-tour-id="tutorial-business-partner-name"
                                     id="business-partner-name"
-                                    value={formState.name}
-                                    onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))}
+                                    value={formState.partnerName}
+                                    onChange={(event) => setFormState((current) => ({ ...current, partnerName: event.target.value }))}
                                     required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="business-partner-contact">{t('suppliers.form.contactName') || 'Contact Name'}</Label>
-                                <Input
-                                    id="business-partner-contact"
-                                    value={formState.contactName}
-                                    onChange={(event) => setFormState((current) => ({ ...current, contactName: event.target.value }))}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="business-partner-email">{t('customers.form.email') || 'Email'}</Label>
-                                <Input
-                                    id="business-partner-email"
-                                    type="email"
-                                    value={formState.email}
-                                    onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -652,14 +624,6 @@ export function BusinessPartnerFormDialog({
                                     onChange={(event) => setFormState((current) => ({ ...current, city: event.target.value }))}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="business-partner-country">{t('customers.form.country') || 'Country'}</Label>
-                                <Input
-                                    id="business-partner-country"
-                                    value={formState.country}
-                                    onChange={(event) => setFormState((current) => ({ ...current, country: event.target.value }))}
-                                />
-                            </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor="business-partner-address">{t('customers.form.address') || 'Address'} <span className="text-destructive">*</span></Label>
                                 <Input
@@ -715,7 +679,7 @@ export function BusinessPartnerFormDialog({
                         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
                             {t('common.cancel') || 'Cancel'}
                         </Button>
-                        <Button type="submit" className="w-full sm:w-auto" disabled={isSaving} data-tour-id="tutorial-business-partner-save">
+                        <Button type="submit" className="w-full sm:w-auto" disabled={isSaving || !canSubmit} data-tour-id="tutorial-business-partner-save">
                             {isSaving
                                 ? (t('common.loading') || 'Loading...')
                                 : (submitLabel || (partner ? (t('common.save') || 'Save') : (t('common.create') || 'Create')))}

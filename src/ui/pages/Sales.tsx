@@ -326,7 +326,7 @@ export function Sales() {
         [workspaceUsers]
     )
     const deliveryMerchantNameByProfileId = useMemo(() => {
-        const partnerNameById = new Map(deliveryBusinessPartners.map((partner) => [partner.id, partner.name] as const))
+        const partnerNameById = new Map(deliveryBusinessPartners.map((partner) => [partner.id, partner.partnerName] as const))
         return new Map(deliveryMerchantProfiles.map((profile) => [profile.id, partnerNameById.get(profile.businessPartnerId) || null] as const))
     }, [deliveryBusinessPartners, deliveryMerchantProfiles])
     const deliveryMerchantBusinessPartnerIdByProfileId = useMemo(

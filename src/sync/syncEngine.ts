@@ -788,6 +788,18 @@ export function shouldApplyRemoteItem(
     (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt > localUpdatedAt);
 }
 
+function removeRetiredPartnerFields(
+  table: string,
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  if (table !== "business_partners" && table !== "customers" && table !== "suppliers") {
+    return record;
+  }
+
+  const { email: _email, country: _country, ...retained } = record;
+  return retained;
+}
+
 // Process offline mutation queue
 export async function processMutationQueue(
   _userId: string,
@@ -1662,7 +1674,10 @@ export async function pullChanges(
 
           for (const remoteItem of data) {
             const localItem = await dbTable.get(remoteItem.id);
-            const remoteData = toCamelCase(remoteItem);
+            const remoteData = removeRetiredPartnerFields(
+              table,
+              toCamelCase(remoteItem) as Record<string, unknown>,
+            );
 
             if (table === "price_book_items") {
               const priceBookId = (remoteData as { priceBookId?: unknown }).priceBookId;

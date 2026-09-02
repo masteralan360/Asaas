@@ -77,7 +77,7 @@ function readPartnerSelection(location: string) {
     const searchParams = new URLSearchParams(location.split('?')[1] || '')
     return {
         id: searchParams.get('partnerId'),
-        name: searchParams.get('partnerName') || ''
+        partnerName: searchParams.get('partnerName') || ''
     }
 }
 
@@ -306,7 +306,7 @@ export function AccountStatements() {
     const [location, navigate] = useLocation()
     const urlPartnerSelection = useMemo(() => readPartnerSelection(location), [location])
     const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(urlPartnerSelection.id)
-    const [partnerQuery, setPartnerQuery] = useState(urlPartnerSelection.name)
+    const [partnerQuery, setPartnerQuery] = useState(urlPartnerSelection.partnerName)
     const [dateRange, setDateRange] = useState<DateRangeType>('month')
     const [customDates, setCustomDates] = useState({ start: '', end: '' })
     const [customTemplates, setCustomTemplates] = useState<StoredCustomTemplateRow[]>([])
@@ -319,7 +319,7 @@ export function AccountStatements() {
     useEffect(() => {
         setSelectedPartnerId(urlPartnerSelection.id)
         if (urlPartnerSelection.id) {
-            setPartnerQuery(urlPartnerSelection.name)
+            setPartnerQuery(urlPartnerSelection.partnerName)
         }
     }, [urlPartnerSelection])
 
@@ -400,13 +400,10 @@ export function AccountStatements() {
             ...statementDataForDisplay,
             workspace: workspacePrintContacts,
             partner: {
-                name: partner.name,
-                contactName: partner.contactName,
-                email: partner.email,
+                partnerName: partner.partnerName,
                 phone: partner.phone,
                 address: partner.address,
-                city: partner.city,
-                country: partner.country
+                city: partner.city
             },
             generatedAt: new Date().toISOString()
         }
@@ -525,21 +522,21 @@ export function AccountStatements() {
         if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) return
         setSelectedPrintTemplate(template || null)
     }, [currentTemplatePrintLanguage])
-    const selectPartner = useCallback((nextPartner: { id: string; name: string }) => {
+    const selectPartner = useCallback((nextPartner: { id: string; partnerName: string }) => {
         setSelectedPartnerId(nextPartner.id)
-        setPartnerQuery(nextPartner.name)
-        navigate(`${ACCOUNT_STATEMENT_PATH}?partnerId=${encodeURIComponent(nextPartner.id)}&partnerName=${encodeURIComponent(nextPartner.name)}`)
+        setPartnerQuery(nextPartner.partnerName)
+        navigate(`${ACCOUNT_STATEMENT_PATH}?partnerId=${encodeURIComponent(nextPartner.id)}&partnerName=${encodeURIComponent(nextPartner.partnerName)}`)
     }, [navigate])
     const changePartnerQuery = useCallback((value: string) => {
         setPartnerQuery(value)
-        if (selectedPartnerId && value !== partner?.name) {
+        if (selectedPartnerId && value !== partner?.partnerName) {
             setSelectedPartnerId(null)
             navigate(ACCOUNT_STATEMENT_PATH)
         }
-    }, [navigate, partner?.name, selectedPartnerId])
+    }, [navigate, partner?.partnerName, selectedPartnerId])
 
     useEffect(() => {
-        if (partner && selectedPartnerId === partner.id) setPartnerQuery(partner.name)
+        if (partner && selectedPartnerId === partner.id) setPartnerQuery(partner.partnerName)
     }, [partner, selectedPartnerId])
 
     // Ordinary partners can choose the old document-level view or the new
@@ -661,7 +658,7 @@ export function AccountStatements() {
                 <Card>
                     <CardContent className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
                         <FileText className="mb-4 h-10 w-10 text-muted-foreground" />
-                        <h2 className="text-lg font-semibold">{partner.name}</h2>
+                        <h2 className="text-lg font-semibold">{partner.partnerName}</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
                             {t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })}
                         </p>
@@ -675,9 +672,9 @@ export function AccountStatements() {
                                 <FileText className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                                <h1 className="truncate text-lg font-bold">{partner.name}</h1>
+                                <h1 className="truncate text-lg font-bold">{partner.partnerName}</h1>
                                 <p className="text-sm text-muted-foreground">
-                                    {[partner.contactName, partner.phone, partner.address].filter(Boolean).join(' · ')
+                                    {[partner.phone, partner.address].filter(Boolean).join(' · ')
                                         || t('businessPartners.accountStatement.accountActivity', { defaultValue: 'Account Activity' })}
                                 </p>
                             </div>

@@ -563,7 +563,7 @@ export async function recordRealEstateCommissionPayment(
             businessPartnerId = null
         } else {
             businessPartnerId = partner.id
-            counterpartyName = partner.name
+            counterpartyName = partner.partnerName
         }
     }
 

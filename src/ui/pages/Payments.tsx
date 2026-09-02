@@ -54,6 +54,7 @@ import {
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { PartnerSettlementDialog } from '@/ui/components/payments/PartnerSettlementDialog'
+import { ReverseTransactionCofirmationDialog } from '@/ui/components/payments/ReverseTransactionCofirmationDialog'
 import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 
@@ -226,6 +227,7 @@ export function Payments() {
     const [selectedObligation, setSelectedObligation] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [reversingTransactionId, setReversingTransactionId] = useState<string | null>(null)
+    const [transactionToReverse, setTransactionToReverse] = useState<PaymentTransaction | null>(null)
     const [isPartnerSettlementOpen, setIsPartnerSettlementOpen] = useState(false)
 
     const settlementAction = useMemo(() => {
@@ -422,17 +424,18 @@ export function Payments() {
         }
     }
 
-    const handleReverse = async (transaction: PaymentTransaction) => {
-        if (!workspaceId) {
+    const handleReverse = async () => {
+        if (!workspaceId || !transactionToReverse || reversingTransactionId) {
             return
         }
 
-        setReversingTransactionId(transaction.id)
+        setReversingTransactionId(transactionToReverse.id)
         try {
-            await reversePaymentTransaction(workspaceId, transaction.id, {
+            await reversePaymentTransaction(workspaceId, transactionToReverse.id, {
                 createdBy: user?.id || null
             })
             toast({ title: t('payments.reversed', { defaultValue: 'Transaction reversed' }) })
+            setTransactionToReverse(null)
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
@@ -773,7 +776,7 @@ export function Payments() {
                                                             <Button
                                                                 variant="outline"
                                                                 size="sm"
-                                                                onClick={() => handleReverse(item)}
+                                                                onClick={() => setTransactionToReverse(item)}
                                                                 disabled={reversingTransactionId === item.id}
                                                             >
                                                                 <RotateCcw className="ms-1 h-3.5 w-3.5" />
@@ -804,6 +807,19 @@ export function Payments() {
                 includeLoanAdjustment={selectedObligation?.sourceModule === 'loans'}
                 isSubmitting={isSubmittingSettlement}
                 onSubmit={handleSettle}
+            />
+
+            <ReverseTransactionCofirmationDialog
+                open={!!transactionToReverse}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setTransactionToReverse(null)
+                    }
+                }}
+                onConfirm={() => { void handleReverse() }}
+                isProcessing={reversingTransactionId === transactionToReverse?.id}
+                transaction={transactionToReverse}
+                iqdPreference={features.iqd_display_preference}
             />
 
             {workspaceId ? (

@@ -261,7 +261,7 @@ describe('atomic POS Quick Order completion', () => {
 
         await db.business_partners.put({
             ...baseEntity(PARTNER_ID),
-            name: 'Fast Checkout Customer',
+            partnerName: 'Fast Checkout Customer',
             phone: '07500000000',
             defaultCurrency: 'usd',
             role: 'customer',
@@ -280,7 +280,7 @@ describe('atomic POS Quick Order completion', () => {
         await db.customers.put({
             ...baseEntity(CUSTOMER_ID),
             businessPartnerId: PARTNER_ID,
-            name: 'Fast Checkout Customer',
+            partnerName: 'Fast Checkout Customer',
             phone: '07500000000',
             defaultCurrency: 'usd',
             totalOrders: 0,

@@ -49,7 +49,7 @@ function installBrowserEnvironment() {
 function partner(id: string): BusinessPartner {
   const now = new Date().toISOString();
   return {
-    id, workspaceId: WORKSPACE_ID, name: "Shop A", role: "customer", defaultCurrency: "iqd",
+    id, workspaceId: WORKSPACE_ID, partnerName: "Shop A", role: "customer", defaultCurrency: "iqd",
     creditLimit: 0, receivableCreditLimit: null, payableCreditLimit: null,
     customerFacetId: null, supplierFacetId: null, agentFacetId: null,
     totalSalesOrders: 0, totalSalesValue: 0, receivableBalance: 0,
@@ -1173,12 +1173,12 @@ describe("Post Service COD accounting", () => {
       ...shipment,
       status: "delivered",
       deliveredAt: "2026-08-15T12:00:00.000Z",
-    }, { merchantName: merchant.name, merchantBusinessPartnerId: merchant.id });
+    }, { merchantName: merchant.partnerName, merchantBusinessPartnerId: merchant.id });
 
     expect(sale).toMatchObject({
       origin: "post_service",
       total_amount: 5000,
-      partyName: merchant.name,
+      partyName: merchant.partnerName,
       business_partner_id: merchant.id,
       _trackingNumber: shipment.trackingNumber,
     });

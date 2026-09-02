@@ -800,9 +800,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         return products.filter((product) => product.id === selectedProductId || availableIds.has(product.id))
     }
 
-    const selectedCustomerName = customers.find((entry) => entry.id === salesForm.customerId)?.name
+    const selectedCustomerName = customers.find((entry) => entry.id === salesForm.customerId)?.partnerName
         || t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })
-    const selectedSupplierName = suppliers.find((entry) => entry.id === purchaseForm.supplierId)?.name
+    const selectedSupplierName = suppliers.find((entry) => entry.id === purchaseForm.supplierId)?.partnerName
         || t('orders.form.selectSupplier', { defaultValue: 'Select Supplier' })
     const selectedSalesStorageName = getStorageSummaryName(salesForm.items, salesForm.sourceStorageId)
     const selectedPurchaseStorageName = getStorageSummaryName(purchaseForm.items, purchaseForm.destinationStorageId)
@@ -1073,7 +1073,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             const payload = {
                 businessPartnerId: customer.id,
                 customerId: customer.id,
-                customerName: customer.name,
+                customerName: customer.partnerName,
                 sourceStorageId,
                 items,
                 subtotal,
@@ -1145,7 +1145,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             const payload = {
                 businessPartnerId: supplier.id,
                 supplierId: supplier.id,
-                supplierName: supplier.name,
+                supplierName: supplier.partnerName,
                 destinationStorageId,
                 items,
                 subtotal,
@@ -2350,7 +2350,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         <SelectTrigger><SelectValue placeholder={t('orders.form.selectCustomer') || 'Select Customer'} /></SelectTrigger>
                                                         <SelectContent>
                                                             {customers.map((customer) => (
-                                                                <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>
+                                                                <SelectItem key={customer.id} value={customer.id}>{customer.partnerName}</SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
@@ -2635,7 +2635,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                         <SelectTrigger><SelectValue placeholder={t('orders.form.selectSupplier') || 'Select Supplier'} /></SelectTrigger>
                                                         <SelectContent>
                                                             {suppliers.map((supplier) => (
-                                                                <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
+                                                                <SelectItem key={supplier.id} value={supplier.id}>{supplier.partnerName}</SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>

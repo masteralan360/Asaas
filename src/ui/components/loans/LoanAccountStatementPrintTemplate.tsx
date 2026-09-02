@@ -72,7 +72,7 @@ export function LoanAccountStatementPrintTemplate({
                     </div>
                     <div className="space-y-1 text-[10px] leading-4">
                         <h1 className="text-[17px] font-bold">{t('loans.accountStatement.title')}</h1>
-                        <div><span className="font-bold">{t('loans.accountStatement.partner')}:</span> {data.partner.name}</div>
+                        <div><span className="font-bold">{t('loans.accountStatement.partner')}:</span> {data.partner.partnerName}</div>
                         <div><span className="font-bold">{t('loans.accountStatement.loan')}:</span> {data.loan.loanNo}</div>
                         <div><span className="font-bold">{t('loans.accountStatement.repaymentDate')}:</span> {formatDateTime(data.selectedPayment.paidAt)}</div>
                         <div><span className="font-bold">{t('loans.accountStatement.paymentMethod')}:</span> {t(`pos.${data.selectedPayment.paymentMethod}`)}</div>

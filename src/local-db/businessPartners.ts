@@ -122,6 +122,34 @@ function getSyncMetadata(workspaceId: string, timestamp: string) {
     }
 }
 
+function normalizeRequiredPartnerName(value: unknown) {
+    const partnerName = typeof value === 'string' ? value.trim() : ''
+    if (!partnerName) {
+        throw new Error('Partner name is required')
+    }
+    return partnerName
+}
+
+/**
+ * A partially migrated cache row must never make the directory unusable.
+ * Do not revive the retired `name` or `contactName` fields here: migrations
+ * own that one-time conversion. This is only a safe display fallback while a
+ * stale local or remote cache catches up.
+ */
+function normalizeRuntimePartnerName(partner: BusinessPartner): BusinessPartner {
+    const { email: _email, country: _country, ...activePartner } = partner as BusinessPartner & {
+        email?: unknown
+        country?: unknown
+    }
+    const partnerName = typeof partner.partnerName === 'string' ? partner.partnerName.trim() : ''
+    if (partnerName) {
+        return partnerName === partner.partnerName
+            ? activePartner
+            : { ...activePartner, partnerName }
+    }
+    return { ...activePartner, partnerName: 'Unnamed partner' }
+}
+
 function roundAmount(amount: number, _currency: CurrencyCode) {
     return roundOrderValue(amount)
 }
@@ -194,6 +222,15 @@ function sanitizeSyncPayload(tableName: PartnerTableName, entity: Record<string,
     const payload = { ...entity }
     delete payload.syncStatus
     delete payload.lastSyncedAt
+
+    // These fields are retained in local storage solely for historical
+    // recovery. The active business-partner contract is `partnerName`.
+    if (tableName === 'business_partners' || tableName === 'customers' || tableName === 'suppliers') {
+        delete payload.name
+        delete payload.contactName
+        delete payload.email
+        delete payload.country
+    }
 
     // Agent images are owned by the linked user profile, not by crm.agents.
     // Strip this legacy field so an older local cache cannot reintroduce it.
@@ -418,12 +455,10 @@ function partnerToCustomer(partner: BusinessPartner): Customer {
         id: partner.id,
         workspaceId: partner.workspaceId,
         businessPartnerId: partner.id,
-        name: partner.name,
-        email: partner.email,
+        partnerName: partner.partnerName,
         phone: partner.phone,
         address: partner.address,
         city: partner.city,
-        country: partner.country,
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes,
         totalOrders: partner.totalSalesOrders,
@@ -445,13 +480,10 @@ function partnerToSupplier(partner: BusinessPartner): Supplier {
         id: partner.id,
         workspaceId: partner.workspaceId,
         businessPartnerId: partner.id,
-        name: partner.name,
-        contactName: partner.contactName,
-        email: partner.email,
+        partnerName: partner.partnerName,
         phone: partner.phone,
         address: partner.address,
         city: partner.city,
-        country: partner.country,
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes,
         totalPurchases: partner.totalPurchaseOrders,
@@ -470,14 +502,14 @@ function partnerToSupplier(partner: BusinessPartner): Supplier {
 async function getPartnerByAnyId(id: string) {
     const direct = await db.business_partners.get(id)
     if (direct && !direct.isDeleted) {
-        return direct
+        return normalizeRuntimePartnerName(direct)
     }
 
     const customerFacet = await db.customers.get(id)
     if (customerFacet?.businessPartnerId) {
         const customerPartner = await db.business_partners.get(customerFacet.businessPartnerId)
         if (customerPartner && !customerPartner.isDeleted) {
-            return customerPartner
+            return normalizeRuntimePartnerName(customerPartner)
         }
     }
 
@@ -485,7 +517,7 @@ async function getPartnerByAnyId(id: string) {
     if (supplierFacet?.businessPartnerId) {
         const supplierPartner = await db.business_partners.get(supplierFacet.businessPartnerId)
         if (supplierPartner && !supplierPartner.isDeleted) {
-            return supplierPartner
+            return normalizeRuntimePartnerName(supplierPartner)
         }
     }
 
@@ -493,7 +525,7 @@ async function getPartnerByAnyId(id: string) {
     if (agentFacet?.businessPartnerId) {
         const agentPartner = await db.business_partners.get(agentFacet.businessPartnerId)
         if (agentPartner && !agentPartner.isDeleted) {
-            return agentPartner
+            return normalizeRuntimePartnerName(agentPartner)
         }
     }
 
@@ -523,12 +555,10 @@ async function mirrorPartnerToFacets(partner: BusinessPartner) {
             const mirroredCustomer: Customer = {
                 ...customer,
                 businessPartnerId: partner.id,
-                name: partner.name,
-                email: partner.email,
+                partnerName: partner.partnerName,
                 phone: partner.phone,
                 address: partner.address,
                 city: partner.city,
-                country: partner.country,
                 defaultCurrency: partner.defaultCurrency,
                 notes: partner.notes,
                 creditLimit: partner.receivableCreditLimit ?? partner.creditLimit ?? 0,
@@ -547,13 +577,10 @@ async function mirrorPartnerToFacets(partner: BusinessPartner) {
             const mirroredSupplier: Supplier = {
                 ...supplier,
                 businessPartnerId: partner.id,
-                name: partner.name,
-                contactName: partner.contactName,
-                email: partner.email,
+                partnerName: partner.partnerName,
                 phone: partner.phone,
                 address: partner.address,
                 city: partner.city,
-                country: partner.country,
                 defaultCurrency: partner.defaultCurrency,
                 notes: partner.notes,
                 creditLimit: partner.payableCreditLimit ?? partner.creditLimit ?? 0,
@@ -1247,12 +1274,10 @@ async function assertRoleRemovalAllowed(partner: BusinessPartner, nextRole: Busi
 async function createFacetFromPartner(partner: BusinessPartner, facetType: PartnerFacetType) {
     const base = buildBaseEntity(partner.workspaceId, {
         businessPartnerId: partner.id,
-        name: partner.name,
-        email: partner.email,
+        partnerName: partner.partnerName,
         phone: partner.phone,
         address: partner.address,
         city: partner.city,
-        country: partner.country,
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes,
         creditLimit: facetType === 'customer'
@@ -1274,7 +1299,6 @@ async function createFacetFromPartner(partner: BusinessPartner, facetType: Partn
 
     const supplier: Supplier = {
         ...base,
-        contactName: partner.contactName,
         totalPurchases: 0,
         totalSpent: 0
     }
@@ -1349,33 +1373,29 @@ async function refreshBusinessPartnerMergeCandidates(workspaceId: string) {
     const supplierPartners = partners.filter((partner) => roleIncludesSupplier(partner.role))
 
     for (const customerPartner of customerPartners) {
-        const customerName = normalizeMatchValue(customerPartner.name)
+        const customerName = normalizeMatchValue(customerPartner.partnerName)
         const customerPhone = normalizeMatchValue(customerPartner.phone)
-        const customerEmail = normalizeMatchValue(customerPartner.email)
 
         for (const supplierPartner of supplierPartners) {
             if (customerPartner.id === supplierPartner.id) {
                 continue
             }
 
-            const supplierName = normalizeMatchValue(supplierPartner.name)
+            const supplierName = normalizeMatchValue(supplierPartner.partnerName)
             const supplierPhone = normalizeMatchValue(supplierPartner.phone)
-            const supplierEmail = normalizeMatchValue(supplierPartner.email)
             const exactName = customerName && customerName === supplierName
             const phoneMatch = customerPhone && customerPhone === supplierPhone
-            const emailMatch = customerEmail && customerEmail === supplierEmail
 
-            if (!exactName && !phoneMatch && !emailMatch) {
+            if (!exactName && !phoneMatch) {
                 continue
             }
 
             const existing = currentByKey.get(getMergeCandidateKey(customerPartner.id, supplierPartner.id))
             const reasons = [
                 exactName ? 'matching name' : '',
-                phoneMatch ? 'matching phone' : '',
-                emailMatch ? 'matching email' : ''
+                phoneMatch ? 'matching phone' : ''
             ].filter(Boolean)
-            const confidence = exactName && (phoneMatch || emailMatch)
+            const confidence = exactName && phoneMatch
                 ? 0.98
                 : exactName
                     ? 0.86
@@ -1444,7 +1464,9 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
 
                 return true
             }).toArray()
-            return rows.sort((a, b) => a.name.localeCompare(b.name))
+            return rows
+                .map(normalizeRuntimePartnerName)
+                .sort((a, b) => a.partnerName.localeCompare(b.partnerName))
         },
         [workspaceId, JSON.stringify(filters || {})]
     )
@@ -1547,7 +1569,11 @@ export async function createBusinessPartner(
     options?: BusinessPartnerRoleAccessOptions
 ) {
     assertBusinessPartnerRoleAllowed(data.role, options)
-    const { agent: agentInput, ...partnerData } = data
+    const { agent: agentInput, email: _email, country: _country, ...partnerData } = data as BusinessPartnerCreateInput & {
+        email?: unknown
+        country?: unknown
+    }
+    const partnerName = normalizeRequiredPartnerName(partnerData.partnerName)
     const normalizedAgentInput = roleIncludesAgent(data.role)
         ? normalizeAgentFacetInput(agentInput)
         : undefined
@@ -1558,6 +1584,7 @@ export async function createBusinessPartner(
         : null
     const partner = buildBaseEntity(workspaceId, {
         ...partnerData,
+        partnerName,
         receivableCreditLimit: partnerData.receivableCreditLimit !== undefined
             ? partnerData.receivableCreditLimit
             : roleIncludesCustomer(partnerData.role) ? legacyLimit : null,
@@ -1634,7 +1661,13 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
         throw new Error('Business partner not found')
     }
 
-    const { agent: agentInput, ...partnerChanges } = data
+    const { agent: agentInput, email: _email, country: _country, ...partnerChanges } = data as BusinessPartnerUpdateInput & {
+        email?: unknown
+        country?: unknown
+    }
+    if (partnerChanges.partnerName !== undefined) {
+        partnerChanges.partnerName = normalizeRequiredPartnerName(partnerChanges.partnerName)
+    }
     const nextRole = (partnerChanges.role || existing.role) as BusinessPartnerRole
     if (partnerChanges.creditLimit !== undefined) {
         if (partnerChanges.receivableCreditLimit === undefined && roleIncludesCustomer(nextRole)) {
@@ -1659,8 +1692,12 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
     )
 
     const now = new Date().toISOString()
+    const { email: _existingEmail, country: _existingCountry, ...activeExisting } = existing as BusinessPartner & {
+        email?: unknown
+        country?: unknown
+    }
     let updated: BusinessPartner = {
-        ...existing,
+        ...activeExisting,
         ...partnerChanges,
         role: nextRole,
         receivableCreditLimit: partnerChanges.receivableCreditLimit !== undefined
@@ -1824,13 +1861,10 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
         : 'both'
     const mergedPrimary: BusinessPartner = {
         ...primary,
-        name: primary.name || secondary.name,
-        contactName: primary.contactName || secondary.contactName,
-        email: primary.email || secondary.email,
+        partnerName: primary.partnerName || secondary.partnerName,
         phone: primary.phone || secondary.phone,
         address: primary.address || secondary.address,
         city: primary.city || secondary.city,
-        country: primary.country || secondary.country,
         notes: primary.notes || secondary.notes,
         role: mergedRole,
         creditLimit: Math.max(primary.creditLimit || 0, secondary.creditLimit || 0),
@@ -2002,13 +2036,10 @@ export async function createCustomer(
     data: Omit<Customer, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalOrders' | 'totalSpent' | 'outstandingBalance'>
 ) {
     const partner = await createBusinessPartner(workspaceId, {
-        name: data.name,
-        contactName: undefined,
-        email: data.email,
+        partnerName: data.partnerName,
         phone: data.phone,
         address: data.address,
         city: data.city,
-        country: data.country,
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
         role: 'customer',
@@ -2024,13 +2055,10 @@ export async function createSupplier(
     data: Omit<Supplier, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalPurchases' | 'totalSpent'>
 ) {
     const partner = await createBusinessPartner(workspaceId, {
-        name: data.name,
-        contactName: data.contactName,
-        email: data.email,
+        partnerName: data.partnerName,
         phone: data.phone,
         address: data.address,
         city: data.city,
-        country: data.country,
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
         role: 'supplier',
@@ -2043,12 +2071,10 @@ export async function createSupplier(
 
 export async function updateCustomer(id: string, data: Partial<Customer>) {
     const partner = await updateBusinessPartner(id, {
-        name: data.name,
-        email: data.email,
+        partnerName: data.partnerName,
         phone: data.phone,
         address: data.address,
         city: data.city,
-        country: data.country,
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
         creditLimit: data.creditLimit,
@@ -2060,13 +2086,10 @@ export async function updateCustomer(id: string, data: Partial<Customer>) {
 
 export async function updateSupplier(id: string, data: Partial<Supplier>) {
     const partner = await updateBusinessPartner(id, {
-        name: data.name,
-        contactName: data.contactName,
-        email: data.email,
+        partnerName: data.partnerName,
         phone: data.phone,
         address: data.address,
         city: data.city,
-        country: data.country,
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
         creditLimit: data.creditLimit,

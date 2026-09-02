@@ -29,7 +29,7 @@ export function OnlineCustomers() {
         }
 
         return onlineCustomers.filter((partner) =>
-            [partner.name, partner.contactName, partner.email, partner.phone, partner.city, partner.country]
+            [partner.partnerName, partner.phone, partner.city]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(query))
         )
@@ -84,9 +84,9 @@ export function OnlineCustomers() {
                                             <Users className="h-5 w-5" />
                                         </div>
                                         <div className="min-w-0">
-                                            <div className="truncate font-semibold">{partner.name}</div>
+                                            <div className="truncate font-semibold">{partner.partnerName}</div>
                                             <div className="truncate text-xs text-muted-foreground">
-                                                {partner.phone || partner.email || partner.city || t('common.na', { defaultValue: 'N/A' })}
+                                                {partner.phone || partner.city || t('common.na', { defaultValue: 'N/A' })}
                                             </div>
                                         </div>
                                     </div>

@@ -107,13 +107,10 @@ supabase/
 
 ```typescript
 interface Supplier extends BaseEntity {
-  name: string
-  contactName?: string
-  email?: string
+  partnerName: string
   phone?: string
   address?: string
   city?: string
-  country?: string
   defaultCurrency: CurrencyCode        // Their preferred currency
   notes?: string
   totalPurchases: number               // Running total of purchase orders
@@ -125,12 +122,10 @@ interface Supplier extends BaseEntity {
 
 ```typescript
 interface Customer extends BaseEntity {
-  name: string
-  email?: string
+  partnerName: string
   phone: string
   address?: string
   city?: string
-  country?: string
   defaultCurrency: CurrencyCode        // Their preferred currency
   notes?: string
   totalOrders: number                  // Count of orders

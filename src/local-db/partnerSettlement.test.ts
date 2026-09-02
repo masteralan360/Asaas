@@ -115,7 +115,7 @@ describe('partner settlement', () => {
 
     async function seedPartnerWithCommissions() {
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Master Alan',
+            partnerName: 'Master Alan',
             phone: '07500000001',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -240,7 +240,7 @@ describe('partner settlement', () => {
 
     it('rejects settling a partner with no eligible balance', async () => {
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Empty Partner',
+            partnerName: 'Empty Partner',
             phone: '07500000002',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -260,7 +260,7 @@ describe('partner settlement', () => {
 
     it('does not include obligations of another business partner', async () => {
         const partnerA = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Partner A',
+            partnerName: 'Partner A',
             phone: '07500000003',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -415,7 +415,7 @@ describe('partner settlement', () => {
 
     it('allocates by source-record creation date when due dates are missing', async () => {
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Master Alan',
+            partnerName: 'Master Alan',
             phone: '07500000001',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -498,6 +498,6 @@ describe('partner settlement', () => {
         const refreshed = await db.business_partners.get(partner.id)
         expect(refreshed).toBeTruthy()
         expect(refreshed?.id).toBe(partner.id)
-        expect(result.partnerName).toBe(refreshed?.name)
+        expect(result.partnerName).toBe(refreshed?.partnerName)
     })
 })

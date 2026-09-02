@@ -1713,13 +1713,13 @@ export function Ledger() {
     const businessPartnerByName = useMemo(
         () => new Map(
             businessPartners
-                .filter((bp) => bp.name?.trim())
-                .map((bp) => [bp.name.trim().toLowerCase(), bp.id])
+                .filter((bp) => bp.partnerName.trim())
+                .map((bp) => [bp.partnerName.trim().toLowerCase(), bp.id])
         ),
         [businessPartners]
     )
     const businessPartnerNameById = useMemo(
-        () => new Map(businessPartners.map((partner) => [partner.id, partner.name] as const)),
+        () => new Map(businessPartners.map((partner) => [partner.id, partner.partnerName] as const)),
         [businessPartners]
     )
     const agentNameById = useMemo(

@@ -270,6 +270,26 @@ describe('Price Book sync recovery', () => {
         expect(payload).not.toHaveProperty('sync_status')
     })
 
+    it('syncs partnerName while excluding historical name metadata', () => {
+        const payload = prepareRemoteMutationPayload('business_partners', {
+            id: 'partner-1',
+            partnerName: 'Northwind Trading',
+            name: 'Historical company name',
+            contactName: 'Historical contact name',
+            email: 'legacy@example.test',
+            country: 'Iraq'
+        })
+
+        expect(payload).toMatchObject({
+            id: 'partner-1',
+            partner_name: 'Northwind Trading'
+        })
+        expect(payload).not.toHaveProperty('name')
+        expect(payload).not.toHaveProperty('contact_name')
+        expect(payload).not.toHaveProperty('email')
+        expect(payload).not.toHaveProperty('country')
+    })
+
     it('explains valid, excluded, and schema-rejected payload fields', () => {
         const rows = inspectRemoteMutationPayload('products', {
             id: 'product-1',

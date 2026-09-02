@@ -234,7 +234,7 @@ async function renderPrintTemplate(printLang: 'en' | 'ar', overrides: {
     const testSalesOrders = overrides.salesOrders ?? [salesOrder()]
     const testPurchaseOrders = overrides.purchaseOrders ?? [purchaseOrder()]
     const data: PartnerOrderItemsPrintData = {
-        partner: { name: 'Business Partner' },
+        partner: { partnerName: 'Business Partner' },
         period: { type: 'allTime' },
         generatedAt: '2026-07-06T18:51:00.000Z',
         balanceSummary: overrides.balanceSummary ?? {

@@ -1325,6 +1325,7 @@
     },
     "messages": {
       "addSuccess": "تمت إضافة العميل بنجاح",
+      "addError": "تعذر إنشاء العميل",
       "updateSuccess": "تم تحديث العميل بنجاح",
       "deleteSuccess": "تم حذف العميل بنجاح",
       "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا العميل؟"
@@ -4378,12 +4379,14 @@
     },
     "form": {
       "role": "الدور",
-      "contactName": "اسم جهة الاتصال"
+      "contactName": "اسم جهة الاتصال",
+      "partnerName": "اسم الشريك"
     },
     "receivableCreditLimit": "حد الائتمان المستحق",
     "payableCreditLimit": "حد الائتمان الواجب دفعه",
     "unlimited": "اترك الحقل فارغًا بلا حد",
     "agent": {
+      "partnerName": "اسم الوكيل",
       "name": "اسم الوكيل",
       "zone": "منطقة العمليات",
       "type": "نوع الوكيل",
@@ -4761,6 +4764,20 @@
       "cancel": "إلغاء",
       "save": "حفظ المعاملة"
     }
+  },
+  "reverseTransactionConfirmation": {
+    "title": "إلغاء هذه المعاملة؟",
+    "description": "سيتم إنشاء سجل دفعة إلغاء. ستبقى المعاملة الأصلية في السجل مع تحديث الأرصدة ذات الصلة ودفتر الأستاذ.",
+    "details": "تفاصيل المعاملة",
+    "source": "المصدر",
+    "direction": "الاتجاه",
+    "amount": "المبلغ",
+    "incoming": "دفعة واردة",
+    "outgoing": "دفعة صادرة",
+    "transaction": "المعاملة",
+    "warning": "لا يمكن التراجع عن هذا الإجراء. راجع التفاصيل قبل الإلغاء.",
+    "reversing": "جارٍ الإلغاء...",
+    "confirm": "إلغاء المعاملة"
   },
   "settlementModal": {
     "recordCollection": "تسجيل التحصيل",

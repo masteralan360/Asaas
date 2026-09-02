@@ -43,7 +43,7 @@ type DemoTutorialContextValue = {
   completePosSuccessModal: () => void
   completeSalesHistoryView: () => void
   completeSaleReturned: () => void
-  completeBusinessPartnerCreated: (partner: Pick<BusinessPartner, 'id' | 'name'>) => void
+  completeBusinessPartnerCreated: (partner: Pick<BusinessPartner, 'id' | 'partnerName'>) => void
   selectOrderType: (type: DemoOrderTutorialType) => void
   completeOrderCreated: (orderId: string, type?: DemoOrderTutorialType) => void
   isCurrentTask: (taskId: DemoTutorialTaskId) => boolean
@@ -222,13 +222,13 @@ export function DemoTutorialProvider({ children }: { children: ReactNode }) {
     })
   }, [persist])
 
-  const completeBusinessPartnerCreated = useCallback((partner: Pick<BusinessPartner, 'id' | 'name'>) => {
+  const completeBusinessPartnerCreated = useCallback((partner: Pick<BusinessPartner, 'id' | 'partnerName'>) => {
     persist((current) => {
       if (current.mode !== 'advanced' || current.currentTask !== 'business-partner') return current
       return {
         ...current,
         businessPartnerId: partner.id,
-        businessPartnerName: partner.name,
+        businessPartnerName: partner.partnerName,
         currentTask: 'order-choice',
       }
     })

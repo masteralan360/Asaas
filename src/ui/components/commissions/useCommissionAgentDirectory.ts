@@ -42,7 +42,7 @@ export function useCommissionAgentDirectory(workspaceId?: string) {
                 return {
                     agent,
                     partner,
-                    name: partner?.name || 'Unnamed agent',
+                    name: partner?.partnerName || 'Unnamed agent',
                     membership,
                     plan: membership ? planById.get(membership.planId) : undefined,
                     isEligible: agent.agentType === 'field_agent' && agent.status === 'active'

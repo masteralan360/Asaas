@@ -1,13 +1,12 @@
 CREATE TABLE crm.business_partners (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
+  partner_name text NOT NULL,
   name text NOT NULL,
   contact_name text NULL,
-  email text NULL,
   phone text NULL,
   address text NULL,
   city text NULL,
-  country text NULL,
   notes text NULL,
   default_currency text NOT NULL DEFAULT 'usd'::text,
   role text NOT NULL DEFAULT 'customer'::text,
@@ -41,6 +40,38 @@ CREATE TABLE crm.business_partners (
     FOREIGN KEY (price_book_id) REFERENCES public.price_books(id) ON DELETE SET NULL,
   PRIMARY KEY (id)
 );
+
+-- `partner_name` is Atlas's only active partner identity. Retain the old
+-- columns for database history and released routines without exposing them to
+-- the application contract.
+CREATE OR REPLACE FUNCTION crm.keep_partner_name_compatibility_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.partner_name := NULLIF(btrim(COALESCE(NEW.partner_name, NEW.name, '')), '');
+
+  IF NEW.partner_name IS NULL THEN
+    RAISE EXCEPTION 'partner_name is required';
+  END IF;
+
+  NEW.name := NEW.partner_name;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS keep_business_partner_name_compatibility ON crm.business_partners;
+CREATE TRIGGER keep_business_partner_name_compatibility
+  BEFORE INSERT OR UPDATE ON crm.business_partners
+  FOR EACH ROW
+  EXECUTE FUNCTION crm.keep_partner_name_compatibility_fields();
+
+COMMENT ON COLUMN crm.business_partners.partner_name IS
+  'Canonical active partner identity. Use this field for all application behavior and presentation.';
+COMMENT ON COLUMN crm.business_partners.name IS
+  'Legacy compatibility mirror. Do not query or display from Atlas application code.';
+COMMENT ON COLUMN crm.business_partners.contact_name IS
+  'Historical contact metadata. Do not query, display, or update from Atlas application code.';
 
 CREATE INDEX IF NOT EXISTS idx_crm_business_partners_workspace
   ON crm.business_partners (workspace_id);

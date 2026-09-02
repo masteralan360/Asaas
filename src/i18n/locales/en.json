@@ -1340,6 +1340,7 @@
     },
     "messages": {
       "addSuccess": "Customer added successfully",
+      "addError": "Failed to create customer",
       "updateSuccess": "Customer updated successfully",
       "deleteSuccess": "Customer deleted successfully",
       "deleteConfirm": "Are you sure you want to delete this customer?"
@@ -1573,12 +1574,14 @@
     "moneyOut": "Money Out",
     "form": {
       "role": "Role",
-      "contactName": "Contact Name"
+      "contactName": "Contact Name",
+      "partnerName": "Partner Name"
     },
     "receivableCreditLimit": "Receivable credit limit",
     "payableCreditLimit": "Payable credit limit",
     "unlimited": "Blank means unlimited",
     "agent": {
+      "partnerName": "Agent Name",
       "name": "Agent name",
       "zone": "Operational Territory",
       "type": "Agent Type",
@@ -1956,6 +1959,20 @@
       "cancel": "Cancel",
       "save": "Save Transaction"
     }
+  },
+  "reverseTransactionConfirmation": {
+    "title": "Reverse this transaction?",
+    "description": "A reversal payment record will be created. The original transaction will remain in the history while related balances and the ledger are updated.",
+    "details": "Transaction details",
+    "source": "Source",
+    "direction": "Direction",
+    "amount": "Amount",
+    "incoming": "Incoming payment",
+    "outgoing": "Outgoing payment",
+    "transaction": "Transaction",
+    "warning": "This cannot be undone. Check the details before reversing.",
+    "reversing": "Reversing…",
+    "confirm": "Reverse transaction"
   },
   "settlementModal": {
     "recordCollection": "Record Collection",

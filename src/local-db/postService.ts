@@ -2282,7 +2282,7 @@ async function createSettlement(
     currency: options.currency,
     paymentMethod: options.paymentMethod,
     paidAt: settledAt,
-    counterpartyName: counterparty?.name ?? null,
+    counterpartyName: counterparty?.partnerName ?? null,
     referenceLabel: settlement.settlementNumber,
     note: normalizeText(options.note),
     createdBy: options.createdBy ?? null,

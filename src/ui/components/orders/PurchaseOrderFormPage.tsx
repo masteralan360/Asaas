@@ -430,9 +430,9 @@ export function PurchaseOrderFormPage({
         }
     }, [getPriceBookItemForPartner, liveRates, products])
 
-    const selectSupplierPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'name' | 'defaultCurrency' | 'priceBookId'>) => {
+    const selectSupplierPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'partnerName' | 'defaultCurrency' | 'priceBookId'>) => {
         const nextCurrency = partner.defaultCurrency || currency
-        setSupplierSearch(partner.name)
+        setSupplierSearch(partner.partnerName)
         setSupplierId(partner.id)
         changeOrderCurrency(nextCurrency)
         if (priceBooksEnabled) {
@@ -621,7 +621,7 @@ export function PurchaseOrderFormPage({
             const payload = {
                 businessPartnerId: supplier.id,
                 supplierId: supplier.id,
-                supplierName: supplier.name,
+                supplierName: supplier.partnerName,
                 destinationStorageId: commonStorageId,
                 items: orderItems,
                 subtotal,
@@ -763,7 +763,7 @@ export function PurchaseOrderFormPage({
                                                                     {t('suppliers.title', { defaultValue: 'Supplier' })}
                                                                 </div>
                                                                 <div className="flex flex-wrap items-center gap-2">
-                                                                    <div className="text-sm font-semibold">{selectedSupplier.name}</div>
+                                                                    <div className="text-sm font-semibold">{selectedSupplier.partnerName}</div>
                                                                     <PartnerBalanceSummary
                                                                         compact
                                                                         partner={selectedSupplier}
@@ -824,7 +824,7 @@ export function PurchaseOrderFormPage({
                                             } else {
                                                 selectSupplierPartner({
                                                     id: selection.linkedPartyId,
-                                                    name: selection.linkedPartyName || '',
+                                                    partnerName: selection.linkedPartyName || '',
                                                     defaultCurrency: selection.defaultCurrency,
                                                     priceBookId: null
                                                 })

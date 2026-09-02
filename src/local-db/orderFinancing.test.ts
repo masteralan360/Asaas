@@ -92,7 +92,7 @@ function installBrowserStorage() {
 
 async function createSupplier(payableCreditLimit: number | null) {
     return createBusinessPartner(WORKSPACE_ID, {
-        name: `Supplier ${payableCreditLimit ?? 'unlimited'}`,
+        partnerName: `Supplier ${payableCreditLimit ?? 'unlimited'}`,
         phone: '07500000201',
         defaultCurrency: 'usd',
         creditLimit: 0,
@@ -104,7 +104,7 @@ async function createSupplier(payableCreditLimit: number | null) {
 
 async function createCustomer() {
     return createBusinessPartner(WORKSPACE_ID, {
-        name: 'Order Customer',
+        partnerName: 'Order Customer',
         phone: '07500000202',
         defaultCurrency: 'iqd',
         creditLimit: 0,

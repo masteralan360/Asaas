@@ -8,10 +8,11 @@ interface AddPartnerButtonProps {
     /** Accessible name announced by screen readers and shown on hover. */
     label?: string
     className?: string
+    disabled?: boolean
 }
 
 /** Icon-only "+" button that opens a business partner creation dialog next to a partner picker. */
-export function AddPartnerButton({ onClick, label, className }: AddPartnerButtonProps) {
+export function AddPartnerButton({ onClick, label, className, disabled = false }: AddPartnerButtonProps) {
     return (
         <Button
             type="button"
@@ -19,6 +20,7 @@ export function AddPartnerButton({ onClick, label, className }: AddPartnerButton
             variant="outline"
             className={`shrink-0 ${className ?? ''}`}
             onClick={onClick}
+            disabled={disabled}
             aria-label={label}
             title={label}
         >

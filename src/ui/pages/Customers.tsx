@@ -74,7 +74,7 @@ export function Customers() {
         const query = search.trim().toLowerCase()
         if (!query) return visibleCustomers
         return visibleCustomers.filter((customer) =>
-            [customer.name, customer.contactName, customer.phone, customer.email, customer.city]
+            [customer.partnerName, customer.phone, customer.city]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(query))
         )
@@ -247,7 +247,7 @@ export function Customers() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>{t('customers.table.name') || 'Name'}</TableHead>
+                                    <TableHead>{t('businessPartners.form.partnerName')}</TableHead>
                                     <TableHead>{t('customers.table.contact') || 'Contact'}</TableHead>
                                     <TableHead>{t('customers.table.location') || 'Location'}</TableHead>
                                     <TableHead>{t('customers.table.orders') || 'Orders'}</TableHead>
@@ -266,7 +266,7 @@ export function Customers() {
                                     </TableRow>
                                 ) : (
                                     filteredCustomers.map((customer) => {
-                                        const location = [customer.city, customer.country].filter(Boolean).join(', ') || 'N/A'
+                                        const location = customer.city || 'N/A'
                                         const outstandingLabel = customer.receivableBalance > 0
                                             ? `${t('common.amount') || 'Amount'}: ${formatCurrency(customer.receivableBalance, customer.defaultCurrency, features.iqd_display_preference)}`
                                             : (t('common.status') || 'Clear')
@@ -275,7 +275,7 @@ export function Customers() {
                                             <TableRow key={customer.id}>
                                                 <TableCell className="font-semibold">
                                                     <div className="flex flex-wrap items-center gap-2">
-                                                        <span>{customer.name}</span>
+                                                        <span>{customer.partnerName}</span>
                                                         {customer.isEcommerce ? (
                                                             <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
                                                                 {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
@@ -285,8 +285,7 @@ export function Customers() {
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="space-y-1">
-                                                        <div>{customer.phone || customer.contactName || 'N/A'}</div>
-                                                        <div className="text-xs text-muted-foreground">{customer.email || 'N/A'}</div>
+                                                        <div>{customer.phone || 'N/A'}</div>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{location}</TableCell>
@@ -349,7 +348,7 @@ export function Customers() {
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
                 onConfirm={handleDelete}
-                itemName={deleteTarget?.name}
+                itemName={deleteTarget?.partnerName}
                 title={t('customers.confirmDelete') || 'Delete Customer'}
                 description={t('customers.deleteWarning') || 'All customer data and transaction history will be permanently removed.'}
             />

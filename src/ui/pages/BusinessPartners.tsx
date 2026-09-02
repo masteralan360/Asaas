@@ -236,7 +236,7 @@ export function BusinessPartners() {
 
         return visiblePartners.filter((partner) => {
             const agent = partner.agentFacetId ? agentMap.get(partner.agentFacetId) : undefined
-            return [partner.name, partner.contactName, partner.email, partner.phone, partner.city, partner.country, agent?.zone, agent?.agentType, agent?.status]
+            return [partner.partnerName, partner.phone, partner.city, agent?.zone, agent?.agentType, agent?.status]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(query))
         })
@@ -500,7 +500,7 @@ export function BusinessPartners() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>{t('suppliers.table.company') || 'Company'}</TableHead>
+                                            <TableHead>{t('businessPartners.form.partnerName')}</TableHead>
                                             <TableHead>{t('suppliers.table.contact') || 'Contact'}</TableHead>
                                             <TableHead>{t('businessPartners.form.role') || 'Role'}</TableHead>
                                             <TableHead>{t('suppliers.table.currency') || 'Currency'}</TableHead>
@@ -542,7 +542,7 @@ export function BusinessPartners() {
                                                                     )}
                                                                 </div>
                                                             ) : null}
-                                                            <span>{partner.name}</span>
+                                                            <span>{partner.partnerName}</span>
                                                             {partner.isEcommerce ? (
                                                                 <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
                                                                     {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
@@ -550,7 +550,7 @@ export function BusinessPartners() {
                                                             ) : null}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell>{partner.contactName || partner.phone || 'N/A'}</TableCell>
+                                                    <TableCell>{partner.phone || 'N/A'}</TableCell>
                                                     <TableCell>
                                                         <span className={partner.role === 'both'
                                                             ? 'inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary'
@@ -636,7 +636,7 @@ export function BusinessPartners() {
                                         }
                                     }}
                                     onSelectPartner={(partner) => {
-                                        setMapPartnerSearch(partner.name)
+                                        setMapPartnerSearch(partner.partnerName)
                                         setFocusedMapPartnerId(partner.id)
                                     }}
                                     workspaceId={user?.workspaceId || ''}
@@ -681,21 +681,21 @@ export function BusinessPartners() {
                                         <MarkerPopup closeButton>
                                             <div className="min-w-52 space-y-2 pr-4">
                                                 <div>
-                                                    <p className="font-semibold">{partner.name}</p>
+                                                    <p className="font-semibold">{partner.partnerName}</p>
                                                     <p className="text-xs text-muted-foreground">
                                                         {roleLabel(partner.role, t)}
                                                     </p>
                                                 </div>
-                                                {partner.address || partner.city || partner.country ? (
+                                                {partner.address || partner.city ? (
                                                     <p className="text-sm text-muted-foreground">
-                                                        {[partner.address, partner.city, partner.country]
+                                                        {[partner.address, partner.city]
                                                             .filter((value): value is string => Boolean(value))
                                                             .join(', ')}
                                                     </p>
                                                 ) : null}
-                                                {partner.phone || partner.email ? (
+                                                {partner.phone ? (
                                                     <p className="text-sm text-muted-foreground">
-                                                        {partner.phone || partner.email}
+                                                        {partner.phone}
                                                     </p>
                                                 ) : null}
                                                 <Button
@@ -747,9 +747,9 @@ export function BusinessPartners() {
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2 text-sm font-semibold">
                                                     <GitMerge className="h-4 w-4 text-primary" />
-                                                    <span>{primary?.name || candidate.primaryPartnerId}</span>
+                                                    <span>{primary?.partnerName || candidate.primaryPartnerId}</span>
                                                     <span className="text-muted-foreground">/</span>
-                                                    <span>{secondary?.name || candidate.secondaryPartnerId}</span>
+                                                    <span>{secondary?.partnerName || candidate.secondaryPartnerId}</span>
                                                 </div>
                                                 <div className="text-sm text-muted-foreground">
                                                     {candidate.reason} · {(candidate.confidence * 100).toFixed(0)}%
@@ -804,7 +804,7 @@ export function BusinessPartners() {
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
                 onConfirm={handleDelete}
-                itemName={deleteTarget?.name}
+                itemName={deleteTarget?.partnerName}
                 title={t('businessPartners.deleteTitle') || 'Delete Business Partner'}
                 description={t('businessPartners.deleteWarning') || 'Partners with historical transactions cannot be deleted and must be archived instead.'}
             />

@@ -75,7 +75,7 @@ async function createPurchaseFixture() {
         createdBy: null
     })
     const supplier = await createBusinessPartner(WORKSPACE_ID, {
-        name: 'Price Book Supplier',
+        partnerName: 'Price Book Supplier',
         phone: '07500000301',
         defaultCurrency: 'usd',
         creditLimit: 0,
@@ -102,7 +102,7 @@ function receivedPurchaseOrderInput(
     return {
         businessPartnerId: fixture.supplier.id,
         supplierId: fixture.supplier.id,
-        supplierName: fixture.supplier.name,
+        supplierName: fixture.supplier.partnerName,
         destinationStorageId: fixture.storage.id,
         items: [{
             id: crypto.randomUUID(),

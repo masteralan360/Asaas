@@ -21,6 +21,7 @@ import {
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { getReportOriginId } from '@/lib/printIdentity'
+import { getLanguageDirection } from '@/lib/i18nRouting'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     findLatestUnreversedPaymentTransaction,
@@ -108,6 +109,10 @@ import { BudgetLockPromptModal } from '@/ui/components/budget/BudgetLockPromptMo
 import { MonthlyBudgetAllocationModal } from '@/ui/components/budget/MonthlyBudgetAllocationModal'
 import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
 import { ExpenseCategoryManagerDialog } from '@/ui/components/budget/ExpenseCategoryManagerDialog'
+import {
+    ReverseTransactionCofirmationDialog,
+    type ReverseTransactionDetails
+} from '@/ui/components/payments/ReverseTransactionCofirmationDialog'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -127,6 +132,34 @@ interface SnoozeTarget {
 interface LockTarget {
     type: 'expense' | 'payroll' | 'dividend'
     item: ExpenseItem | ReturnType<typeof buildPayrollItems>[number] | ReturnType<typeof buildDividendItems>['items'][number]
+}
+
+function buildBudgetReversalDetails(
+    target: LockTarget | null,
+    expenseSeries: ExpenseSeries[]
+): ReverseTransactionDetails | null {
+    if (target?.type === 'expense') {
+        const item = target.item as ExpenseItem
+        const series = expenseSeries.find((entry) => entry.id === item.seriesId)
+        return {
+            amount: item.amount,
+            currency: item.currency,
+            direction: 'outgoing',
+            referenceLabel: series?.name ?? null
+        }
+    }
+
+    if (target?.type === 'payroll') {
+        const item = target.item as ReturnType<typeof buildPayrollItems>[number]
+        return {
+            amount: item.amount,
+            currency: item.currency,
+            direction: 'outgoing',
+            referenceLabel: item.employee.name
+        }
+    }
+
+    return null
 }
 
 function buildExpensePaymentObligation(
@@ -287,7 +320,7 @@ function BudgetItemRow({
                     </div>
                 </div>
 
-                <div className="text-right sm:hidden ml-4 pt-0.5">
+                <div className="text-end sm:hidden ms-4 pt-0.5">
                     <p className={cn("text-lg font-black tracking-tight leading-tight", accentColor)}>
                         {formatCurrency(amount, currency, iqdPreference)}
                     </p>
@@ -295,7 +328,7 @@ function BudgetItemRow({
             </div>
 
             <div className="flex items-center justify-end gap-6 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/50 sm:border-transparent w-full sm:w-auto mt-1 sm:mt-0">
-                <div className="text-right hidden sm:block">
+                <div className="text-end hidden sm:block">
                     <p className={cn("text-lg font-black tracking-tight", accentColor)}>
                         {formatCurrency(amount, currency, iqdPreference)}
                     </p>
@@ -464,6 +497,7 @@ export function Budget() {
     const workspaceId = user?.workspaceId
     const baseCurrency = (features.default_currency || 'usd') as CurrencyCode
     const iqdPreference = features.iqd_display_preference
+    const pageDirection = getLanguageDirection(i18n.resolvedLanguage || i18n.language)
 
     const budgetSettingsList = useBudgetSettings(workspaceId)
     const budgetSettings = budgetSettingsList?.[0]
@@ -544,12 +578,15 @@ export function Budget() {
     const [lockTarget, setLockTarget] = useState<LockTarget | null>(null)
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
+    const [reverseTarget, setReverseTarget] = useState<LockTarget | null>(null)
+    const [isReversingPayment, setIsReversingPayment] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
 
     const settlementInitialPaidAt = useMemo(
         () => formatLocalDateTimeValue(getPaymentDateForMonth(selectedMonth)),
         [selectedMonth]
     )
+    const reverseTransactionDetails = buildBudgetReversalDetails(reverseTarget, expenseSeries)
 
     const expenseItems = useExpenseItems(workspaceId, selectedMonth)
 
@@ -1064,11 +1101,11 @@ export function Budget() {
         }
     }
 
-    const handleMarkUnpaid = async (target: LockTarget) => {
+    const handleMarkUnpaid = async (target: LockTarget): Promise<boolean> => {
         try {
-            if (!workspaceId) return
-            if (Boolean((target.item as { isLocked?: boolean }).isLocked)) {
-                return
+            if (!workspaceId) return false
+            if ((target.item as { isLocked?: boolean }).isLocked) {
+                return false
             }
             if (target.type === 'expense') {
                 const item = target.item as ExpenseItem
@@ -1116,12 +1153,39 @@ export function Budget() {
                 title: t('common.success') || 'Success',
                 description: t('budget.reminder.unpaid') || 'Marked as unpaid.'
             })
+            return true
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
                 description: error?.message || (t('budget.reminder.payFailed') || 'Failed to update payment.'),
                 variant: 'destructive'
             })
+            return false
+        }
+    }
+
+    const requestMarkUnpaid = (target: LockTarget) => {
+        if (target.type === 'expense' || target.type === 'payroll') {
+            setReverseTarget(target)
+            return
+        }
+
+        void handleMarkUnpaid(target)
+    }
+
+    const handleConfirmPaymentReversal = async () => {
+        if (!reverseTarget || isReversingPayment) {
+            return
+        }
+
+        setIsReversingPayment(true)
+        try {
+            const wasReversed = await handleMarkUnpaid(reverseTarget)
+            if (wasReversed) {
+                setReverseTarget(null)
+            }
+        } finally {
+            setIsReversingPayment(false)
         }
     }
 
@@ -1245,7 +1309,7 @@ export function Budget() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" dir={pageDirection}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-4xl font-bold tracking-tight">{t('budget.title') || 'Accounting'}</h1>
@@ -1370,8 +1434,8 @@ export function Budget() {
                 />
             </div>
 
-            <Tabs defaultValue="expenses" className="space-y-4">
-                <TabsList className="grid w-full max-w-[400px] grid-cols-2 rounded-2xl bg-secondary/50 p-1">
+            <Tabs defaultValue="expenses" dir={pageDirection} className="space-y-4">
+                <TabsList className="me-auto grid w-full max-w-[400px] grid-cols-2 rounded-2xl bg-secondary/50 p-1">
                     <TabsTrigger value="expenses" className="rounded-xl text-sm font-bold uppercase">
                         {t('budget.tabs.monthlyExpenses') || 'Monthly Expenses'}
                     </TabsTrigger>
@@ -1412,7 +1476,7 @@ export function Budget() {
                                     iqdPreference={iqdPreference}
                                     canEdit={canEdit}
                                     onPay={() => handleMarkPaid({ type: 'expense', item })}
-                                    onUnpay={() => handleMarkUnpaid({ type: 'expense', item })}
+                                    onUnpay={() => requestMarkUnpaid({ type: 'expense', item })}
                                     onSnooze={() => setSnoozeTarget({ type: 'expense', item })}
                                     onLock={() => { void handleLockConfirm({ type: 'expense', item }) }}
                                     onEdit={series ? () => {
@@ -1457,7 +1521,7 @@ export function Budget() {
                                     isLocked={!!item.isLocked}
                                     iqdPreference={iqdPreference}
                                     onPay={() => handleMarkPaid({ type: 'payroll', item })}
-                                    onUnpay={() => handleMarkUnpaid({ type: 'payroll', item })}
+                                    onUnpay={() => requestMarkUnpaid({ type: 'payroll', item })}
                                     onSnooze={() => setSnoozeTarget({ type: 'payroll', item })}
                                     onLock={() => { void handleLockConfirm({ type: 'payroll', item }) }}
                                 />
@@ -1494,7 +1558,7 @@ export function Budget() {
                                     isLocked={!!item.isLocked}
                                     iqdPreference={iqdPreference}
                                     onPay={() => handleMarkPaid({ type: 'dividend', item })}
-                                    onUnpay={() => handleMarkUnpaid({ type: 'dividend', item })}
+                                    onUnpay={() => requestMarkUnpaid({ type: 'dividend', item })}
                                     onSnooze={() => setSnoozeTarget({ type: 'dividend', item })}
                                     onLock={() => { void handleLockConfirm({ type: 'dividend', item }) }}
                                 />
@@ -1674,6 +1738,19 @@ export function Budget() {
                 initialPaidAt={settlementInitialPaidAt}
                 isSubmitting={isSubmittingSettlement}
                 onSubmit={handleBudgetSettlement}
+            />
+
+            <ReverseTransactionCofirmationDialog
+                open={!!reverseTarget}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setReverseTarget(null)
+                    }
+                }}
+                onConfirm={() => { void handleConfirmPaymentReversal() }}
+                isProcessing={isReversingPayment}
+                transaction={reverseTransactionDetails}
+                iqdPreference={iqdPreference}
             />
 
             <Dialog

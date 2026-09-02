@@ -11,7 +11,7 @@ export type LoanAccountStatementTotals = {
 }
 
 export type LoanAccountStatementPrintData = {
-    partner: Pick<BusinessPartner, 'name' | 'contactName' | 'phone' | 'email' | 'address'>
+    partner: Pick<BusinessPartner, 'partnerName' | 'phone' | 'address'>
     loan: {
         id: string
         loanNo: string
@@ -76,10 +76,8 @@ export function buildLoanAccountStatement(
 
     return {
         partner: {
-            name: partner.name,
-            contactName: partner.contactName,
+            partnerName: partner.partnerName,
             phone: partner.phone,
-            email: partner.email,
             address: partner.address
         },
         loan: {

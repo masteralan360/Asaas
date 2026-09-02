@@ -169,12 +169,12 @@ export function LoanRegistrationModal({
                                         onSelectPartner={(partner: BusinessPartner) => {
                                             setForm(prev => ({
                                                 ...prev,
-                                                borrowerName: partner.name,
+                                                borrowerName: partner.partnerName,
                                                 borrowerPhone: partner.phone || prev.borrowerPhone,
-                                                borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', ') || prev.borrowerAddress,
+                                                borrowerAddress: [partner.address, partner.city].filter(Boolean).join(', ') || prev.borrowerAddress,
                                                 linkedPartyType: 'business_partner',
                                                 linkedPartyId: partner.id,
-                                                linkedPartyName: partner.name
+                                                linkedPartyName: partner.partnerName
                                             }))
                                         }}
                                         workspaceId={workspaceId}

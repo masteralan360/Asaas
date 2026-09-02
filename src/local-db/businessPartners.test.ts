@@ -15,7 +15,7 @@ let updateBusinessPartner: typeof import('./businessPartners').updateBusinessPar
 
 async function createAgentForExcludedCategoryTest() {
     const partner = await createBusinessPartner(WORKSPACE_ID, {
-        name: 'Excluded Category Agent',
+        partnerName: 'Excluded Category Agent',
         phone: '07500000008',
         defaultCurrency: 'iqd',
         creditLimit: 0,
@@ -71,6 +71,7 @@ function installBrowserStorage() {
     const browserTarget = {
         localStorage: storage,
         sessionStorage: storage,
+        URL: globalThis.URL,
         location: { origin: 'http://localhost', hash: '', pathname: '/' },
         addEventListener: () => undefined,
         removeEventListener: () => undefined
@@ -80,12 +81,25 @@ function installBrowserStorage() {
         configurable: true,
         value: browserTarget
     })
+    const documentHead = {
+        firstChild: null,
+        appendChild: () => undefined,
+        insertBefore: () => undefined
+    }
     Object.defineProperty(globalThis, 'document', {
         configurable: true,
         value: {
             visibilityState: 'visible',
             dir: 'ltr',
             documentElement: { lang: 'en', dir: 'ltr' },
+            head: documentHead,
+            getElementsByTagName: () => [documentHead],
+            createElement: () => ({
+                appendChild: () => undefined,
+                setAttribute: () => undefined,
+                styleSheet: null
+            }),
+            createTextNode: () => ({}),
             addEventListener: () => undefined,
             removeEventListener: () => undefined
         }
@@ -93,6 +107,29 @@ function installBrowserStorage() {
     Object.defineProperty(globalThis, 'navigator', {
         configurable: true,
         value: { onLine: false }
+    })
+    // Imported print utilities load pdfjs during this suite. These lightweight
+    // browser constructors are sufficient because the partner tests do not
+    // render or rasterize PDFs.
+    Object.defineProperty(globalThis, 'DOMMatrix', {
+        configurable: true,
+        value: class DOMMatrix {}
+    })
+    Object.defineProperty(globalThis, 'ImageData', {
+        configurable: true,
+        value: class ImageData {}
+    })
+    Object.defineProperty(globalThis, 'Path2D', {
+        configurable: true,
+        value: class Path2D {}
+    })
+    Object.defineProperty(globalThis.URL, 'createObjectURL', {
+        configurable: true,
+        value: () => 'blob:atlas-test'
+    })
+    Object.defineProperty(globalThis.URL, 'revokeObjectURL', {
+        configurable: true,
+        value: () => undefined
     })
 }
 
@@ -125,7 +162,7 @@ describe('business partner agent facets', () => {
 
     it('rejects the Agent role without module access', async () => {
         await expect(createBusinessPartner(WORKSPACE_ID, {
-            name: 'Unauthorized Agent',
+            partnerName: 'Unauthorized Agent',
             phone: '07500000999',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -138,9 +175,63 @@ describe('business partner agent facets', () => {
         })).rejects.toThrow('Agent roles require workspace Agents module access')
     })
 
+    it('uses partnerName as the only active identity across commercial facets', async () => {
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Northwind Trading',
+            phone: '07500000009',
+            defaultCurrency: 'usd',
+            creditLimit: 0,
+            role: 'both'
+        })
+
+        const customer = await db.customers.get(partner.customerFacetId!)
+        const supplier = await db.suppliers.get(partner.supplierFacetId!)
+        expect(partner).toMatchObject({ partnerName: 'Northwind Trading' })
+        expect(customer).toMatchObject({ partnerName: 'Northwind Trading' })
+        expect(supplier).toMatchObject({ partnerName: 'Northwind Trading' })
+        expect(partner).not.toHaveProperty('name')
+        expect(partner).not.toHaveProperty('contactName')
+        expect(customer).not.toHaveProperty('name')
+        expect(supplier).not.toHaveProperty('name')
+
+        await updateBusinessPartner(partner.id, { partnerName: 'Northwind Group' })
+        expect((await db.customers.get(partner.customerFacetId!))?.partnerName).toBe('Northwind Group')
+        expect((await db.suppliers.get(partner.supplierFacetId!))?.partnerName).toBe('Northwind Group')
+    })
+
+    it('removes retired email and country values from legacy partner input', async () => {
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Privacy First Trading',
+            phone: '07500000018',
+            defaultCurrency: 'usd',
+            creditLimit: 0,
+            role: 'customer',
+            email: 'legacy@example.test',
+            country: 'Iraq'
+        } as unknown as Parameters<typeof createBusinessPartner>[1])
+
+        expect(partner).not.toHaveProperty('email')
+        expect(partner).not.toHaveProperty('country')
+        const stored = await db.business_partners.get(partner.id)
+        expect(stored).not.toHaveProperty('email')
+        expect(stored).not.toHaveProperty('country')
+    })
+
+    it('rejects a blank partnerName without persisting a partner', async () => {
+        await expect(createBusinessPartner(WORKSPACE_ID, {
+            partnerName: '   ',
+            phone: '07500000010',
+            defaultCurrency: 'usd',
+            creditLimit: 0,
+            role: 'customer'
+        })).rejects.toThrow('Partner name is required')
+
+        expect(await db.business_partners.count()).toBe(0)
+    })
+
     it('creates an agent facet linked to the business partner', async () => {
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'North Route Agent',
+            partnerName: 'North Route Agent',
             phone: '07500000000',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -166,7 +257,7 @@ describe('business partner agent facets', () => {
 
     it('rejects a driver without vehicle details before persisting the partner', async () => {
         await expect(createBusinessPartner(WORKSPACE_ID, {
-            name: 'Driver Without Vehicle',
+            partnerName: 'Driver Without Vehicle',
             phone: '07500000001',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -184,7 +275,7 @@ describe('business partner agent facets', () => {
 
     it('marks the agent facet inactive when the partner changes roles', async () => {
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Convertible Agent',
+            partnerName: 'Convertible Agent',
             phone: '07500000002',
             defaultCurrency: 'usd',
             creditLimit: 0,
@@ -223,7 +314,7 @@ describe('business partner agent facets', () => {
     it('prevents one workspace user from being linked to multiple agents', async () => {
         const linkedUserId = '00000000-0000-4000-8000-000000000099'
         await createBusinessPartner(WORKSPACE_ID, {
-            name: 'First Linked Agent',
+            partnerName: 'First Linked Agent',
             phone: '07500000004',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -237,7 +328,7 @@ describe('business partner agent facets', () => {
         }, { allowAgentRole: true })
 
         await expect(createBusinessPartner(WORKSPACE_ID, {
-            name: 'Second Linked Agent',
+            partnerName: 'Second Linked Agent',
             phone: '07500000005',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -257,7 +348,7 @@ describe('business partner agent facets', () => {
     it('rejects reassigning an agent to a workspace user linked elsewhere', async () => {
         const linkedUserId = '00000000-0000-4000-8000-000000000098'
         await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Assigned Agent',
+            partnerName: 'Assigned Agent',
             phone: '07500000006',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -270,7 +361,7 @@ describe('business partner agent facets', () => {
             }
         }, { allowAgentRole: true })
         const unassignedAgent = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Unassigned Agent',
+            partnerName: 'Unassigned Agent',
             phone: '07500000007',
             defaultCurrency: 'iqd',
             creditLimit: 0,
@@ -283,19 +374,19 @@ describe('business partner agent facets', () => {
         }, { allowAgentRole: true })
 
         await expect(updateBusinessPartner(unassignedAgent.id, {
-            name: 'Must Not Persist',
+            partnerName: 'Must Not Persist',
             agent: { linkedUserId }
         }, { allowAgentRole: true })).rejects.toThrow('Workspace user is already linked to another agent')
 
         const unchangedPartner = await db.business_partners.get(unassignedAgent.id)
         const unchangedAgent = await db.agents.get(unassignedAgent.agentFacetId!)
-        expect(unchangedPartner?.name).toBe('Unassigned Agent')
+        expect(unchangedPartner?.partnerName).toBe('Unassigned Agent')
         expect(unchangedAgent?.linkedUserId).toBeNull()
     })
 
     it('does not collapse agent and commercial roles during a merge', async () => {
         const agent = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Shared Name',
+            partnerName: 'Shared Name',
             phone: '07500000003',
             defaultCurrency: 'usd',
             creditLimit: 0,
@@ -307,7 +398,7 @@ describe('business partner agent facets', () => {
             }
         }, { allowAgentRole: true })
         const customer = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Shared Name',
+            partnerName: 'Shared Name',
             phone: '07500000003',
             defaultCurrency: 'usd',
             creditLimit: 0,
@@ -374,7 +465,7 @@ describe('business partner agent facets', () => {
 
     it('queues an agent retirement with its business-partner reference', async () => {
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Agent to retire',
+            partnerName: 'Agent to retire',
             phone: '07500000009',
             defaultCurrency: 'iqd',
             creditLimit: 0,

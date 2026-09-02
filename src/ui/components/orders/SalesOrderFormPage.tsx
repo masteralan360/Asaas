@@ -610,10 +610,10 @@ export function SalesOrderFormPage({
             && sellingPrice < convertedCostPrice
     }, [getItemCostDetails])
 
-    const selectCustomerPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'name' | 'defaultCurrency' | 'priceBookId'>) => {
+    const selectCustomerPartner = useCallback((partner: Pick<BusinessPartner, 'id' | 'partnerName' | 'defaultCurrency' | 'priceBookId'>) => {
         setSalesAccountAgentId('')
         const nextCurrency = partner.defaultCurrency || currency
-        setCustomerSearch(partner.name)
+        setCustomerSearch(partner.partnerName)
         setCustomerId(partner.id)
         changeOrderCurrency(nextCurrency)
         setItems((current) => current.map((item) => item.productId
@@ -640,7 +640,7 @@ export function SalesOrderFormPage({
 
         setSalesAccountAgentId(agent.id)
         const nextCurrency = partner.defaultCurrency || currency
-        setCustomerSearch(partner.name)
+        setCustomerSearch(partner.partnerName)
         setCustomerId(partner.id)
         changeOrderCurrency(nextCurrency)
         setItems((current) => current.map((item) => item.productId
@@ -931,7 +931,7 @@ export function SalesOrderFormPage({
             const payload = {
                 businessPartnerId: customer.id,
                 customerId: customer.id,
-                customerName: customer.name,
+                customerName: customer.partnerName,
                 ...(agentSalesAccountsEnabled
                     ? { salesAccountAgentId: selectedSalesAccount?.agent.id ?? null }
                     : {}),
@@ -1097,7 +1097,7 @@ export function SalesOrderFormPage({
                                                             if (!partner) return null
                                                             return (
                                                                 <SelectItem key={agent.id} value={agent.id}>
-                                                                    {partner.name}
+                                                                    {partner.partnerName}
                                                                 </SelectItem>
                                                             )
                                                         })}
@@ -1151,7 +1151,7 @@ export function SalesOrderFormPage({
                                                                 : t('customers.title', { defaultValue: 'Customer' })}
                                                         </div>
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            <div className="text-sm font-semibold">{selectedCustomer.name}</div>
+                                                            <div className="text-sm font-semibold">{selectedCustomer.partnerName}</div>
                                                             <PartnerBalanceSummary
                                                                 compact
                                                                 partner={selectedCustomer}
@@ -1237,7 +1237,7 @@ export function SalesOrderFormPage({
                                     } else {
                                         selectCustomerPartner({
                                             id: selection.linkedPartyId,
-                                            name: selection.linkedPartyName || '',
+                                            partnerName: selection.linkedPartyName || '',
                                             defaultCurrency: selection.defaultCurrency,
                                             priceBookId: null
                                         })

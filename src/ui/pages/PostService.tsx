@@ -358,9 +358,9 @@ export function PostService() {
   const [settlementNetTarget, setSettlementNetTarget] = useState<DeliveryShipment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const partnerById = useMemo(() => new Map(partners.map((partner) => [partner.id, partner])), [partners]);
-  const agentNameById = useMemo(() => new Map(agents.map((agent) => [agent.id, partnerById.get(agent.businessPartnerId)?.name ?? t("postService.unknownCourier")])), [agents, partnerById, t]);
+  const agentNameById = useMemo(() => new Map(agents.map((agent) => [agent.id, partnerById.get(agent.businessPartnerId)?.partnerName ?? t("postService.unknownCourier")])), [agents, partnerById, t]);
   const profileById = useMemo(() => new Map(merchantProfiles.map((profile) => [profile.id, profile])), [merchantProfiles]);
-  const profileNameById = useMemo(() => new Map(merchantProfiles.map((profile) => [profile.id, partnerById.get(profile.businessPartnerId)?.name ?? t("postService.unknownMerchant")])), [merchantProfiles, partnerById, t]);
+  const profileNameById = useMemo(() => new Map(merchantProfiles.map((profile) => [profile.id, partnerById.get(profile.businessPartnerId)?.partnerName ?? t("postService.unknownMerchant")])), [merchantProfiles, partnerById, t]);
   const merchantPayablesByProfile = useMemo(() => {
     const result = new Map<string, Array<{ currency: CurrencyCode; amount: number }>>();
     for (const balance of merchantBalances) {
@@ -1046,7 +1046,7 @@ export function PostService() {
       toast({ title: t("postService.messages.businessPartnerCreated") });
       setSupplierPartnerDialogOpen(false);
       setSelectedMerchantPartner(partner);
-      setMerchantName(partner.name);
+      setMerchantName(partner.partnerName);
     } catch (error) {
       toast({ title: t("postService.messages.businessPartnerSaveFailed"), description: localizedError(t, error), variant: "destructive" });
     } finally {
@@ -1389,8 +1389,8 @@ export function PostService() {
                 <div className="flex gap-2">
                   <PartnerAutocompleteInput
                     value={merchantName}
-                    onChange={(value) => { setMerchantName(value); setSelectedMerchantPartner((current) => current && value.trim() !== current.name ? null : current); }}
-                    onSelectPartner={(partner: BusinessPartner) => { setSelectedMerchantPartner(partner); setMerchantName(partner.name); }}
+                    onChange={(value) => { setMerchantName(value); setSelectedMerchantPartner((current) => current && value.trim() !== current.partnerName ? null : current); }}
+                    onSelectPartner={(partner: BusinessPartner) => { setSelectedMerchantPartner(partner); setMerchantName(partner.partnerName); }}
                     workspaceId={workspaceId}
                     placeholder={t("postService.placeholders.selectMerchantOrShop")}
                     excludePartnerIds={enabledMerchantPartnerIds}
@@ -1398,7 +1398,7 @@ export function PostService() {
                   />
                   <AddPartnerButton onClick={() => setSupplierPartnerDialogOpen(true)} label={t("postService.actions.addBusinessPartner")} />
                 </div>
-                {selectedMerchantPartner ? <LinkedMerchantBadge t={t} name={selectedMerchantPartner.name} onClear={() => { setSelectedMerchantPartner(null); setMerchantName(""); }} /> : null}
+                {selectedMerchantPartner ? <LinkedMerchantBadge t={t} name={selectedMerchantPartner.partnerName} onClear={() => { setSelectedMerchantPartner(null); setMerchantName(""); }} /> : null}
               </div>
             </Field>
             <Field label={t("postService.form.defaultDeliveryFee")}><div className="relative"><Input className="pe-12" value={formatNumericInput(merchantFee)} onChange={(event) => setMerchantFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" required /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div></Field>

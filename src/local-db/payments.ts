@@ -1890,7 +1890,7 @@ export async function recordDirectTransaction(
             throw new Error('Business partner not found')
         }
 
-        counterpartyName = partner.name
+        counterpartyName = partner.partnerName
         businessPartnerId = partner.id
     }
 
@@ -2221,7 +2221,7 @@ export async function settlePartnerBalance(
                     transactionId: obligation.sourceRecordId,
                     amount: applied,
                     paymentMethod,
-                    counterpartyName: obligation.counterpartyName || partner.name,
+                    counterpartyName: obligation.counterpartyName || partner.partnerName,
                     businessPartnerId: partner.id,
                     note,
                     paidAt,
@@ -2264,7 +2264,7 @@ export async function settlePartnerBalance(
 
     return {
         partnerId: partner.id,
-        partnerName: partner.name,
+        partnerName: partner.partnerName,
         direction: input.direction,
         totalSettled,
         items: settledObligationCount.size,

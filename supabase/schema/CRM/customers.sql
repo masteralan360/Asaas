@@ -2,12 +2,11 @@ CREATE TABLE crm.customers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   business_partner_id uuid NULL,
+  partner_name text NOT NULL,
   name text NOT NULL,
-  email text NULL,
   phone text NULL,
   address text NULL,
   city text NULL,
-  country text NULL,
   notes text NULL,
   default_currency text NOT NULL DEFAULT 'usd'::text,
   total_orders numeric NULL DEFAULT 0,
@@ -22,6 +21,17 @@ CREATE TABLE crm.customers (
   is_ecommerce boolean NULL DEFAULT false,
   PRIMARY KEY (id)
 );
+
+DROP TRIGGER IF EXISTS keep_customer_partner_name_compatibility ON crm.customers;
+CREATE TRIGGER keep_customer_partner_name_compatibility
+  BEFORE INSERT OR UPDATE ON crm.customers
+  FOR EACH ROW
+  EXECUTE FUNCTION crm.keep_partner_name_compatibility_fields();
+
+COMMENT ON COLUMN crm.customers.partner_name IS
+  'Canonical active partner identity mirrored from crm.business_partners.';
+COMMENT ON COLUMN crm.customers.name IS
+  'Legacy compatibility mirror. Do not query or display from Atlas application code.';
 
 CREATE INDEX IF NOT EXISTS idx_crm_customers_workspace
   ON crm.customers (workspace_id);

@@ -126,6 +126,10 @@ export { RegisterWorkspaceContactsModal } from './modals/RegisterWorkspaceContac
 export type { AdminContact } from './modals/RegisterWorkspaceContactsModal'
 export { PatchNoteModal } from './modals/PatchNoteModal'
 export { DirectTransactionDialog } from './payments/DirectTransactionDialog'
+export {
+    ReverseTransactionCofirmationDialog,
+    type ReverseTransactionDetails
+} from './payments/ReverseTransactionCofirmationDialog'
 export { SettlementDialog } from './payments/SettlementDialog'
 export { PartnerSettlementDialog } from './payments/PartnerSettlementDialog'
 export { PaymentMethodSelect } from './payments/PaymentMethodSelect'

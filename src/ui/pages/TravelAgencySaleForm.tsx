@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ArrowLeft, CalendarDays, Camera, CircleDollarSign, Eye, Plane, Plus, Trash2, TriangleAlert, Upload, UserRound, UsersRound, Lock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useLocation, useRoute } from 'wouter'
 
 import { useAuth } from '@/auth'
@@ -96,9 +97,7 @@ type TravelAgencyFormState = {
 }
 
 type SupplierQuickCreateState = {
-    name: string
-    contactName: string
-    email: string
+    partnerName: string
     phone: string
     defaultCurrency: CurrencyCode
     notes: string
@@ -378,12 +377,11 @@ function SupplierQuickCreateDialog({
     workspaceId?: string
     onCreated: (supplier: Supplier) => void
 }) {
+    const { t } = useTranslation()
     const { toast } = useToast()
     const [isSaving, setIsSaving] = useState(false)
     const [formState, setFormState] = useState<SupplierQuickCreateState>({
-        name: '',
-        contactName: '',
-        email: '',
+        partnerName: '',
         phone: '',
         defaultCurrency,
         notes: ''
@@ -392,9 +390,7 @@ function SupplierQuickCreateDialog({
     useEffect(() => {
         if (!isOpen) {
             setFormState({
-                name: '',
-                contactName: '',
-                email: '',
+                partnerName: '',
                 phone: '',
                 defaultCurrency,
                 notes: ''
@@ -412,15 +408,12 @@ function SupplierQuickCreateDialog({
         setIsSaving(true)
         try {
             const supplier = await createSupplier(workspaceId, {
-                name: formState.name.trim(),
-                contactName: formState.contactName.trim() || undefined,
-                email: formState.email.trim() || undefined,
+                partnerName: formState.partnerName.trim(),
                 phone: formState.phone.trim() || undefined,
                 defaultCurrency: formState.defaultCurrency,
                 notes: formState.notes.trim() || undefined,
                 address: undefined,
                 city: undefined,
-                country: undefined,
                 creditLimit: 0
             })
 
@@ -447,29 +440,12 @@ function SupplierQuickCreateDialog({
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="travel-supplier-name">Company Name</Label>
+                            <Label htmlFor="travel-supplier-name">{t('businessPartners.form.partnerName')}</Label>
                             <Input
                                 id="travel-supplier-name"
-                                value={formState.name}
-                                onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))}
+                                value={formState.partnerName}
+                                onChange={(event) => setFormState((current) => ({ ...current, partnerName: event.target.value }))}
                                 required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="travel-supplier-contact">Contact Name</Label>
-                            <Input
-                                id="travel-supplier-contact"
-                                value={formState.contactName}
-                                onChange={(event) => setFormState((current) => ({ ...current, contactName: event.target.value }))}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="travel-supplier-email">Email</Label>
-                            <Input
-                                id="travel-supplier-email"
-                                type="email"
-                                value={formState.email}
-                                onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))}
                             />
                         </div>
                         <div className="space-y-2">
@@ -566,7 +542,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
             ...suppliers,
             {
                 id: formState.supplierId,
-                name: sale?.supplierName || 'Archived supplier'
+                partnerName: sale?.supplierName || 'Archived supplier'
             } as Supplier
         ]
     }, [formState.supplierId, sale?.supplierName, suppliers])
@@ -809,7 +785,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                 groupRevenue: parseFormattedNumber(formState.groupRevenue) || 0,
                 businessPartnerId: formState.supplierId || null,
                 supplierId: formState.supplierId || null,
-                supplierName: selectedSupplier?.name || sale?.supplierName || null,
+                supplierName: selectedSupplier?.partnerName || sale?.supplierName || null,
                 supplierCost: parseFormattedNumber(formState.supplierCost) || 0,
                 currency: formState.currency,
                 travelPackages: formState.travelPackages,
@@ -1090,7 +1066,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                                         <SelectContent>
                                             <SelectItem value={NO_VALUE}>No supplier</SelectItem>
                                             {supplierOptions.map((supplier) => (
-                                                <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
+                                                <SelectItem key={supplier.id} value={supplier.id}>{supplier.partnerName}</SelectItem>
                                             ))}
                                             <SelectItem value={ADD_SUPPLIER_VALUE}>Add Supplier...</SelectItem>
                                         </SelectContent>

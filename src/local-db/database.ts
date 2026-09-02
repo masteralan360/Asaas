@@ -923,13 +923,14 @@ export class AtlasDatabase extends Dexie {
         ) => ({
           id: partnerId,
           workspaceId: facet.workspaceId,
+          // This v48 migration predates `partnerName`. Preserve the raw
+          // legacy attributes so v111 can derive the canonical field while
+          // retaining the original values as historical metadata.
           name: facet.name,
           contactName: role === 'supplier' ? facet.contactName : undefined,
-          email: facet.email,
           phone: facet.phone,
           address: facet.address,
           city: facet.city,
-          country: facet.country,
           defaultCurrency: facet.defaultCurrency || 'usd',
           notes: facet.notes,
           role,
@@ -1045,9 +1046,10 @@ export class AtlasDatabase extends Dexie {
           if (!customerPartnerId) {
             continue
           }
+          // This v48 migration runs before `partnerName` exists. The legacy
+          // value is read only to identify records that must be migrated.
           const customerName = normalizeValue(customer.name)
           const customerPhone = normalizeValue(customer.phone)
-          const customerEmail = normalizeValue(customer.email)
 
           for (const supplier of suppliers as Array<Record<string, unknown>>) {
             const supplierPartnerId = supplierPartnerIdByFacetId.get(String(supplier.id))
@@ -1057,16 +1059,14 @@ export class AtlasDatabase extends Dexie {
 
             const supplierName = normalizeValue(supplier.name)
             const supplierPhone = normalizeValue(supplier.phone)
-            const supplierEmail = normalizeValue(supplier.email)
             const exactName = customerName && customerName === supplierName
             const phoneMatch = customerPhone && customerPhone === supplierPhone
-            const emailMatch = customerEmail && customerEmail === supplierEmail
 
-            if (!exactName && !phoneMatch && !emailMatch) {
-              continue
+            if (!exactName && !phoneMatch) {
+                continue
             }
 
-            const confidence = exactName && (phoneMatch || emailMatch) ? 0.98 : exactName ? 0.86 : 0.78
+            const confidence = exactName && phoneMatch ? 0.98 : exactName ? 0.86 : 0.78
             const candidateId = `${customerPartnerId}:${supplierPartnerId}`
             if (candidateMap.has(candidateId)) {
               continue
@@ -1074,8 +1074,7 @@ export class AtlasDatabase extends Dexie {
 
             const reasons = [
               exactName ? 'matching name' : '',
-              phoneMatch ? 'matching phone' : '',
-              emailMatch ? 'matching email' : ''
+              phoneMatch ? 'matching phone' : ''
             ].filter(Boolean)
 
             candidateMap.set(candidateId, {
@@ -3071,6 +3070,116 @@ export class AtlasDatabase extends Dexie {
       expense_categories: 'id, workspaceId, name, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+updatedAt]',
       expense_series: 'id, workspaceId, categoryId, recurrence, startMonth, endMonth, isDeleted'
     })
+
+    this.version(111)
+      .stores({
+        suppliers: 'id, partnerName, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        customers: 'id, partnerName, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        business_partners:
+          'id, partnerName, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, priceBookId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude'
+      })
+      .upgrade(async (tx) => {
+        const toPartnerName = (row: Record<string, unknown>) => {
+          const current = typeof row.partnerName === 'string' ? row.partnerName.trim() : ''
+          const historical = typeof row.name === 'string' ? row.name.trim() : ''
+          return current || historical || 'Unnamed partner'
+        }
+        const migrateRows = async (tableName: 'business_partners' | 'customers' | 'suppliers') => {
+          const rows = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>
+          if (rows.length > 0) {
+            await tx.table(tableName).bulkPut(rows.map((row) => ({
+              ...row,
+              partnerName: toPartnerName(row)
+            })))
+          }
+        }
+        const migrateQueuedPayloads = async (tableName: 'offline_mutations' | 'syncQueue', field: 'payload' | 'data') => {
+          const rows = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>
+          const migrated = rows.map((row) => {
+            const entityType = row.entityType
+            const payload = row[field]
+            if (
+              (entityType !== 'business_partners' && entityType !== 'customers' && entityType !== 'suppliers')
+              || !payload
+              || typeof payload !== 'object'
+              || Array.isArray(payload)
+            ) {
+              return row
+            }
+
+            const nextPayload = payload as Record<string, unknown>
+            return {
+              ...row,
+              [field]: {
+                ...nextPayload,
+                partnerName: toPartnerName(nextPayload)
+              }
+            }
+          })
+          if (migrated.length > 0) {
+            await tx.table(tableName).bulkPut(migrated)
+          }
+        }
+
+        await Promise.all([
+          migrateRows('business_partners'),
+          migrateRows('customers'),
+          migrateRows('suppliers'),
+          migrateQueuedPayloads('offline_mutations', 'payload'),
+          migrateQueuedPayloads('syncQueue', 'data')
+        ])
+      })
+
+    this.version(112)
+      .stores({
+        suppliers: 'id, partnerName, workspaceId, businessPartnerId, phone, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        customers: 'id, partnerName, workspaceId, businessPartnerId, phone, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        business_partners:
+          'id, partnerName, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, priceBookId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude'
+      })
+      .upgrade(async (tx) => {
+        const removeRetiredFields = (row: Record<string, unknown>) => {
+          const { email: _email, country: _country, ...retained } = row
+          return retained
+        }
+        const scrubRows = async (tableName: 'business_partners' | 'customers' | 'suppliers') => {
+          const rows = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>
+          if (rows.length > 0) {
+            await tx.table(tableName).bulkPut(rows.map(removeRetiredFields))
+          }
+        }
+        const scrubQueuedPayloads = async (tableName: 'offline_mutations' | 'syncQueue', field: 'payload' | 'data') => {
+          const rows = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>
+          const scrubbed = rows.map((row) => {
+            const entityType = row.entityType
+            const payload = row[field]
+            if (
+              (entityType !== 'business_partners' && entityType !== 'customers' && entityType !== 'suppliers')
+              || !payload
+              || typeof payload !== 'object'
+              || Array.isArray(payload)
+            ) {
+              return row
+            }
+
+            return {
+              ...row,
+              [field]: removeRetiredFields(payload as Record<string, unknown>)
+            }
+          })
+          if (scrubbed.length > 0) {
+            await tx.table(tableName).bulkPut(scrubbed)
+          }
+        }
+
+        await Promise.all([
+          scrubRows('business_partners'),
+          scrubRows('customers'),
+          scrubRows('suppliers'),
+          scrubQueuedPayloads('offline_mutations', 'payload'),
+          scrubQueuedPayloads('syncQueue', 'data')
+        ])
+      })
 
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()

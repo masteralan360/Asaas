@@ -100,7 +100,7 @@ export function Agents() {
         return partners.filter((partner) => {
             const agent = partner.agentFacetId ? agentById.get(partner.agentFacetId) : undefined
             const linkedUser = agent?.linkedUserId ? userById.get(agent.linkedUserId) : undefined
-            return [partner.name, partner.phone, partner.email, agent?.zone, agent?.agentType, agent?.carModel, agent?.plateNumber, agent?.status, linkedUser?.name, linkedUser?.email]
+            return [partner.partnerName, partner.phone, agent?.zone, agent?.agentType, agent?.carModel, agent?.plateNumber, agent?.status, linkedUser?.name, linkedUser?.email]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(query))
         })
@@ -233,8 +233,8 @@ export function Agents() {
                                                     <div className="flex items-center gap-3">
                                                         <AgentAvatar profileUrl={linkedUser?.profileUrl} />
                                                         <div>
-                                                            <div className="font-semibold">{partner.name}</div>
-                                                            <div className="text-xs text-muted-foreground">{partner.phone || partner.email || unavailable}</div>
+                                                            <div className="font-semibold">{partner.partnerName}</div>
+                                                            <div className="text-xs text-muted-foreground">{partner.phone || unavailable}</div>
                                                         </div>
                                                     </div>
                                                 </TableCell>
@@ -306,7 +306,7 @@ export function Agents() {
                     isOpen={!!deleteTarget}
                     onClose={() => setDeleteTarget(null)}
                     onConfirm={handleDelete}
-                    itemName={deleteTarget?.name}
+                    itemName={deleteTarget?.partnerName}
                     title={t('agents.deleteTitle', { defaultValue: 'Delete Agent' })}
                     description={t('agents.deleteWarning', { defaultValue: 'Agents with transaction history cannot be deleted.' })}
                 />

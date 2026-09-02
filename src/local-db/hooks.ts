@@ -3888,7 +3888,11 @@ export async function createExpenseCategory(workspaceId: string, name: string) {
         name: normalizedName,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (usesCloudBusinessData && online ? 'synced' : usesCloudBusinessData ? 'pending' : 'synced') as const,
+        syncStatus: usesCloudBusinessData && online
+            ? 'synced' as const
+            : usesCloudBusinessData
+                ? 'pending' as const
+                : 'synced' as const,
         lastSyncedAt: usesCloudBusinessData && online ? now : null,
         version: 1,
         isDeleted: false
@@ -5027,7 +5031,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     }
     if (linkedBusinessPartner) {
         linkedPartyId = linkedBusinessPartner.id
-        linkedPartyName = linkedPartyName || linkedBusinessPartner.name
+        linkedPartyName = linkedPartyName || linkedBusinessPartner.partnerName
         await assertLoanCreditLimit(workspaceId, {
             linkedPartyType,
             linkedPartyId,

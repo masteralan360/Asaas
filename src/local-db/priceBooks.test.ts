@@ -190,7 +190,7 @@ describe('Price Book local data', () => {
     it('round-trips an optional partner assignment and preserves it when omitted from updates', async () => {
         const book = await createPriceBook(WORKSPACE_ID, { name: 'Partner Tier' })
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Tiered Partner',
+            partnerName: 'Tiered Partner',
             phone: '07500000101',
             defaultCurrency: 'usd',
             creditLimit: 0,
@@ -199,7 +199,7 @@ describe('Price Book local data', () => {
         })
 
         expect(partner.priceBookId).toBe(book.id)
-        const renamed = await updateBusinessPartner(partner.id, { name: 'Renamed Tiered Partner' })
+        const renamed = await updateBusinessPartner(partner.id, { partnerName: 'Renamed Tiered Partner' })
         expect(renamed.priceBookId).toBe(book.id)
 
         const cleared = await updateBusinessPartner(partner.id, { priceBookId: null })
@@ -215,7 +215,7 @@ describe('Price Book local data', () => {
             currency: 'usd'
         }])
         const partner = await createBusinessPartner(WORKSPACE_ID, {
-            name: 'Retired Tier Partner',
+            partnerName: 'Retired Tier Partner',
             phone: '07500000103',
             defaultCurrency: 'usd',
             creditLimit: 0,

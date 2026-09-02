@@ -122,8 +122,8 @@ export function DirectTransactionDialog({
     const [linkedPartner, setLinkedPartner] = useState<{
         type: 'business_partner' | null
         id: string | null
-        name: string | null
-    }>({ type: null, id: null, name: null })
+        partnerName: string | null
+    }>({ type: null, id: null, partnerName: null })
     const [partnerAccountTreatment, setPartnerAccountTreatment] = useState<PartnerAccountTreatment>('unselected')
     const [partnerAccountEffect, setPartnerAccountEffect] = useState<DirectTransactionPartnerAccountEffect>('none')
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
@@ -142,7 +142,7 @@ export function DirectTransactionDialog({
         setReason('')
         setNote('')
         setCounterpartyName('')
-        setLinkedPartner({ type: null, id: null, name: null })
+        setLinkedPartner({ type: null, id: null, partnerName: null })
         setPartnerAccountTreatment('unselected')
         setPartnerAccountEffect('none')
         setIsPartyPickerOpen(false)
@@ -168,17 +168,17 @@ export function DirectTransactionDialog({
         )
 
     const clearPartnerLink = () => {
-        setLinkedPartner({ type: null, id: null, name: null })
+        setLinkedPartner({ type: null, id: null, partnerName: null })
         setPartnerAccountTreatment('unselected')
         setPartnerAccountEffect('none')
     }
 
-    const selectPartner = (partner: Pick<BusinessPartner, 'id' | 'name'>) => {
-        setCounterpartyName(partner.name)
+    const selectPartner = (partner: Pick<BusinessPartner, 'id' | 'partnerName'>) => {
+        setCounterpartyName(partner.partnerName)
         setLinkedPartner({
             type: 'business_partner',
             id: partner.id,
-            name: partner.name
+            partnerName: partner.partnerName
         })
         setPartnerAccountTreatment('unselected')
         setPartnerAccountEffect('none')
@@ -194,7 +194,7 @@ export function DirectTransactionDialog({
     const handlePartySelect = (selection: LoanPartySelection) => {
         selectPartner({
             id: selection.linkedPartyId,
-            name: selection.linkedPartyName
+            partnerName: selection.linkedPartyName
         })
     }
 
@@ -305,7 +305,7 @@ export function DirectTransactionDialog({
                                         value={counterpartyName}
                                         onChange={(value) => {
                                             setCounterpartyName(value)
-                                            if (linkedPartner.id && value !== linkedPartner.name) {
+                                            if (linkedPartner.id && value !== linkedPartner.partnerName) {
                                                 clearPartnerLink()
                                             }
                                         }}
@@ -329,14 +329,14 @@ export function DirectTransactionDialog({
                                         </Button>
                                     ) : null}
                                 </div>
-                                {linkedPartner.type && linkedPartner.name ? (
+                                {linkedPartner.type && linkedPartner.partnerName ? (
                                     <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
                                         <div className="min-w-0">
                                             <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
                                                 {t('loans.belongsTo', { defaultValue: 'Belongs to' })}
                                             </div>
                                             <div className="text-sm font-semibold">
-                                                {getLoanLinkedPartyTypeLabel(linkedPartner.type, t)} - {linkedPartner.name}
+                                                {getLoanLinkedPartyTypeLabel(linkedPartner.type, t)} - {linkedPartner.partnerName}
                                             </div>
                                         </div>
                                         <Button

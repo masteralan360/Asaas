@@ -34,7 +34,7 @@ import { PartnerAccountStatementPrintTemplate } from './PartnerAccountStatementP
 
 function statementData(): PartnerOrderItemsPrintData & PartnerAccountStatementData {
     return {
-        partner: { name: 'Sample Partner' },
+        partner: { partnerName: 'Sample Partner' },
         period: { type: 'custom', start: '2026-01-01', end: '2026-01-31' },
         generatedAt: '2026-02-01T10:00:00.000Z',
         balanceSummary: { receivable: [], payable: [] },

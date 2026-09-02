@@ -4,6 +4,7 @@ import { BadgePercent, Link2, Loader2, ShoppingCart, UserRound, X } from 'lucide
 
 import type { CartItem } from '@/types'
 import {
+    createBusinessPartner,
     useAgents,
     useBusinessPartners,
     useProductCommissionRuleAgents,
@@ -36,9 +37,12 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue
+    SelectValue,
+    useToast
 } from '@/ui/components'
+import { AddPartnerButton } from '@/ui/components/crm/AddPartnerButton'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
+import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import {
@@ -167,6 +171,8 @@ interface QuickOrderModalProps {
     cart: CartItem[]
     totalAmount: number
     settlementCurrency: CurrencyCode
+    defaultCurrency: CurrencyCode
+    availableCurrencies: CurrencyCode[]
     iqdPreference: 'IQD' | 'د.ع'
     loansEnabled: boolean
     installmentsEnabled: boolean
@@ -187,6 +193,8 @@ export function QuickOrderModal({
     cart,
     totalAmount,
     settlementCurrency,
+    defaultCurrency,
+    availableCurrencies,
     iqdPreference,
     loansEnabled,
     installmentsEnabled,
@@ -200,10 +208,13 @@ export function QuickOrderModal({
     onSubmit
 }: QuickOrderModalProps) {
     const { t } = useTranslation()
+    const { toast } = useToast()
     const commissionTriggerRef = useRef<HTMLButtonElement>(null)
     const commissionAssignmentRef = useRef<SalesOrderCommissionAssignmentHandle>(null)
     const [customerSearch, setCustomerSearch] = useState('')
     const [customer, setCustomer] = useState<BusinessPartner | null>(null)
+    const [isCreateCustomerOpen, setIsCreateCustomerOpen] = useState(false)
+    const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
     const [salesAccountAgentId, setSalesAccountAgentId] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethodOption>('cash')
     const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
@@ -269,9 +280,9 @@ export function QuickOrderModal({
     const productCommissionPreviewAgents = useMemo(() => commissionRecipient
         ? [{
             id: commissionRecipient.id,
-            name: selectedSalesAccount?.partner.name ?? customer?.name ?? t('salesAgentCommissions.salesAgent')
+            name: selectedSalesAccount?.partner.partnerName ?? customer?.partnerName ?? t('salesAgentCommissions.salesAgent')
         }]
-        : [], [commissionRecipient, customer?.name, selectedSalesAccount?.partner.name, t])
+        : [], [commissionRecipient, customer?.partnerName, selectedSalesAccount?.partner.partnerName, t])
     const hasAutomaticProductCommission = commissionRecipient
         ? hasEligibleProductCommission({
             items: commissionPreviewItems,
@@ -334,6 +345,30 @@ export function QuickOrderModal({
     const closeCommissionPanel = () => {
         if (isSubmitting) return
         setIsCommissionPanelOpen(false)
+    }
+
+    const handleCreateCustomer = async (payload: BusinessPartnerFormPayload) => {
+        setIsCreatingCustomer(true)
+        try {
+            const partner = await createBusinessPartner(workspaceId, {
+                ...payload,
+                role: payload.role || 'customer'
+            })
+            setCustomer(partner)
+            setCustomerSearch(partner.partnerName)
+            setIsCommissionPanelOpen(false)
+            setCommissionSummaries([])
+            setIsCreateCustomerOpen(false)
+            toast({ title: t('customers.messages.addSuccess') })
+        } catch (error: any) {
+            toast({
+                title: t('common.error'),
+                description: error?.message || t('customers.messages.addError'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsCreatingCustomer(false)
+        }
     }
 
     const openCommissionPanel = () => {
@@ -442,7 +477,7 @@ export function QuickOrderModal({
                                     .filter((agent) => !agent.isDeleted && agent.status === 'active' && agent.salesAccountEnabled)
                                     .map((agent) => {
                                         const partner = agentPartners.find((candidate) => candidate.id === agent.businessPartnerId)
-                                        return partner ? <SelectItem key={agent.id} value={agent.id}>{partner.name}</SelectItem> : null
+                                        return partner ? <SelectItem key={agent.id} value={agent.id}>{partner.partnerName}</SelectItem> : null
                                     })}
                             </SelectContent>
                         </Select>
@@ -457,25 +492,33 @@ export function QuickOrderModal({
                         <span className="text-destructive">*</span>
                     </Label>
                     {!selectedSalesAccount ? (
-                        <PartnerAutocompleteInput
-                            workspaceId={workspaceId}
-                            roles={['customer']}
-                            value={customerSearch}
-                            onChange={(value) => {
-                                setCustomerSearch(value)
-                                setCustomer(null)
-                                setIsCommissionPanelOpen(false)
-                                setCommissionSummaries([])
-                            }}
-                            onSelectPartner={(partner) => {
-                                setCustomer(partner)
-                                setCustomerSearch(partner.name)
-                                setIsCommissionPanelOpen(false)
-                                setCommissionSummaries([])
-                            }}
-                            disabled={isSubmitting || isCommissionPanelOpen}
-                            placeholder={t('orders.form.selectCustomer')}
-                        />
+                        <div className="flex gap-2">
+                            <PartnerAutocompleteInput
+                                workspaceId={workspaceId}
+                                roles={['customer']}
+                                value={customerSearch}
+                                onChange={(value) => {
+                                    setCustomerSearch(value)
+                                    setCustomer(null)
+                                    setIsCommissionPanelOpen(false)
+                                    setCommissionSummaries([])
+                                }}
+                                onSelectPartner={(partner) => {
+                                    setCustomer(partner)
+                                    setCustomerSearch(partner.partnerName)
+                                    setIsCommissionPanelOpen(false)
+                                    setCommissionSummaries([])
+                                }}
+                                disabled={isSubmitting || isCommissionPanelOpen}
+                                placeholder={t('orders.form.selectCustomer')}
+                                className="min-w-0 flex-1"
+                            />
+                            <AddPartnerButton
+                                onClick={() => setIsCreateCustomerOpen(true)}
+                                label={t('customers.addCustomer')}
+                                disabled={isSubmitting || isCommissionPanelOpen}
+                            />
+                        </div>
                     ) : null}
                     {orderCounterparty ? (
                         <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
@@ -484,7 +527,7 @@ export function QuickOrderModal({
                                 <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
                                     {t('businessPartners.linked')} {t('businessPartners.title')}
                                 </div>
-                                <div className="truncate text-sm font-semibold">{orderCounterparty.name}</div>
+                                <div className="truncate text-sm font-semibold">{orderCounterparty.partnerName}</div>
                             </div>
                             {!selectedSalesAccount ? (
                                 <Button
@@ -599,7 +642,7 @@ export function QuickOrderModal({
                             {t('pos.quickOrder.creditCommission')}
                         </Button>
                         <p className="text-xs text-muted-foreground">
-                            {t('pos.quickOrder.creditCommissionFor', { agent: selectedSalesAccount?.partner.name ?? customer?.name })}
+                            {t('pos.quickOrder.creditCommissionFor', { agent: selectedSalesAccount?.partner.partnerName ?? customer?.partnerName })}
                         </p>
                     </div>
                 ) : null}
@@ -648,6 +691,17 @@ export function QuickOrderModal({
                     </Button>
                 ) : null}
             </AppDialogFooter>
+            <BusinessPartnerFormDialog
+                isOpen={isCreateCustomerOpen}
+                onOpenChange={setIsCreateCustomerOpen}
+                defaultCurrency={defaultCurrency}
+                availableCurrencies={availableCurrencies}
+                initialRole="customer"
+                title={t('customers.addCustomer')}
+                submitLabel={t('common.create')}
+                isSaving={isCreatingCustomer}
+                onSubmit={handleCreateCustomer}
+            />
         </div>
     )
 

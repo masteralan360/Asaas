@@ -66,7 +66,7 @@ export function SaveBorrowerAsPartnerDialog({
         setIsSaving(true)
         try {
             const partner = await createBusinessPartner(workspaceId, {
-                name: data.borrowerName,
+                partnerName: data.borrowerName,
                 phone: data.borrowerPhone || undefined,
                 address: data.borrowerAddress || undefined,
                 defaultCurrency: data.settlementCurrency,
@@ -74,7 +74,7 @@ export function SaveBorrowerAsPartnerDialog({
                 creditLimit: 0
             })
 
-            await linkLoanToBusinessPartner(data.loanId, partner.id, partner.name)
+            await linkLoanToBusinessPartner(data.loanId, partner.id, partner.partnerName)
             await recalculateBusinessPartnerSummary(workspaceId, partner.id)
 
             toast({

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Mail, MapPin, Package, Phone, Receipt, ShoppingCart, Truck, UsersRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, MapPin, Package, Phone, Receipt, ShoppingCart, Truck, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
@@ -197,7 +197,6 @@ export function LegacyPartnerDetailsView({
     const typeLabel = isCustomer
         ? t('orders.details.customer', { defaultValue: 'Customer' })
         : t('orders.details.supplier', { defaultValue: 'Supplier' })
-    const contactName = isCustomer ? undefined : supplier?.contactName
     const emptyRelatedLabel = isCustomer
         ? t('customers.details.noOrders', { defaultValue: 'No related orders yet.' })
         : t('suppliers.details.noOrders', { defaultValue: 'No related transactions yet.' })
@@ -287,7 +286,7 @@ export function LegacyPartnerDetailsView({
     const creditUsagePercent = partner?.creditLimit && partner.creditLimit > 0 ? Math.min(100, (outstandingValue / partner.creditLimit) * 100) : 0
     const latestTransaction = sortedTransactions[0]
     const earliestTransaction = sortedTransactions[sortedTransactions.length - 1]
-    const locationLabel = partner ? [partner.city, partner.country].filter(Boolean).join(', ') || 'N/A' : 'N/A'
+    const locationLabel = partner?.city || 'N/A'
     const activityRows = useMemo(
         () => sortedTransactions.slice(0, 8).map((transaction) => ({
             id: transaction.id,
@@ -360,7 +359,7 @@ export function LegacyPartnerDetailsView({
                         {listLabel}
                     </Link>
                     <span>/</span>
-                    <span className="font-semibold text-foreground">{partner.name}</span>
+                    <span className="font-semibold text-foreground">{partner.partnerName}</span>
                 </div>
             </div>
 
@@ -382,7 +381,7 @@ export function LegacyPartnerDetailsView({
                                 <div className="min-w-0">
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{typeLabel}</div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <div className="truncate text-lg font-semibold">{partner.name}</div>
+                                        <div className="truncate text-lg font-semibold">{partner.partnerName}</div>
                                         {partner.isEcommerce ? (
                                             <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
                                                 {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
@@ -400,20 +399,6 @@ export function LegacyPartnerDetailsView({
                                 </div>
                             </div>
 
-                            {contactName ? (
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="flex items-start gap-3">
-                                        <UsersRound className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                        <div>
-                                            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                                {t('suppliers.form.contactName', { defaultValue: 'Contact Name' })}
-                                            </div>
-                                            <div className="font-medium">{contactName}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : null}
-
                             <div className="rounded-2xl border bg-background/70 p-4">
                                 <div className="flex items-start gap-3">
                                     <Phone className="mt-0.5 h-4 w-4 text-muted-foreground" />
@@ -422,18 +407,6 @@ export function LegacyPartnerDetailsView({
                                             {t('customers.form.phone', { defaultValue: 'Phone' })}
                                         </div>
                                         <div className="font-medium">{partner.phone || 'N/A'}</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border bg-background/70 p-4">
-                                <div className="flex items-start gap-3">
-                                    <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                    <div>
-                                        <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                            {t('customers.form.email', { defaultValue: 'Email' })}
-                                        </div>
-                                        <div className="break-all font-medium">{partner.email || 'N/A'}</div>
                                     </div>
                                 </div>
                             </div>

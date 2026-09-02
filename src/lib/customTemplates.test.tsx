@@ -444,8 +444,8 @@ describe('Partner Details custom print template', () => {
 
         expect(html).not.toContain('Who owes whom?')
         expect(html).toContain('Partner Orders')
-        expect(html).toContain('Sales from Atlas Test to Primary Contact')
-        expect(html).toContain('Purchases supplied by Primary Contact to Atlas Test')
+        expect(html).toContain('Sales from Atlas Test to Sample Business Partner')
+        expect(html).toContain('Purchases supplied by Sample Business Partner to Atlas Test')
         expect(html).toContain('SO-00042')
         expect(html).toContain('PO-00019')
         expect(html).toContain('page-break-before:always')

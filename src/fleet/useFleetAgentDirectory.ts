@@ -35,7 +35,7 @@ export function useFleetAgentDirectory(workspaceId?: string) {
     partners,
     partnerByAgentId,
     getAgentName: (agentId: string) =>
-      partnerByAgentId.get(agentId)?.name ?? t("fleet.unknownAgent"),
+      partnerByAgentId.get(agentId)?.partnerName ?? t("fleet.unknownAgent"),
     getAgentProfileUrl: (agentId: string) => {
       const linkedUserId = agentById.get(agentId)?.linkedUserId;
       return linkedUserId

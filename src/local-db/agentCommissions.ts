@@ -2366,7 +2366,7 @@ async function resolveAgentCounterpartyName(agentId: string) {
   const agent = await db.agents.get(agentId);
   if (!agent) return null;
   const partner = await db.business_partners.get(agent.businessPartnerId);
-  return partner && !partner.isDeleted ? partner.name : null;
+  return partner && !partner.isDeleted ? partner.partnerName : null;
 }
 
 /**

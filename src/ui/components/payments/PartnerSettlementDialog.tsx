@@ -334,7 +334,7 @@ export function PartnerSettlementDialog({
                             ? (direction
                                 ? t('partnerSettlement.settleDescription', {
                                     defaultValue: 'Settle {{name}} by {{direction}}.',
-                                    name: partner.name,
+                                    name: partner.partnerName,
                                     direction: direction === 'incoming'
                                         ? t('partnerSettlement.collect', { defaultValue: 'Collect' })
                                         : t('partnerSettlement.pay', { defaultValue: 'Pay' })
@@ -376,7 +376,7 @@ export function PartnerSettlementDialog({
                                                 {' '}
                                                 {t('businessPartners.title', { defaultValue: 'Business Partner' })}
                                             </div>
-                                            <div className="truncate text-sm font-semibold">{partner.name}</div>
+                                            <div className="truncate text-sm font-semibold">{partner.partnerName}</div>
                                         </div>
                                         <Button
                                             type="button"

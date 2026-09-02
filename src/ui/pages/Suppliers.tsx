@@ -63,7 +63,7 @@ export function Suppliers() {
         const query = search.trim().toLowerCase()
         if (!query) return suppliers
         return suppliers.filter((supplier) =>
-            [supplier.name, supplier.contactName, supplier.phone, supplier.email, supplier.city]
+            [supplier.partnerName, supplier.phone, supplier.city]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(query))
         )
@@ -213,9 +213,8 @@ export function Suppliers() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>{t('suppliers.table.company') || 'Company'}</TableHead>
+                                    <TableHead>{t('businessPartners.form.partnerName')}</TableHead>
                                     <TableHead>{t('suppliers.table.contact') || 'Contact'}</TableHead>
-                                    <TableHead>{t('suppliers.table.email') || 'Email'}</TableHead>
                                     <TableHead>{t('suppliers.table.phone') || 'Phone'}</TableHead>
                                     <TableHead>{t('suppliers.table.currency') || 'Currency'}</TableHead>
                                     <TableHead>{t('suppliers.details.transactions', { defaultValue: 'Transactions' })}</TableHead>
@@ -233,9 +232,8 @@ export function Suppliers() {
                                 ) : (
                                     filteredSuppliers.map((supplier) => (
                                         <TableRow key={supplier.id}>
-                                            <TableCell className="font-semibold">{supplier.name}</TableCell>
-                                            <TableCell>{supplier.contactName || 'N/A'}</TableCell>
-                                            <TableCell>{supplier.email || 'N/A'}</TableCell>
+                                            <TableCell className="font-semibold">{supplier.partnerName}</TableCell>
+                                            <TableCell>{supplier.phone || 'N/A'}</TableCell>
                                             <TableCell>{supplier.phone || 'N/A'}</TableCell>
                                             <TableCell>{supplier.defaultCurrency.toUpperCase()}</TableCell>
                                             <TableCell>{supplier.totalPurchaseOrders}</TableCell>
@@ -290,7 +288,7 @@ export function Suppliers() {
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
                 onConfirm={handleDelete}
-                itemName={deleteTarget?.name}
+                itemName={deleteTarget?.partnerName}
                 title={t('suppliers.confirmDelete') || 'Delete Supplier'}
                 description={t('suppliers.deleteWarning') || 'All supplier data and transaction history will be permanently removed.'}
             />

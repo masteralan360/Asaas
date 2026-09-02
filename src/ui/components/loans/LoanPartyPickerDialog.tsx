@@ -39,11 +39,11 @@ function buildPartnerSelection(partner: BusinessPartner): LoanPartySelection {
     return {
         linkedPartyType: 'business_partner',
         linkedPartyId: partner.id,
-        linkedPartyName: partner.name,
+        linkedPartyName: partner.partnerName,
         defaultCurrency: partner.defaultCurrency,
-        borrowerName: partner.contactName?.trim() || partner.name,
+        borrowerName: partner.partnerName,
         borrowerPhone: partner.phone?.trim() || '',
-        borrowerAddress: composeAddress([partner.address, partner.city, partner.country])
+        borrowerAddress: composeAddress([partner.address, partner.city])
     }
 }
 
@@ -131,7 +131,7 @@ export function LoanPartyPickerDialog({
         }
 
         return businessPartners.filter((partner) =>
-            [partner.name, partner.contactName, partner.phone, partner.email, partner.address, partner.city, partner.country]
+            [partner.partnerName, partner.phone, partner.address, partner.city]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(normalizedQuery))
         )
@@ -194,9 +194,9 @@ export function LoanPartyPickerDialog({
                         <CustomerListItem
                             key={partner.id}
                             icon={<UserRound className="h-4 w-4" />}
-                            name={partner.name}
+                            name={partner.partnerName}
                             phone={partner.phone}
-                            address={composeAddress([partner.address, partner.city, partner.country])}
+                            address={composeAddress([partner.address, partner.city])}
                             isActive={selectedPartyId === partner.id}
                             onClick={() => handlePartnerSelect(partner)}
                         />

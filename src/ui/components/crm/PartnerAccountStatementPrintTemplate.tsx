@@ -31,13 +31,10 @@ export type PartnerAccountStatementPrintData = PartnerAccountStatementData & {
         email?: string
     }
     partner: {
-        name: string
-        contactName?: string
-        email?: string
+        partnerName: string
         phone?: string
         address?: string
         city?: string
-        country?: string
     }
     generatedAt: string
 }
@@ -337,7 +334,7 @@ export function PartnerAccountStatementPrintTemplate({
     const showProductCommissionColumns = data.isAgentCommissionStatement === true
     const logoSrc = resolveLogoSrc(logoUrl)
     const ledgers = buildPartnerAccountStatementLedger(data)
-    const partnerAddress = [data.partner.address, data.partner.city, data.partner.country].filter(Boolean).join(', ')
+    const partnerAddress = [data.partner.address, data.partner.city].filter(Boolean).join(', ')
     const periodLabel = resolvePeriodLabel(data.period, t)
     const businessName = workspaceName?.trim() || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
 
@@ -381,16 +378,14 @@ export function PartnerAccountStatementPrintTemplate({
                             <span className="font-bold">{t('businessPartners.accountStatement.printed', { defaultValue: 'Printed' })}:</span>
                             <span>{formatDateTime(data.generatedAt)}</span>
                             <span className="font-bold">{t('businessPartners.accountStatement.partner', { defaultValue: 'Partner' })}:</span>
-                            <strong>{data.partner.name}</strong>
-                            <span className="font-bold">{t('businessPartners.accountStatement.contactPerson', { defaultValue: 'Contact person' })}:</span>
-                            <span>{data.partner.contactName?.trim() || '—'}</span>
+                            <strong>{data.partner.partnerName}</strong>
                         </div>
                     </div>
                 </header>
 
                 <div className="mt-3 grid grid-cols-3 gap-3 border-b border-slate-300 pb-3 text-[10px]" data-pdf-keep-together>
                     <div><span className="font-bold">{t('businessPartners.accountStatement.business', { defaultValue: 'Business' })}: </span>{businessName}</div>
-                    <div><span className="font-bold">{t('businessPartners.accountStatement.contact', { defaultValue: 'Contact' })}: </span>{data.partner.phone?.trim() || data.partner.email?.trim() || '—'}</div>
+                    <div><span className="font-bold">{t('businessPartners.accountStatement.contact', { defaultValue: 'Contact' })}: </span>{data.partner.phone?.trim() || '—'}</div>
                     <div><span className="font-bold">{t('businessPartners.accountStatement.address', { defaultValue: 'Address' })}: </span>{partnerAddress || workspaceDescription?.trim() || '—'}</div>
                 </div>
 

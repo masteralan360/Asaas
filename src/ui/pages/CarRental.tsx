@@ -1590,7 +1590,7 @@ function RequestDialog({
     setForm((current) => ({
       ...current,
       businessPartnerId: partner.id,
-      customerName: partner.name,
+      customerName: partner.partnerName,
       customerPhone: partner.phone || current.customerPhone,
     }));
   }
@@ -1638,7 +1638,7 @@ function RequestDialog({
                       customerName.trim() !==
                         (partners.find(
                           (partner) => partner.id === current.businessPartnerId,
-                        )?.name ?? current.customerName)
+                        )?.partnerName ?? current.customerName)
                         ? ""
                         : current.businessPartnerId,
                   }))
@@ -1821,7 +1821,7 @@ function ContractDialog({
     setForm((current) => ({
       ...current,
       businessPartnerId: partner.id,
-      customerName: partner.name,
+      customerName: partner.partnerName,
       customerPhone: partner.phone || current.customerPhone,
     }));
   }
@@ -1892,7 +1892,7 @@ function ContractDialog({
                       customerName.trim() !==
                         (partners.find(
                           (partner) => partner.id === current.businessPartnerId,
-                        )?.name ?? current.customerName)
+                        )?.partnerName ?? current.customerName)
                         ? ""
                         : current.businessPartnerId,
                   }))
@@ -2589,7 +2589,7 @@ function LinkedPartnerField({
                 {t("carRental.partnerLink.linked")}
               </Badge>
               <span className="truncate text-sm font-medium">
-                {linkedPartner?.name || customerName}
+                {linkedPartner?.partnerName || customerName}
               </span>
             </div>
             <Button

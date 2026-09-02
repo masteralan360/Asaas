@@ -638,7 +638,7 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
             workspaceId={workspaceId}
             value={sentByName}
             onChange={(value) => { setSentByName(value); if (value !== sentByName) setSentByPartnerId(null) }}
-            onSelectPartner={(partner) => { setSentByName(partner.name); setSentByPartnerId(partner.id) }}
+            onSelectPartner={(partner) => { setSentByName(partner.partnerName); setSentByPartnerId(partner.id) }}
             roles={['supplier']}
             placeholder={t('clinicalAppointments.sentByPlaceholder', { defaultValue: 'Search supplier or type a name...' })}
           />
@@ -648,7 +648,7 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
                 <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
                   {t('businessPartners.linked', { defaultValue: 'Linked' })}
                 </div>
-                <div className="truncate text-sm font-semibold">{sentByPartner.name}</div>
+                <div className="truncate text-sm font-semibold">{sentByPartner.partnerName}</div>
               </div>
               <Button
                 type="button"
@@ -736,7 +736,7 @@ function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }:
               onClick={async () => {
                 try {
                   const partner = await createBusinessPartner(workspaceId, {
-                    name: sentByName,
+                    partnerName: sentByName,
                     phone: savePartnerPhone || undefined,
                     role: 'supplier',
                     creditLimit: 0,

@@ -76,7 +76,7 @@ export function SettlementDialog({
     const businessPartnerById = useMemo(() => new Map(businessPartners.map((partner) => [partner.id, partner])), [businessPartners])
     const defaultBusinessPartnerId = getMetadataString(obligation?.metadata, 'businessPartnerId')
     const defaultBusinessPartner = defaultBusinessPartnerId ? businessPartnerById.get(defaultBusinessPartnerId) : undefined
-    const defaultCounterpartyName = defaultBusinessPartner?.name || obligation?.counterpartyName || obligation?.title || ''
+    const defaultCounterpartyName = defaultBusinessPartner?.partnerName || obligation?.counterpartyName || obligation?.title || ''
 
     useEffect(() => {
         if (!open) {
@@ -122,8 +122,8 @@ export function SettlementDialog({
         && (!requiresLinkedCounterparty || !!linkedCounterparty?.id)
 
     const handleCounterpartySelect = (partner: BusinessPartner) => {
-        setCounterpartyName(partner.name)
-        setLinkedCounterparty({ id: partner.id, name: partner.name })
+        setCounterpartyName(partner.partnerName)
+        setLinkedCounterparty({ id: partner.id, name: partner.partnerName })
     }
 
     const handleSubmit = (e: FormEvent) => {

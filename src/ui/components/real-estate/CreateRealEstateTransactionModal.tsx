@@ -202,8 +202,8 @@ export function CreateRealEstateTransactionPage({
             return
         }
 
-        setBuyerLink({ id: partner.id, name: partner.name })
-        setBuyerName(partner.name)
+        setBuyerLink({ id: partner.id, name: partner.partnerName })
+        setBuyerName(partner.partnerName)
     }
 
     const handleCreateBuyerPartner = async (payload: BusinessPartnerFormPayload) => {
@@ -234,8 +234,8 @@ export function CreateRealEstateTransactionPage({
             return
         }
 
-        setSellerLink({ id: partner.id, name: partner.name })
-        setSellerName(partner.name)
+        setSellerLink({ id: partner.id, name: partner.partnerName })
+        setSellerName(partner.partnerName)
     }
 
     const handleCreateSellerPartner = async (payload: BusinessPartnerFormPayload) => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Activity, ArrowLeft, ArrowLeftRight, Building2, CalendarDays, Car, CreditCard, Eye, HandCoins, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UserRound, UsersRound, TrendingUp, TrendingDown } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, Building2, CalendarDays, Car, CreditCard, Eye, HandCoins, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UserRound, UsersRound, TrendingUp, TrendingDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
@@ -856,7 +856,6 @@ export function PartnerDetailsView({
                 ? t('agents.title', { defaultValue: 'Agents' })
             : t('businessPartners.title', { defaultValue: 'Business Partners' })
     const typeLabel = partner ? roleBadgeLabel(partner.role, t) : t('businessPartners.title', { defaultValue: 'Business Partner' })
-    const contactName = partner?.contactName
     const linkedAgentUser = agent?.linkedUserId
         ? workspaceUsers.find((workspaceUser) => workspaceUser.id === agent.linkedUserId)
         : undefined
@@ -891,7 +890,7 @@ export function PartnerDetailsView({
     const firstActivityLabel = t('businessPartners.firstActivity', { defaultValue: 'First Activity' })
     const detailsColumnLabel = t('common.details', { defaultValue: 'Details' })
     const referenceColumnLabel = t('common.reference', { defaultValue: 'Reference' })
-    const partnerRelationshipName = contactName?.trim() || partner?.name || t('businessPartners.title', { defaultValue: 'Business Partner' })
+    const partnerRelationshipName = partner?.partnerName || t('businessPartners.title', { defaultValue: 'Business Partner' })
     const workspaceRelationshipName = workspaceName?.trim() || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
     const relationshipReceivable = Math.max(partner?.receivableBalance || 0, 0)
     const relationshipPayable = Math.max(partner?.payableBalance || 0, 0)
@@ -1274,7 +1273,7 @@ export function PartnerDetailsView({
     const creditUsagePercent = partner?.creditLimit && partner.creditLimit > 0 ? Math.min(100, (Math.max(partner.netExposure, 0) / partner.creditLimit) * 100) : 0
     const latestTransaction = filteredTransactions[0]
     const earliestTransaction = filteredTransactions[filteredTransactions.length - 1]
-    const locationLabel = partner ? [partner.city, partner.country].filter(Boolean).join(', ') || 'N/A' : 'N/A'
+    const locationLabel = partner?.city || 'N/A'
     const activityRows = useMemo(
         () => isAgentProfile
             ? agentRecentRows.slice(0, 8).map((row) => ({
@@ -1596,14 +1595,11 @@ export function PartnerDetailsView({
 
         return {
             partner: {
-                name: partner.name,
+                partnerName: partner.partnerName,
                 role: partner.role,
-                contactName: partner.contactName,
-                email: partner.email,
                 phone: partner.phone,
                 address: partner.address,
                 city: partner.city,
-                country: partner.country,
                 defaultCurrency,
                 createdAt: partner.createdAt,
                 notes: partner.notes
@@ -1708,13 +1704,10 @@ export function PartnerDetailsView({
         return {
             workspace: workspacePrintContacts,
             partner: {
-                name: partner.name,
-                contactName: partner.contactName,
-                email: partner.email,
+                partnerName: partner.partnerName,
                 phone: partner.phone,
                 address: partner.address,
-                city: partner.city,
-                country: partner.country
+                city: partner.city
             },
             period: printPeriod,
             generatedAt: new Date().toISOString(),
@@ -1971,14 +1964,14 @@ export function PartnerDetailsView({
                         {listLabel}
                     </Link>
                     <span>/</span>
-                    <span className="font-semibold text-foreground">{partner.name}</span>
+                    <span className="font-semibold text-foreground">{partner.partnerName}</span>
                 </div>
                 <div className="flex items-center gap-2 print:hidden">
                     <Button
                         variant="outline"
                         className="h-10 gap-2 rounded-xl px-4"
                         allowViewer={true}
-                        onClick={() => navigate(`/business-partners/account-statement?partnerId=${encodeURIComponent(partner.id)}&partnerName=${encodeURIComponent(partner.name)}`)}
+                        onClick={() => navigate(`/business-partners/account-statement?partnerId=${encodeURIComponent(partner.id)}&partnerName=${encodeURIComponent(partner.partnerName)}`)}
                     >
                         <Receipt className="h-4 w-4" />
                         <span className="hidden sm:inline">{t('businessPartners.accountStatement.title', { defaultValue: 'Account Statement' })}</span>
@@ -2010,7 +2003,7 @@ export function PartnerDetailsView({
                                     {linkedAgentUser?.profileUrl ? (
                                         <img
                                             src={platformService.convertFileSrc(linkedAgentUser.profileUrl)}
-                                            alt={partner.name}
+                                            alt={partner.partnerName}
                                             className="h-full w-full object-cover"
                                         />
                                     ) : partner.role === 'supplier' ? (
@@ -2024,7 +2017,7 @@ export function PartnerDetailsView({
                                 <div className="min-w-0">
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{typeLabel}</div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <div className="truncate text-lg font-semibold">{partner.name}</div>
+                                        <div className="truncate text-lg font-semibold">{partner.partnerName}</div>
                                         {partner.isEcommerce ? (
                                             <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
                                                 {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
@@ -2041,20 +2034,6 @@ export function PartnerDetailsView({
                                     </div>
                                 </div>
                             </div>
-
-                            {contactName ? (
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="flex items-start gap-3">
-                                        <UsersRound className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                        <div>
-                                            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                                {t('suppliers.form.contactName', { defaultValue: 'Contact Name' })}
-                                            </div>
-                                            <div className="font-medium">{contactName}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : null}
 
                             {partner.role === 'agent' && agent ? (
                                 <div className="space-y-3 rounded-2xl border bg-background/70 p-4">
@@ -2124,18 +2103,6 @@ export function PartnerDetailsView({
                                             {t('customers.form.phone', { defaultValue: 'Phone' })}
                                         </div>
                                         <div className="font-medium">{partner.phone || 'N/A'}</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border bg-background/70 p-4">
-                                <div className="flex items-start gap-3">
-                                    <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                    <div>
-                                        <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                            {t('customers.form.email', { defaultValue: 'Email' })}
-                                        </div>
-                                        <div className="break-all font-medium">{partner.email || 'N/A'}</div>
                                     </div>
                                 </div>
                             </div>
@@ -3081,10 +3048,10 @@ export function PartnerDetailsView({
                     initialParty={{
                         linkedPartyType: 'business_partner',
                         linkedPartyId: partner.id,
-                        linkedPartyName: partner.name,
-                        borrowerName: partner.contactName?.trim() || partner.name,
+                        linkedPartyName: partner.partnerName,
+                        borrowerName: partner.partnerName,
                         borrowerPhone: partner.phone?.trim() || '',
-                        borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', '),
+                        borrowerAddress: [partner.address, partner.city].filter(Boolean).join(', '),
                         defaultCurrency: partner.defaultCurrency,
                     }}
                     lockParty

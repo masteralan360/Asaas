@@ -620,7 +620,7 @@ async function normalizeSalesOrderCounterparty(
     return {
         businessPartnerId: partner.id,
         customerId: customerFacet.id,
-        customerName: data.customerName || partner.name
+        customerName: data.customerName || partner.partnerName
     }
 }
 
@@ -636,7 +636,7 @@ async function normalizePurchaseOrderCounterparty(
     return {
         businessPartnerId: partner.id,
         supplierId: supplierFacet.id,
-        supplierName: data.supplierName || partner.name
+        supplierName: data.supplierName || partner.partnerName
     }
 }
 
@@ -2194,7 +2194,7 @@ async function buildSalesOrderEntity(
         ? await normalizeSalesOrderCounterparty({
             businessPartnerId: salesAccount.partner.id,
             customerId: salesAccount.partner.id,
-            customerName: salesAccount.partner.name
+            customerName: salesAccount.partner.partnerName
         })
         : await normalizeSalesOrderCounterparty(data)
     const paymentState = normalizeOrderPaymentState(data, now)
@@ -2516,7 +2516,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         ? await normalizeSalesOrderCounterparty({
             businessPartnerId: salesAccount.partner.id,
             customerId: salesAccount.partner.id,
-            customerName: salesAccount.partner.name
+            customerName: salesAccount.partner.partnerName
         })
         : await normalizeSalesOrderCounterparty({
             businessPartnerId: data.businessPartnerId ?? existing.businessPartnerId ?? null,
@@ -2661,10 +2661,10 @@ async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | 
         direction: orderType === 'sales' ? 'lent' : 'borrowed',
         linkedPartyType: 'business_partner',
         linkedPartyId: partner.id,
-        linkedPartyName: partner.name,
-        borrowerName: partner.name,
+        linkedPartyName: partner.partnerName,
+        borrowerName: partner.partnerName,
         borrowerPhone: partner.phone || '',
-        borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', '),
+        borrowerAddress: [partner.address, partner.city].filter(Boolean).join(', '),
         borrowerNationalId: '',
         principalAmount: initialPaymentIsRepayment
             ? order.total

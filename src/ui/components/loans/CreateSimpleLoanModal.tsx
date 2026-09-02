@@ -210,16 +210,16 @@ export function CreateSimpleLoanModal({
                                             setSelectedParty({
                                                 linkedPartyType: 'business_partner',
                                                 linkedPartyId: partner.id,
-                                                linkedPartyName: partner.name,
-                                                borrowerName: partner.name,
+                                                linkedPartyName: partner.partnerName,
+                                                borrowerName: partner.partnerName,
                                                 borrowerPhone: partner.phone || '',
-                                                borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', '),
+                                                borrowerAddress: [partner.address, partner.city].filter(Boolean).join(', '),
                                                 defaultCurrency: partner.defaultCurrency
                                             })
                                             setSelectedCurrency(partner.defaultCurrency)
-                                            setBorrowerName(partner.name)
+                                            setBorrowerName(partner.partnerName)
                                             setBorrowerPhone(partner.phone || '')
-                                            setBorrowerAddress([partner.address, partner.city, partner.country].filter(Boolean).join(', '))
+                                            setBorrowerAddress([partner.address, partner.city].filter(Boolean).join(', '))
                                         }}
                                         workspaceId={workspaceId}
                                     />

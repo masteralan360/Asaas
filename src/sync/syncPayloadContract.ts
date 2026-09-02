@@ -39,8 +39,12 @@ const NON_REMOTE_FIELDS_BY_ENTITY: Readonly<Record<string, ReadonlySet<string>>>
     "pdf_blob_a4",
     "pdf_blob_receipt",
   ]),
-  customers: new Set(["is_locked"]),
-  suppliers: new Set(["is_locked"]),
+  // `partner_name` is the sole active identity. The former `name` and
+  // `contact_name` fields remain stored only for historical recovery. Email
+  // and country are retired and must never be recreated from queued changes.
+  business_partners: new Set(["name", "contact_name", "email", "country"]),
+  customers: new Set(["is_locked", "name", "email", "country"]),
+  suppliers: new Set(["is_locked", "name", "contact_name", "email", "country"]),
   // Delivery recipient phone is the only current identifier. These fields may
   // remain in a local offline row created before the simplified contract, but
   // no longer exist in the delivery_shipments table.

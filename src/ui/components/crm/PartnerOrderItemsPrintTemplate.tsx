@@ -118,13 +118,10 @@ export type PartnerOrderItemsPrintData = {
         email?: string
     }
     partner: {
-        name: string
-        contactName?: string
-        email?: string
+        partnerName: string
         phone?: string
         address?: string
         city?: string
-        country?: string
     }
     period: PartnerOrderItemsPrintPeriod
     generatedAt: string
@@ -1681,7 +1678,7 @@ export function PartnerOrderItemsPrintTemplate({
     const isRtl = isRTL(printLang)
     const logoSrc = resolveLogoSrc(logoUrl)
     const periodLabel = resolvePeriodLabel(data.period, t)
-    const partnerLocation = [data.partner.address, data.partner.city, data.partner.country].filter(Boolean).join(', ')
+    const partnerLocation = [data.partner.address, data.partner.city].filter(Boolean).join(', ')
     const businessName = workspaceName?.trim() || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
 
     return (
@@ -1738,8 +1735,7 @@ export function PartnerOrderItemsPrintTemplate({
                     </div>
                     <div className="min-h-[32mm] p-2 text-end leading-relaxed">
                         <div className="font-bold text-[13px]">{t('businessPartners.orderItemsPrint.title', { defaultValue: 'Partner Order Items Statement' })}</div>
-                        <div className="mt-1"><span>{t('businessPartners.orderItemsPrint.partner', { defaultValue: 'Partner' })}: </span><strong>{data.partner.name}</strong></div>
-                        {data.partner.contactName?.trim() ? <div>{data.partner.contactName}</div> : null}
+                        <div className="mt-1"><span>{t('businessPartners.orderItemsPrint.partner', { defaultValue: 'Partner' })}: </span><strong>{data.partner.partnerName}</strong></div>
                         {data.partner.phone?.trim() ? <div>{data.partner.phone}</div> : null}
                     </div>
                 </header>
@@ -1752,7 +1748,7 @@ export function PartnerOrderItemsPrintTemplate({
 
                 <CurrentBalanceSummary
                     summary={data.balanceSummary}
-                    partnerName={data.partner.name}
+                    partnerName={data.partner.partnerName}
                     workspaceName={businessName}
                     t={t}
                     iqdPreference={iqdPreference}

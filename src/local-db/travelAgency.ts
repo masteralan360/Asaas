@@ -85,7 +85,7 @@ async function normalizeTravelSaleSupplier(
     return {
         businessPartnerId: partner.id,
         supplierId: supplierFacet.id,
-        supplierName: data.supplierName || partner.name
+        supplierName: data.supplierName || partner.partnerName
     }
 }
 

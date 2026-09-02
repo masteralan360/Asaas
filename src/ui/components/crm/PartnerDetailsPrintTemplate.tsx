@@ -36,14 +36,11 @@ export type PartnerDetailsPrintTransaction = {
 
 export type PartnerDetailsPrintData = {
     partner: {
-        name: string
+        partnerName: string
         role: BusinessPartnerRole
-        contactName?: string
-        email?: string
         phone?: string
         address?: string
         city?: string
-        country?: string
         defaultCurrency: string
         createdAt: string
         notes?: string
@@ -380,9 +377,9 @@ export function PartnerDetailsPrintTemplate({
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
     const logoSrc = resolveLogoSrc(logoUrl)
-    const location = [data.partner.city, data.partner.country].filter(Boolean).join(', ')
+    const location = data.partner.city || ''
     const periodLabel = resolvePeriodLabel(data.period, t)
-    const partnerRelationshipName = data.partner.contactName?.trim() || data.partner.name
+    const partnerRelationshipName = data.partner.partnerName
     const workspaceRelationshipName = workspaceName?.trim()
         || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
     const isRtl = isRTL(printLang)
@@ -588,7 +585,7 @@ export function PartnerDetailsPrintTemplate({
                     <HideablePrintFieldCard
                         title={(
                             <>
-                                <span className="block text-base font-bold">{data.partner.name}</span>
+                                <span className="block text-base font-bold">{data.partner.partnerName}</span>
                                 <span className={cn('block text-[10px] font-semibold text-slate-500', !isRtl && 'uppercase tracking-wide')}>
                                     {resolveRoleLabel(data.partner.role, t)}
                                 </span>
@@ -600,22 +597,10 @@ export function PartnerDetailsPrintTemplate({
                         onHiddenFieldChange={onHiddenFieldChange}
                         fields={[
                             {
-                                key: 'partnerDetails.partner.contactName',
-                                label: t('businessPartners.form.contactName', { defaultValue: 'Contact Name' }),
-                                value: data.partner.contactName?.trim() || '-',
-                                render: <ContactLine label={t('businessPartners.form.contactName', { defaultValue: 'Contact Name' })} value={data.partner.contactName} />
-                            },
-                            {
                                 key: 'partnerDetails.partner.phone',
                                 label: t('common.phone', { defaultValue: 'Phone' }),
                                 value: data.partner.phone?.trim() || '-',
                                 render: <ContactLine label={t('common.phone', { defaultValue: 'Phone' })} value={data.partner.phone} />
-                            },
-                            {
-                                key: 'partnerDetails.partner.email',
-                                label: t('common.email', { defaultValue: 'Email' }),
-                                value: data.partner.email?.trim() || '-',
-                                render: <ContactLine label={t('common.email', { defaultValue: 'Email' })} value={data.partner.email} />
                             },
                             {
                                 key: 'partnerDetails.partner.address',
@@ -897,7 +882,7 @@ export function PartnerDetailsPrintTemplate({
                                     </div>
                                 </div>
                                 <div className="text-end">
-                                    <div className="text-sm font-bold">{data.partner.name}</div>
+                                    <div className="text-sm font-bold">{data.partner.partnerName}</div>
                                     <div className="mt-1 text-[10px] text-slate-500">{periodLabel}</div>
                                 </div>
                             </div>

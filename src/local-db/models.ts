@@ -333,13 +333,10 @@ export interface InventoryTransferTransaction extends BaseEntity {
 
 export interface Supplier extends BaseEntity {
   businessPartnerId?: string | null
-  name: string
-  contactName?: string
-  email?: string
+  partnerName: string
   phone?: string
   address?: string
   city?: string
-  country?: string
   defaultCurrency: CurrencyCode
   notes?: string
   totalPurchases: number
@@ -350,12 +347,10 @@ export interface Supplier extends BaseEntity {
 
 export interface Customer extends BaseEntity {
   businessPartnerId?: string | null
-  name: string
-  email?: string
+  partnerName: string
   phone?: string
   address?: string
   city?: string
-  country?: string
   defaultCurrency: CurrencyCode
   notes?: string
   totalOrders: number
@@ -628,13 +623,16 @@ export interface DeliveryLedgerEntry extends BaseEntity {
 }
 
 export interface BusinessPartner extends BaseEntity {
-  name: string
-  contactName?: string
-  email?: string
+  /**
+   * Canonical, user-facing identity for a business partner.
+   *
+   * The pre-migration `name` and `contactName` values are intentionally not
+   * represented here. They remain in storage as historical metadata only.
+  */
+  partnerName: string
   phone?: string
   address?: string
   city?: string
-  country?: string
   defaultCurrency: CurrencyCode
   notes?: string
   role: BusinessPartnerRole

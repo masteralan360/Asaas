@@ -24,9 +24,8 @@ import {
 
 const basePartnerPrintData: PartnerDetailsPrintData = {
     partner: {
-        name: 'Business Partner1',
+        partnerName: 'Business Partner1',
         role: 'both',
-        contactName: 'Business Partner1',
         phone: '7701234566',
         defaultCurrency: 'iqd',
         createdAt: '2026-05-01T00:00:00.000Z'

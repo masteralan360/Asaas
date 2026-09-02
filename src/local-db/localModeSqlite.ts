@@ -197,6 +197,37 @@ function normalizeLegacySaleItemTimestamps(
   return changed;
 }
 
+/**
+ * SQLite keeps JSON payloads from older desktop releases. Promote the former
+ * `name` value only while hydrating an old partner record, leaving `name` and
+ * `contactName` untouched as historical metadata. Retired email and country
+ * fields are removed before the row reaches Dexie.
+ */
+function normalizeLegacyPartnerPayload(
+  tableName: string,
+  payload: Record<string, unknown>,
+) {
+  if (
+    tableName !== "business_partners"
+    && tableName !== "customers"
+    && tableName !== "suppliers"
+  ) {
+    return false;
+  }
+
+  const existingPartnerName = typeof payload.partnerName === "string"
+    ? payload.partnerName.trim()
+    : "";
+  const legacyName = typeof payload.name === "string" ? payload.name.trim() : "";
+  const partnerName = existingPartnerName || legacyName || "Unnamed partner";
+  const changed = payload.partnerName !== partnerName || "email" in payload || "country" in payload;
+
+  payload.partnerName = partnerName;
+  delete payload.email;
+  delete payload.country;
+  return changed;
+}
+
 const hydratedWorkspaces = new Set<string>();
 const hydrationTasks = new Map<string, Promise<void>>();
 
@@ -1161,6 +1192,10 @@ export async function hydrateLocalModeCacheFromSqlite(
 
         const payload = JSON.parse(row.payload) as unknown;
         const revived = deserializeValue(payload) as Record<string, unknown>;
+        const normalizedPartnerPayload = normalizeLegacyPartnerPayload(
+          row.entity_type,
+          revived,
+        );
         if (row.entity_type === "products" && typeof revived.sku === "string") {
           revived.skuKey = normalizeProductSku(revived.sku);
         }
@@ -1173,13 +1208,12 @@ export async function hydrateLocalModeCacheFromSqlite(
           const parentSaleCreatedAt = typeof revived.saleId === "string"
             ? saleCreatedAtById.get(revived.saleId)
             : undefined;
-          if (
-            normalizeLegacySaleItemTimestamps(
-              revived,
-              parentSaleCreatedAt,
-              row.updated_at,
-            )
-          ) {
+          const normalizedSaleItem = normalizeLegacySaleItemTimestamps(
+            revived,
+            parentSaleCreatedAt,
+            row.updated_at,
+          );
+          if (normalizedPartnerPayload || normalizedSaleItem) {
             await connection.execute(
               `
                 UPDATE local_entities
@@ -1189,6 +1223,15 @@ export async function hydrateLocalModeCacheFromSqlite(
               [JSON.stringify(await serializeValue(revived)), row.entity_type, row.entity_id],
             );
           }
+        } else if (normalizedPartnerPayload) {
+          await connection.execute(
+            `
+              UPDATE local_entities
+              SET payload = $1
+              WHERE entity_type = $2 AND entity_id = $3
+            `,
+            [JSON.stringify(await serializeValue(revived)), row.entity_type, row.entity_id],
+          );
         }
         if (row.entity_type === "profiles") {
           if (row.workspace_id) {

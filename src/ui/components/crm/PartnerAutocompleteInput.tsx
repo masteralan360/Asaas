@@ -48,7 +48,7 @@ export function PartnerAutocompleteInput({
         if (!query || query.length < 1) return []
         return partners
             .filter((p) => !excludedPartnerIds.has(p.id))
-            .filter((p) => p.name.toLowerCase().includes(query))
+            .filter((p) => p.partnerName.toLowerCase().includes(query))
             .slice(0, 8)
     }, [excludedPartnerIds, partners, query])
 
@@ -56,7 +56,7 @@ export function PartnerAutocompleteInput({
 
     const handleSelect = useCallback((partner: BusinessPartner) => {
         setJustSelected(true)
-        onChange(partner.name)
+        onChange(partner.partnerName)
         onSelectPartner(partner)
     }, [onChange, onSelectPartner])
 
@@ -105,7 +105,7 @@ export function PartnerAutocompleteInput({
                         >
                             <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <div className="min-w-0 flex-1">
-                                <div className="truncate font-medium">{partner.name}</div>
+                                <div className="truncate font-medium">{partner.partnerName}</div>
                                 {partner.phone ? (
                                     <div className="truncate text-xs text-muted-foreground">{partner.phone}</div>
                                 ) : null}

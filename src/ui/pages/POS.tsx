@@ -3267,7 +3267,7 @@ export function POS() {
             const completedOrder = await createCompletedSalesOrder(user.workspaceId, {
                 businessPartnerId: checkout.customer.id,
                 customerId: checkout.customer.id,
-                customerName: checkout.customer.name,
+                customerName: checkout.customer.partnerName,
                 salesAccountAgentId: checkout.salesAccountAgentId ?? null,
                 commissionEnabled: checkout.commissionEnabled,
                 sourceStorageId: sourceStorageIds.length === 1 ? sourceStorageIds[0] : null,
@@ -4772,6 +4772,8 @@ export function POS() {
                 cart={cart}
                 totalAmount={totalAmount}
                 settlementCurrency={settlementCurrency as CurrencyCode}
+                defaultCurrency={features.default_currency}
+                availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
                 iqdPreference={features.iqd_display_preference}
                 loansEnabled={hasFeature('loans')}
                 installmentsEnabled={hasFeature('installments')}

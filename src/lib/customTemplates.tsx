@@ -612,14 +612,11 @@ const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
 
 const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
     partner: {
-        name: 'Sample Business Partner',
+        partnerName: 'Sample Business Partner',
         role: 'both',
-        contactName: 'Primary Contact',
-        email: 'partner@example.com',
         phone: '+964 750 000 0000',
         address: 'Business District',
         city: 'Erbil',
-        country: 'Iraq',
         defaultCurrency: 'usd',
         createdAt: new Date().toISOString(),
         notes: 'Partner notes appear here.'
@@ -828,12 +825,10 @@ const SAMPLE_PURCHASE_ORDER_DATA: PurchaseOrder = {
 
 const SAMPLE_PARTNER_ORDER_ITEMS_DATA: PartnerOrderItemsPrintData = {
     partner: {
-        name: 'Sample Business Partner',
-        contactName: 'Primary Contact',
+        partnerName: 'Sample Business Partner',
         phone: '+964 750 000 0000',
         address: 'Business District',
-        city: 'Erbil',
-        country: 'Iraq'
+        city: 'Erbil'
     },
     period: { type: 'allTime' },
     generatedAt: new Date().toISOString(),
@@ -1590,7 +1585,7 @@ function createPartnerAccountStatementPreview(options: CustomTemplatePreviewOpti
 
 function createLoanAccountStatementPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     const loanAccountStatementData = options.loanAccountStatementData || {
-        partner: { name: 'Sample Partner', contactName: '', phone: '', email: '', address: '' },
+        partner: { partnerName: 'Sample Partner', phone: '', address: '' },
         loan: { id: 'sample-loan', loanNo: 'LOAN-001', direction: 'lent' as const, settlementCurrency: 'iqd' as const },
         selectedPayment: { id: 'sample-payment', amount: 200000, paymentMethod: 'cash' as const, paidAt: '2026-08-28T10:00:00.000Z', note: '' },
         currency: 'iqd' as const,
