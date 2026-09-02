@@ -197,7 +197,6 @@ export function QuickOrderModal({
     totalAmount,
     settlementCurrency,
     defaultCurrency,
-    availableCurrencies,
     iqdPreference,
     loansEnabled,
     installmentsEnabled,
