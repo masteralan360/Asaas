@@ -243,6 +243,17 @@ export function courierReimbursementOutstandingByParty(entries: DeliveryLedgerEn
   return results;
 }
 
+/** Outstanding courier reimbursements, keyed by delivery post. */
+export function courierReimbursementOutstandingByShipment(entries: DeliveryLedgerEntry[]) {
+  const results = new Map<string, number>();
+  for (const posts of courierReimbursementBreakdownByParty(entries).values()) {
+    for (const post of posts) {
+      results.set(post.shipmentId, (results.get(post.shipmentId) ?? 0) + post.amount);
+    }
+  }
+  return results;
+}
+
 /** Per-merchant (per-currency) post breakdown with FIFO paid/outstanding amounts. */
 export function merchantSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(

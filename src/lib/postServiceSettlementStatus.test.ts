@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeliveryLedgerEntry } from "@/local-db";
 
-import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
+import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
 
 const NOW = "2026-08-17T10:00:00.000Z";
 
@@ -82,6 +82,9 @@ describe("courierHandoverStatusByShipment", () => {
     ]);
     expect(courierReimbursementOutstandingByParty(entries)).toEqual(
       new Map([["a1:iqd", 4_000], ["a2:iqd", 4_000]]),
+    );
+    expect(courierReimbursementOutstandingByShipment(entries)).toEqual(
+      new Map([["s1", 1_000], ["s2", 3_000], ["s4", 4_000]]),
     );
   });
 });
