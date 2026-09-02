@@ -7204,7 +7204,9 @@
       "party": "Party",
       "outstanding": "Outstanding",
       "cashHandover": "Cash handover",
+      "cashHandoverAndCourierReimbursement": "Cash handover / Courier reimbursement",
       "merchantPayout": "Merchant payout",
+      "merchantPayoutAndMerchantRepayment": "Merchant payout / Merchant repayment",
       "paid": "Paid",
       "collected": "Collected",
       "payable": "Payable",
@@ -7250,6 +7252,8 @@
     "settlementStatus": {
       "handedOver": "Handed over",
       "paid": "Paid",
+      "reimbursed": "Reimbursed",
+      "received": "Received",
       "partial": "Partial",
       "outstanding": "Outstanding"
     },

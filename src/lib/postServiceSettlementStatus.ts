@@ -20,16 +20,22 @@ export type MerchantAccountSettlementBreakdown = ShipmentSettlementBreakdown & {
 };
 
 /**
- * A delivery post is complete only after delivery and both of its settlement
- * obligations have been cleared.
+ * A delivery post is complete only after delivery and both settlement
+ * obligations for its payment model have been cleared.
  */
 export function isDeliveryShipmentCompleted(
-  shipment: Pick<DeliveryShipment, "id" | "status">,
+  shipment: Pick<DeliveryShipment, "id" | "status"> & Partial<Pick<DeliveryShipment, "customerPaymentStatus">>,
   courierHandoverStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
   merchantPayoutStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  courierReimbursementStatuses: ReadonlyMap<string, ShipmentSettlementStatus> = new Map(),
+  merchantRepaymentStatuses: ReadonlyMap<string, ShipmentSettlementStatus> = new Map(),
 ) {
-  return shipment.status === "delivered"
-    && courierHandoverStatuses.get(shipment.id) === "settled"
+  if (shipment.status !== "delivered") return false;
+  if (shipment.customerPaymentStatus === "prepaid_electronically") {
+    return courierReimbursementStatuses.get(shipment.id) === "settled"
+      && merchantRepaymentStatuses.get(shipment.id) === "settled";
+  }
+  return courierHandoverStatuses.get(shipment.id) === "settled"
     && merchantPayoutStatuses.get(shipment.id) === "settled";
 }
 
@@ -254,6 +260,46 @@ export function courierReimbursementOutstandingByShipment(entries: DeliveryLedge
   return results;
 }
 
+/** Real courier reimbursement payments allocated to each delivery post. */
+export function courierReimbursementPaidByShipment(entries: DeliveryLedgerEntry[]) {
+  const results = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.isDeleted || entry.kind !== "courier_reimbursement" || !entry.shipmentId) continue;
+    results.set(entry.shipmentId, (results.get(entry.shipmentId) ?? 0) + Number(entry.amount || 0));
+  }
+  return results;
+}
+
+/**
+ * Per-shipment status of the workspace reimbursing a courier's own advance.
+ * Reimbursements are always explicitly linked to the post they clear, so this
+ * intentionally does not use FIFO allocation.
+ */
+export function courierReimbursementStatusByShipment(entries: DeliveryLedgerEntry[]) {
+  const expectedByShipment = new Map<string, number>();
+  const paidByShipment = courierReimbursementPaidByShipment(entries);
+
+  for (const entry of entries) {
+    if (
+      entry.isDeleted
+      || !entry.shipmentId
+      || !["courier_delivery_fee", "courier_recipient_advance"].includes(entry.kind)
+    ) continue;
+    const amount = Number(entry.amount || 0);
+    if (amount >= -EPSILON) continue;
+    expectedByShipment.set(entry.shipmentId, (expectedByShipment.get(entry.shipmentId) ?? 0) - amount);
+  }
+
+  const results = new Map<string, ShipmentSettlementStatus>();
+  for (const [shipmentId, expected] of expectedByShipment) {
+    const paid = paidByShipment.get(shipmentId) ?? 0;
+    if (paid >= expected - EPSILON) results.set(shipmentId, "settled");
+    else if (paid <= EPSILON) results.set(shipmentId, "outstanding");
+    else results.set(shipmentId, "partial");
+  }
+  return results;
+}
+
 /** Per-merchant (per-currency) post breakdown with FIFO paid/outstanding amounts. */
 export function merchantSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(
@@ -288,6 +334,20 @@ export function merchantAccountSettlementBreakdownByParty(entries: DeliveryLedge
     const rows = results.get(partyKey) ?? [];
     rows.push(...posts.map((post) => ({ ...post, direction: "repayment" as const })));
     results.set(partyKey, rows);
+  }
+  return results;
+}
+
+/** Per-shipment status of incoming merchant repayments. */
+export function merchantRepaymentStatusByShipment(entries: DeliveryLedgerEntry[]) {
+  const results = new Map<string, ShipmentSettlementStatus>();
+  for (const posts of merchantAccountSettlementBreakdownByParty(entries).values()) {
+    for (const post of posts) {
+      if (post.direction !== "repayment") continue;
+      if (post.outstanding <= EPSILON) results.set(post.shipmentId, "settled");
+      else if (post.paid <= EPSILON) results.set(post.shipmentId, "outstanding");
+      else results.set(post.shipmentId, "partial");
+    }
   }
   return results;
 }

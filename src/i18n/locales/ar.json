@@ -6950,7 +6950,9 @@
       "party": "الطرف",
       "outstanding": "الرصيد المستحق",
       "cashHandover": "تسليم النقد",
+      "cashHandoverAndCourierReimbursement": "تسليم النقد / تعويض المندوب",
       "merchantPayout": "دفعة التاجر",
+      "merchantPayoutAndMerchantRepayment": "دفعة التاجر / سداد التاجر",
       "paid": "مدفوع",
       "collected": "المحصّل",
       "payable": "مستحق الدفع",
@@ -6996,6 +6998,8 @@
     "settlementStatus": {
       "handedOver": "تم التسليم",
       "paid": "مدفوع",
+      "reimbursed": "تم التعويض",
+      "received": "تم الاستلام",
       "partial": "جزئي",
       "outstanding": "مستحق"
     },

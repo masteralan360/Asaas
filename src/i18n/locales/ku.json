@@ -7001,7 +7001,9 @@
       "party": "لایەن",
       "outstanding": "باڵانسی ماوە",
       "cashHandover": "تەسلیمی نەقد",
+      "cashHandoverAndCourierReimbursement": "تەسلیمی نەقد / گەڕاندنەوەی پارەی مەندوب",
       "merchantPayout": "پارەدان بە بازرگان",
+      "merchantPayoutAndMerchantRepayment": "پارەدان بە بازرگان / گەڕاندنەوەی پارەی بازرگان",
       "paid": "پارەدراو",
       "collected": "کۆکراوە",
       "payable": "ماوەی پارەدان",
@@ -7047,6 +7049,8 @@
     "settlementStatus": {
       "handedOver": "تەسلیم کراوە",
       "paid": "پارەدراو",
+      "reimbursed": "گەڕێنراوەتەوە",
+      "received": "وەرگیراو",
       "partial": "بەشەکی",
       "outstanding": "ماوە"
     },

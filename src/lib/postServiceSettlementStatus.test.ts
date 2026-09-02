@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeliveryLedgerEntry } from "@/local-db";
 
-import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
+import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
 
 const NOW = "2026-08-17T10:00:00.000Z";
 
@@ -29,11 +29,21 @@ function entry(partial: Partial<DeliveryLedgerEntry> & Pick<DeliveryLedgerEntry,
 }
 
 describe("isDeliveryShipmentCompleted", () => {
-  it("requires delivery plus settled courier handover and merchant payout", () => {
+  it("requires delivery plus settled COD handover and merchant payout", () => {
     const settlement = new Map([["s1", "settled" as const]]);
     expect(isDeliveryShipmentCompleted({ id: "s1", status: "delivered" }, settlement, settlement)).toBe(true);
     expect(isDeliveryShipmentCompleted({ id: "s1", status: "delivered" }, new Map([["s1", "partial" as const]]), settlement)).toBe(false);
     expect(isDeliveryShipmentCompleted({ id: "s1", status: "assigned" }, settlement, settlement)).toBe(false);
+  });
+
+  it("uses reimbursed courier and received merchant obligations for prepaid posts", () => {
+    const settled = new Map([["s1", "settled" as const]]);
+    const partial = new Map([["s1", "partial" as const]]);
+    const prepaidShipment = { id: "s1", status: "delivered" as const, customerPaymentStatus: "prepaid_electronically" as const };
+
+    expect(isDeliveryShipmentCompleted(prepaidShipment, new Map(), new Map(), settled, settled)).toBe(true);
+    expect(isDeliveryShipmentCompleted(prepaidShipment, new Map(), new Map(), partial, settled)).toBe(false);
+    expect(isDeliveryShipmentCompleted({ ...prepaidShipment, status: "assigned" }, new Map(), new Map(), settled, settled)).toBe(false);
   });
 });
 
@@ -86,6 +96,19 @@ describe("courierHandoverStatusByShipment", () => {
     expect(courierReimbursementOutstandingByShipment(entries)).toEqual(
       new Map([["s1", 1_000], ["s2", 3_000], ["s4", 4_000]]),
     );
+    expect(courierReimbursementPaidByShipment(entries)).toEqual(new Map([["s1", 1_000]]));
+    expect(courierReimbursementStatusByShipment(entries)).toEqual(
+      new Map([["s1", "partial"], ["s2", "outstanding"], ["s4", "outstanding"]]),
+    );
+  });
+
+  it("marks a fully reimbursed courier advance as settled", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "courier_delivery_fee", shipmentId: "s1", agentId: "a1", amount: -1_750, currency: "iqd" }),
+      entry({ kind: "courier_reimbursement", shipmentId: "s1", agentId: "a1", amount: 1_750, currency: "iqd" }),
+    ];
+
+    expect(courierReimbursementStatusByShipment(entries)).toEqual(new Map([["s1", "settled"]]));
   });
 });
 
@@ -121,6 +144,7 @@ describe("merchant repayment settlements", () => {
     ]);
     expect(merchantRepaymentOutstandingByParty(entries)).toEqual(new Map([["m1:iqd", 5_000]]));
     expect(merchantRepaymentOutstandingByShipment(entries)).toEqual(new Map([["s1", 5_000]]));
+    expect(merchantRepaymentStatusByShipment(entries)).toEqual(new Map([["s1", "partial"]]));
   });
 
   it("removes fully repaid posts from the receive-payment action map", () => {
@@ -130,6 +154,7 @@ describe("merchant repayment settlements", () => {
     ];
 
     expect(merchantRepaymentOutstandingByShipment(entries)).toEqual(new Map());
+    expect(merchantRepaymentStatusByShipment(entries)).toEqual(new Map([["s1", "settled"]]));
   });
 });
 
