@@ -13,7 +13,7 @@ import {
   getHourDisplayPreference,
 } from "@/lib/utils"
 import { Button } from "@/ui/components/button"
-import { Calendar } from "@/ui/components/ui/calendar"
+import { Calendar, type CalendarProps } from "@/ui/components/ui/calendar"
 import {
   Popover,
   PopoverContent,
@@ -33,6 +33,9 @@ interface DateTimePickerProps {
   onOpenChange?: (open: boolean) => void
   buttonClassName?: string
   contentClassName?: string
+  calendarProps?: Omit<CalendarProps, "mode" | "selected" | "onSelect" | "initialFocus">
+  calendarFooter?: React.ReactNode
+  showQuickActions?: boolean
 }
 
 export function DateTimePicker({
@@ -46,6 +49,9 @@ export function DateTimePicker({
   onOpenChange,
   buttonClassName,
   contentClassName,
+  calendarProps,
+  calendarFooter,
+  showQuickActions = true,
 }: DateTimePickerProps) {
   const minuteRef = React.useRef<HTMLInputElement>(null)
   const hourRef = React.useRef<HTMLInputElement>(null)
@@ -121,11 +127,18 @@ export function DateTimePicker({
         <div className="flex flex-col items-center">
           {hasDate ? (
             <Calendar
+              {...calendarProps}
+              showMonthNumber
               mode="single"
               selected={date}
               onSelect={handleSelectDate}
               initialFocus
             />
+          ) : null}
+          {hasDate && calendarFooter ? (
+            <div className="w-full border-t border-border/50 bg-secondary/10 p-3">
+              {calendarFooter}
+            </div>
           ) : null}
           {hasTime ? (
             <div className="flex w-full items-center justify-center gap-3 border-t bg-secondary/5 p-3">
@@ -167,28 +180,30 @@ export function DateTimePicker({
               </div>
             </div>
           ) : null}
-          <div className="flex w-full items-center justify-between border-t border-border/50 bg-secondary/10 p-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setDate(undefined)}
-            >
-              {t("common.reset", { defaultValue: "Reset" })}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="h-7 px-3 text-xs font-medium bg-background border shadow-sm"
-              onClick={() => hasDate ? handleSelectDate(new Date()) : setDate(new Date())}
-            >
-              {hasDate
-                ? t("common.today", { defaultValue: "Today" })
-                : t("common.now", { defaultValue: "Now" })}
-            </Button>
-          </div>
+          {showQuickActions ? (
+            <div className="flex w-full items-center justify-between border-t border-border/50 bg-secondary/10 p-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setDate(undefined)}
+              >
+                {t("common.reset", { defaultValue: "Reset" })}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 px-3 text-xs font-medium bg-background border shadow-sm"
+                onClick={() => hasDate ? handleSelectDate(new Date()) : setDate(new Date())}
+              >
+                {hasDate
+                  ? t("common.today", { defaultValue: "Today" })
+                  : t("common.now", { defaultValue: "Now" })}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>

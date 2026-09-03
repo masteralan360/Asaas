@@ -13,12 +13,15 @@ import {
   getMonthDisplayPreference,
 } from "@/lib/monthDisplay";
 
-export type CalendarProps = React.ComponentProps<typeof DayPicker>;
+export type CalendarProps = React.ComponentProps<typeof DayPicker> & {
+  showMonthNumber?: boolean
+};
 
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  showMonthNumber = false,
   ...props
 }: CalendarProps) {
   const { i18n } = useTranslation()
@@ -38,8 +41,13 @@ function Calendar({
   }, [])
 
   const formatMonthCaption = React.useCallback(
-    (month: Date) => formatLocalizedMonthYear(month, i18n.language, preference),
-    [i18n.language, preference]
+    (month: Date) => {
+      const caption = formatLocalizedMonthYear(month, i18n.language, preference)
+      return showMonthNumber
+        ? `${caption} · ${String(month.getMonth() + 1).padStart(2, "0")}`
+        : caption
+    },
+    [i18n.language, preference, showMonthNumber]
   )
 
   return (

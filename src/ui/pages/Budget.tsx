@@ -16,7 +16,8 @@ import {
     Trash2,
     Printer,
     Loader2,
-    Tags
+    Tags,
+    Repeat
 } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -65,6 +66,8 @@ import {
     formatMonthLabel,
     type PayrollItem,
     monthKeyFromDate,
+    monthDateFromKey,
+    getDaysInMonth,
     addMonths,
     buildDueDate,
     getPaymentDateForMonth
@@ -99,6 +102,7 @@ import {
     useToast,
     Progress,
     CurrencySelector,
+    DateTimePicker,
     DeleteConfirmationModal,
     SettlementDialog,
     PrintPreviewModal,
@@ -564,6 +568,23 @@ export function Budget() {
     const [expensePaymentAccount, setExpensePaymentAccount] = useState<PaymentAccount | null>(null)
     const [isSavingExpense, setIsSavingExpense] = useState(false)
 
+    const expenseDueMonth = useMemo(
+        () => monthDateFromKey(selectedMonth as any),
+        [selectedMonth]
+    )
+    const expenseDueDate = useMemo(
+        () => new Date(
+            expenseDueMonth.getFullYear(),
+            expenseDueMonth.getMonth(),
+            Math.min(Math.max(expenseDueDay, 1), getDaysInMonth(selectedMonth as any))
+        ),
+        [expenseDueDay, expenseDueMonth, selectedMonth]
+    )
+    const expenseDueMonthEnd = useMemo(
+        () => new Date(expenseDueMonth.getFullYear(), expenseDueMonth.getMonth() + 1, 0),
+        [expenseDueMonth]
+    )
+
     const [deleteTarget, setDeleteTarget] = useState<{
         type: 'series' | 'occurrence';
         series?: ExpenseSeries | null;
@@ -921,14 +942,6 @@ export function Budget() {
             })
             return
         }
-        if (!selectedExpenseCategory) {
-            toast({
-                title: t('common.error') || 'Error',
-                description: t('budget.expenseCategories.selectorRequired'),
-                variant: 'destructive'
-            })
-            return
-        }
         if (!editingSeries && expenseAlreadyPaid === null) {
             toast({
                 title: t('common.error') || 'Error',
@@ -949,8 +962,8 @@ export function Budget() {
                     currency: expenseCurrency,
                     dueDay,
                     recurrence: expenseRecurrence,
-                    categoryId: selectedExpenseCategory.id,
-                    category: selectedExpenseCategory.name,
+                    categoryId: selectedExpenseCategory?.id ?? null,
+                    category: selectedExpenseCategory?.name ?? null,
                     subcategory: null
                 })
 
@@ -970,8 +983,8 @@ export function Budget() {
                     recurrence: expenseRecurrence,
                     startMonth: selectedMonth,
                     endMonth: null,
-                    categoryId: selectedExpenseCategory.id,
-                    category: selectedExpenseCategory.name,
+                    categoryId: selectedExpenseCategory?.id ?? null,
+                    category: selectedExpenseCategory?.name ?? null,
                     subcategory: null
                 })
 
@@ -992,7 +1005,7 @@ export function Budget() {
 
                     await recordObligationSettlement(
                         workspaceId,
-                        buildExpensePaymentObligation(createdItem, createdSeries, selectedExpenseCategory.name),
+                        buildExpensePaymentObligation(createdItem, createdSeries, selectedExpenseCategory?.name),
                         {
                             paymentMethod: 'cash',
                             paidAt: new Date().toISOString(),
@@ -1024,7 +1037,6 @@ export function Budget() {
     const canSaveExpense = !!expenseName.trim()
         && parseFormattedNumber(expenseAmount || '0') > 0
         && !!expenseRecurrence
-        && !!selectedExpenseCategory
         && (editingSeries !== null || expenseAlreadyPaid !== null)
 
     const handleBudgetSettlement = async (input: {
@@ -1583,24 +1595,65 @@ export function Budget() {
 
                     <form onSubmit={handleSaveExpense} className="flex min-h-0 flex-1 flex-col">
                         <DialogBody>
-                            <div className="grid gap-4">
-                                <div className="grid gap-2">
-                                    <Label>{t('common.description') || 'Description'} <span className="text-destructive">*</span></Label>
-                                    <Input value={expenseName} onChange={(e) => setExpenseName(e.target.value)} />
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-                                    <div className="grid gap-2">
-                                        <Label>{t('common.amount') || 'Amount'} <span className="text-destructive">*</span></Label>
-                                        <Input value={expenseAmount} onChange={(e) => setExpenseAmount(formatNumberWithCommas(e.target.value))} />
+                            <div className="grid gap-5">
+                                <section className="grid gap-4 rounded-2xl border border-border/70 bg-card p-4 sm:p-5" aria-labelledby="expense-details-heading">
+                                    <div className="flex items-center gap-2">
+                                        <Receipt className="h-4 w-4 text-primary" />
+                                        <h2 id="expense-details-heading" className="text-sm font-semibold">
+                                            {t('budget.form.detailsTitle')}
+                                        </h2>
                                     </div>
-                                    <CurrencySelector value={expenseCurrency} onChange={setExpenseCurrency} iqdDisplayPreference={iqdPreference} />
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="grid gap-2">
-                                        <Label>{t('budget.dueDay') || 'Due Day (1-31)'}</Label>
-                                        <Input type="number" min={1} max={31} value={expenseDueDay} onChange={(e) => setExpenseDueDay(Number(e.target.value))} />
+                                    <div className="grid gap-4">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="expense-description">{t('common.description') || 'Description'} <span className="text-destructive">*</span></Label>
+                                            <Input id="expense-description" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} disabled={isSavingExpense} />
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="expense-amount">{t('common.amount') || 'Amount'} <span className="text-destructive">*</span></Label>
+                                                <Input id="expense-amount" value={expenseAmount} onChange={(e) => setExpenseAmount(formatNumberWithCommas(e.target.value))} disabled={isSavingExpense} />
+                                            </div>
+                                            <CurrencySelector value={expenseCurrency} onChange={setExpenseCurrency} iqdDisplayPreference={iqdPreference} disabled={isSavingExpense} />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="expense-category">
+                                                {t('budget.expenseCategories.selectorLabel')} <span className="text-muted-foreground">({t('budget.form.optional')})</span>
+                                            </Label>
+                                            <Select
+                                                value={expenseCategoryId || '__none__'}
+                                                onValueChange={(value) => setExpenseCategoryId(value === '__none__' ? '' : value)}
+                                                disabled={isSavingExpense}
+                                            >
+                                                <SelectTrigger id="expense-category">
+                                                    <SelectValue
+                                                        placeholder={expenseCategories.length > 0
+                                                            ? t('budget.expenseCategories.selectorPlaceholder')
+                                                            : t('budget.expenseCategories.selectorEmpty')}
+                                                    />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none__">
+                                                        {t('categories.noCategory')}
+                                                    </SelectItem>
+                                                    {expenseCategories.map((category) => (
+                                                        <SelectItem key={category.id} value={category.id}>
+                                                            {category.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
-                                    <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3">
+                                </section>
+
+                                <section className="grid gap-4 rounded-2xl border border-border/70 bg-card p-4 sm:p-5" aria-labelledby="expense-schedule-heading">
+                                    <div className="flex items-center gap-2">
+                                        <CalendarDays className="h-4 w-4 text-primary" />
+                                        <h2 id="expense-schedule-heading" className="text-sm font-semibold">
+                                            {t('budget.form.scheduleTitle')}
+                                        </h2>
+                                    </div>
+                                    <div className="grid gap-3">
                                         <Label>{t('budget.form.recurrenceTitle') || 'Expense frequency *'}</Label>
                                         <SelectionCards
                                             name="expense-recurrence"
@@ -1627,73 +1680,95 @@ export function Budget() {
                                             </p>
                                         ) : null}
                                     </div>
-                                </div>
-                                {!editingSeries && (
-                                    <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3">
-                                        <Label>{t('budget.form.paymentStatus') || 'Payment status'} <span className="text-destructive">*</span></Label>
-                                        <SelectionCards
-                                            name="expense-payment-status"
-                                            ariaLabel={t('budget.form.paymentStatus') || 'Payment status'}
-                                            value={expenseAlreadyPaid === null ? null : expenseAlreadyPaid ? 'paid' : 'unpaid'}
-                                            onValueChange={(value) => {
-                                                const isPaid = value === 'paid'
-                                                setExpenseAlreadyPaid(isPaid)
-                                                if (!isPaid) setExpensePaymentAccount(null)
+                                    <div className="grid gap-2 border-t border-border/60 pt-4">
+                                        <Label className={!expenseRecurrence ? 'text-muted-foreground' : undefined}>{t('budget.dueDate') || 'Due date'}</Label>
+                                        <DateTimePicker
+                                            date={expenseDueDate}
+                                            setDate={(date) => {
+                                                if (date) setExpenseDueDay(date.getDate())
                                             }}
-                                            disabled={isSavingExpense}
-                                            options={[
-                                                {
-                                                    value: 'unpaid',
-                                                    title: t('budget.form.unpaid') || 'Unpaid',
-                                                    description: t('budget.form.unpaidDescription') || 'Record this expense as unpaid. You can record the payment later.'
-                                                },
-                                                {
-                                                    value: 'paid',
-                                                    title: t('budget.form.alreadyPaid') || 'Already paid',
-                                                    description: t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'
-                                                }
-                                            ]}
+                                            mode="date"
+                                            disabled={isSavingExpense || !expenseRecurrence}
+                                            showQuickActions={false}
+                                            calendarProps={{
+                                                month: expenseDueMonth,
+                                                startMonth: expenseDueMonth,
+                                                endMonth: expenseDueMonth,
+                                                disableNavigation: true,
+                                                hideNavigation: true,
+                                                showOutsideDays: false,
+                                                disabled: [
+                                                    { before: expenseDueMonth },
+                                                    { after: expenseDueMonthEnd }
+                                                ]
+                                            }}
+                                            calendarFooter={expenseRecurrence === 'monthly' ? (
+                                                <div className="flex items-start gap-2 text-xs font-medium text-primary">
+                                                    <Repeat className="mt-0.5 h-4 w-4 shrink-0" />
+                                                    <p>{t('budget.form.recurringDueDate')}</p>
+                                                </div>
+                                            ) : null}
                                         />
-                                        {expenseAlreadyPaid === null ? (
-                                            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                                                {t('budget.form.paymentStatusSelectionRequired') || 'Select one option to continue.'}
+                                        {!expenseRecurrence ? (
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('budget.form.dueDateRequiresRecurrence')}
                                             </p>
                                         ) : null}
                                     </div>
-                                )}
-                                {!editingSeries && expenseAlreadyPaid ? (
-                                    <PaymentAccountSelector
-                                        workspaceId={workspaceId}
-                                        value={expensePaymentAccount?.id ?? null}
-                                        onValueChange={setExpensePaymentAccount}
-                                        cashDrawerOnly
-                                    />
-                                ) : null}
-                                <div className="grid gap-2">
-                                    <Label htmlFor="expense-category">
-                                        {t('budget.expenseCategories.selectorLabel')} <span className="text-destructive">*</span>
-                                    </Label>
-                                    <Select
-                                        value={expenseCategoryId || undefined}
-                                        onValueChange={setExpenseCategoryId}
-                                        disabled={isSavingExpense}
-                                    >
-                                        <SelectTrigger id="expense-category">
-                                            <SelectValue
-                                                placeholder={expenseCategories.length > 0
-                                                    ? t('budget.expenseCategories.selectorPlaceholder')
-                                                    : t('budget.expenseCategories.selectorEmpty')}
+                                </section>
+
+                                {!editingSeries && (
+                                    <section className="grid gap-4 rounded-2xl border border-border/70 bg-card p-4 sm:p-5" aria-labelledby="expense-payment-heading">
+                                        <div className="flex items-center gap-2">
+                                            <Wallet className="h-4 w-4 text-primary" />
+                                            <h2 id="expense-payment-heading" className="text-sm font-semibold">
+                                                {t('budget.form.paymentTitle')}
+                                            </h2>
+                                        </div>
+                                        <div className="grid gap-3">
+                                            <Label>{t('budget.form.paymentStatus') || 'Payment status'} <span className="text-destructive">*</span></Label>
+                                            <SelectionCards
+                                                name="expense-payment-status"
+                                                ariaLabel={t('budget.form.paymentStatus') || 'Payment status'}
+                                                value={expenseAlreadyPaid === null ? null : expenseAlreadyPaid ? 'paid' : 'unpaid'}
+                                                onValueChange={(value) => {
+                                                    const isPaid = value === 'paid'
+                                                    setExpenseAlreadyPaid(isPaid)
+                                                    if (!isPaid) setExpensePaymentAccount(null)
+                                                }}
+                                                disabled={isSavingExpense}
+                                                options={[
+                                                    {
+                                                        value: 'unpaid',
+                                                        title: t('budget.form.unpaid') || 'Unpaid',
+                                                        description: t('budget.form.unpaidDescription') || 'Record this expense as unpaid. You can record the payment later.'
+                                                    },
+                                                    {
+                                                        value: 'paid',
+                                                        title: t('budget.form.alreadyPaid') || 'Already paid',
+                                                        description: t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'
+                                                    }
+                                                ]}
                                             />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {expenseCategories.map((category) => (
-                                                <SelectItem key={category.id} value={category.id}>
-                                                    {category.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                            {expenseAlreadyPaid === null ? (
+                                                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                                    {t('budget.form.paymentStatusSelectionRequired') || 'Select one option to continue.'}
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                        {expenseAlreadyPaid ? (
+                                            <div className="border-t border-border/60 pt-4">
+                                                <PaymentAccountSelector
+                                                    workspaceId={workspaceId}
+                                                    value={expensePaymentAccount?.id ?? null}
+                                                    onValueChange={setExpensePaymentAccount}
+                                                    cashDrawerOnly
+                                                    disabled={isSavingExpense}
+                                                />
+                                            </div>
+                                        ) : null}
+                                    </section>
+                                )}
                             </div>
                         </DialogBody>
 
