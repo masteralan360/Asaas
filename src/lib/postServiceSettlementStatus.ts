@@ -39,6 +39,27 @@ export function isDeliveryShipmentCompleted(
     && merchantPayoutStatuses.get(shipment.id) === "settled";
 }
 
+/**
+ * Counts the monetary settlement obligations that are still active for a post.
+ * Each payment model has two possible obligations: cash handover/payout for
+ * COD, or courier reimbursement/merchant repayment for prepaid posts.
+ */
+export function activeDeliveryShipmentSettlementObligationCount(
+  shipment: Pick<DeliveryShipment, "id" | "customerPaymentStatus">,
+  courierHandoverStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  merchantPayoutStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  courierReimbursementStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  merchantRepaymentStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+) {
+  const isActive = (status: ShipmentSettlementStatus | undefined) => status === "outstanding" || status === "partial";
+  if (shipment.customerPaymentStatus === "prepaid_electronically") {
+    return Number(isActive(courierReimbursementStatuses.get(shipment.id)))
+      + Number(isActive(merchantRepaymentStatuses.get(shipment.id)));
+  }
+  return Number(isActive(courierHandoverStatuses.get(shipment.id)))
+    + Number(isActive(merchantPayoutStatuses.get(shipment.id)));
+}
+
 /** Grouped by `${partyId}:${currency}` in chronological (oldest first) order. */
 export type PartySettlementBreakdown = ReadonlyMap<string, readonly ShipmentSettlementBreakdown[]>;
 

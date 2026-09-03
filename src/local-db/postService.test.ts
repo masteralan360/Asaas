@@ -175,6 +175,7 @@ describe("Post Service COD accounting", () => {
       currency: "iqd",
       actualAmount: 270,
       paymentMethod: "cash",
+      varianceNote: "Partial payout allocation",
     });
 
     const payoutEntries = (await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray())

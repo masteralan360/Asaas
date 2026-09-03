@@ -15,7 +15,7 @@ import { STANDARD_PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { isDateInDateRange } from "@/lib/dateRangeFilters";
 import { getLanguageDirection } from "@/lib/i18nRouting";
 import { isShipmentSettlementNetFinalized, settlementNetByShipment, shipmentSettlementNetAmount, type ShipmentSettlementNet } from "@/lib/postServiceSettlementNet";
-import { courierHandoverStatusByShipment, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty, type MerchantAccountSettlementBreakdown, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
+import { activeDeliveryShipmentSettlementObligationCount, courierHandoverStatusByShipment, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty, type MerchantAccountSettlementBreakdown, type ShipmentSettlementBreakdown, type ShipmentSettlementStatus } from "@/lib/postServiceSettlementStatus";
 import { summarizeCourierOutstandingCash, summarizeCourierPayables, summarizeStaffCourierObligationMetrics } from "@/lib/postServiceStaffCourierMetrics";
 import { useWorkspacePermissions } from "@/permissions";
 import { useDateRange } from "@/context/DateRangeContext";
@@ -647,6 +647,13 @@ export function PostService() {
   const postSettlementMerchant = postSettlementTarget
     ? merchantBreakdownByParty.get(`${postSettlementTarget.merchantProfileId}:${postSettlementTarget.currency}`)?.find((post) => post.shipmentId === postSettlementTarget.id)
     : undefined;
+  const isPrepaidPostSettlement = postSettlementTarget?.customerPaymentStatus === "prepaid_electronically";
+  const postSettlementCourierOutstanding = isPrepaidPostSettlement && postSettlementTarget
+    ? courierReimbursementAmountByShipment.get(postSettlementTarget.id) ?? 0
+    : postSettlementCourier?.outstanding ?? 0;
+  const postSettlementMerchantOutstanding = isPrepaidPostSettlement && postSettlementTarget
+    ? merchantRepaymentAmountByShipment.get(postSettlementTarget.id) ?? 0
+    : postSettlementMerchant?.outstanding ?? 0;
   const postSettlementNet = postSettlementTarget ? perShipmentSettlementNet.get(postSettlementTarget.id) : undefined;
   const postSettlementCourierFee = postSettlementNet?.hasCourierHandover
     ? postSettlementTarget?.courierDeliveryFee ?? 0
@@ -661,6 +668,12 @@ export function PostService() {
   const postSettlementNetAmount = postSettlementNet
     ? shipmentSettlementNetAmount(postSettlementNet, postSettlementWorkspaceRecipientPayout)
     : 0;
+  const postSettlementCourierAmount = numericValue(postSettlementDraft.courierAmount);
+  const postSettlementMerchantAmount = numericValue(postSettlementDraft.merchantAmount);
+  const isPostSettlementCourierAmountValid = postSettlementCourierAmount > 0
+    && (Math.abs(postSettlementCourierAmount - postSettlementCourierOutstanding) <= 0.000001 || Boolean(postSettlementDraft.courierNote.trim()));
+  const isPostSettlementMerchantAmountValid = postSettlementMerchantAmount > 0
+    && (Math.abs(postSettlementMerchantAmount - postSettlementMerchantOutstanding) <= 0.000001 || Boolean(postSettlementDraft.merchantNote.trim()));
   const isCodAdjustmentRequestValid = Boolean(
     codAdjustmentRequestTarget
     && numericValue(requestedCodAmount) > 0
@@ -938,10 +951,15 @@ export function PostService() {
     }
   }
   function openPostSettlementDialog(shipment: DeliveryShipment) {
-    const courierOutstanding = shipment.assignedAgentId
-      ? courierBreakdownByParty.get(`${shipment.assignedAgentId}:${shipment.currency}`)?.find((post) => post.shipmentId === shipment.id)?.outstanding ?? 0
-      : 0;
-    const merchantOutstanding = merchantBreakdownByParty.get(`${shipment.merchantProfileId}:${shipment.currency}`)?.find((post) => post.shipmentId === shipment.id)?.outstanding ?? 0;
+    const isPrepaidElectronically = shipment.customerPaymentStatus === "prepaid_electronically";
+    const courierOutstanding = isPrepaidElectronically
+      ? courierReimbursementAmountByShipment.get(shipment.id) ?? 0
+      : shipment.assignedAgentId
+        ? courierBreakdownByParty.get(`${shipment.assignedAgentId}:${shipment.currency}`)?.find((post) => post.shipmentId === shipment.id)?.outstanding ?? 0
+        : 0;
+    const merchantOutstanding = isPrepaidElectronically
+      ? merchantRepaymentAmountByShipment.get(shipment.id) ?? 0
+      : merchantBreakdownByParty.get(`${shipment.merchantProfileId}:${shipment.currency}`)?.find((post) => post.shipmentId === shipment.id)?.outstanding ?? 0;
     setPostSettlementTarget(shipment);
     setPostSettlementDraft({
       courierAmount: courierOutstanding > 0 ? String(courierOutstanding) : "",
@@ -952,25 +970,6 @@ export function PostService() {
       merchantMethod: "cash",
       merchantNote: "",
       merchantAccount: null,
-    });
-  }
-  function openPostMerchantRepayment(shipment: DeliveryShipment, amount: number) {
-    openMerchantRepayment({
-      id: shipment.merchantProfileId,
-      currency: shipment.currency,
-      amount,
-      name: profileNameById.get(shipment.merchantProfileId) ?? t("postService.unknownMerchant"),
-      shipmentId: shipment.id,
-      shipmentLabel: shipmentLabelById.get(shipment.id) ?? shipment.trackingNumber,
-    });
-  }
-  function openPostCourierReimbursement(shipment: DeliveryShipment, amount: number) {
-    if (!shipment.assignedAgentId) return;
-    openCourierReimbursement({
-      agentId: shipment.assignedAgentId,
-      currency: shipment.currency,
-      shipmentId: shipment.id,
-      amount,
     });
   }
   function handleDispatchCourierChange(agentId: string) {
@@ -1307,9 +1306,10 @@ export function PostService() {
   async function handlePostSettlement(kind: "courier" | "merchant") {
     if (!workspaceId || !postSettlementTarget) return;
     const isCourier = kind === "courier";
+    const isPrepaid = postSettlementTarget.customerPaymentStatus === "prepaid_electronically";
     if (isCourier && !postSettlementTarget.assignedAgentId) return;
     const amount = numericValue(isCourier ? postSettlementDraft.courierAmount : postSettlementDraft.merchantAmount);
-    const expectedAmount = isCourier ? postSettlementCourier?.outstanding ?? 0 : postSettlementMerchant?.outstanding ?? 0;
+    const expectedAmount = isCourier ? postSettlementCourierOutstanding : postSettlementMerchantOutstanding;
     const note = isCourier ? postSettlementDraft.courierNote : postSettlementDraft.merchantNote;
     const paymentMethod = isCourier ? postSettlementDraft.courierMethod : postSettlementDraft.merchantMethod;
     const account = isCourier ? postSettlementDraft.courierAccount : postSettlementDraft.merchantAccount;
@@ -1326,9 +1326,17 @@ export function PostService() {
         accountId: account?.id ?? null,
         accountNameSnapshot: account?.name ?? null,
       };
-      if (isCourier) await settleDeliveryCourier(workspaceId, { ...payload, agentId: postSettlementTarget.assignedAgentId! });
-      else await payDeliveryMerchant(workspaceId, { ...payload, merchantProfileId: postSettlementTarget.merchantProfileId });
-      toast({ title: t(isCourier ? "postService.messages.courierHandoverRecorded" : "postService.messages.merchantPayoutRecorded") });
+      if (isCourier) {
+        if (isPrepaid) await payDeliveryCourierReimbursement(workspaceId, { ...payload, agentId: postSettlementTarget.assignedAgentId! });
+        else await settleDeliveryCourier(workspaceId, { ...payload, agentId: postSettlementTarget.assignedAgentId! });
+      } else if (isPrepaid) {
+        await receiveDeliveryMerchantRepayment(workspaceId, { ...payload, merchantProfileId: postSettlementTarget.merchantProfileId });
+      } else {
+        await payDeliveryMerchant(workspaceId, { ...payload, merchantProfileId: postSettlementTarget.merchantProfileId });
+      }
+      toast({ title: t(isCourier
+        ? isPrepaid ? "postService.messages.courierReimbursementRecorded" : "postService.messages.courierHandoverRecorded"
+        : isPrepaid ? "postService.messages.merchantRepaymentRecorded" : "postService.messages.merchantPayoutRecorded") });
       setPostSettlementDraft((current) => isCourier
         ? { ...current, courierAmount: "", courierNote: "", courierAccount: null }
         : { ...current, merchantAmount: "", merchantNote: "", merchantAccount: null });
@@ -1390,15 +1398,15 @@ export function PostService() {
               <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchPosts")} />
             </div>
             <div className={cn("grid grid-cols-1 gap-4", postsViewMode === "grid" ? "md:grid-cols-2 2xl:grid-cols-3" : "md:hidden")}>
-              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onReimburseCourier={openPostCourierReimbursement} courierReimbursementAmountByShipment={courierReimbursementAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} />
+              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} />
             </div>
-            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onReimburseCourier={openPostCourierReimbursement} courierReimbursementAmountByShipment={courierReimbursementAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
+            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
           </CardContent>
         </Card>
       </TabsContent>
       {isAdmin && <>
       <TabsContent value="dispatch" className="mt-4 space-y-4"><Card><CardHeader><CardTitle>{t("postService.cards.createManifest")}</CardTitle></CardHeader><CardContent>{canDispatch ? <form className="grid gap-4 md:grid-cols-2" onSubmit={handleDispatch}><Field label={t("postService.form.postsSelected")}><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{t("postService.selectedAndAvailable", { selected: selectedCount, available: assignableShipments.length })}</div></Field><Field label={t("postService.form.courier")}><Select value={dispatchAgentId} onValueChange={handleDispatchCourierChange}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id)} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(dispatchCourierDeliveryFee)} onChange={(event) => setDispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={!dispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field><Field label={t("postService.form.vehicleOptional")}><Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.manifestNote")}><Input value={dispatchNotes} onChange={(event) => setDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} /></Field><div className="md:col-span-2"><Button disabled={isSubmitting || !dispatchAgentId || selectedCount === 0} type="submit"><Send className="me-2 h-4 w-4" />{t("postService.actions.assignSelected")}</Button></div></form> : <p className="text-sm text-muted-foreground">{t("postService.permissionRequired.dispatch")}</p>}</CardContent></Card><Card><CardHeader><CardTitle>{t("postService.cards.recentRuns")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.run")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.courierDeliveryFee")}</TableHead><TableHead>{t("postService.table.dispatched")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead /></TableRow></TableHeader><TableBody>{runs.length === 0 ? <EmptyRow columns={6} label={t("postService.empty.noRuns")} /> : runs.map((run) => <TableRow key={run.id}><TableCell className="font-medium">{run.runNumber}</TableCell><TableCell>{agentNameById.get(run.agentId)}</TableCell><TableCell>{formatCurrency(run.courierDeliveryFee ?? 0, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(run.dispatchedAt)}</TableCell><TableCell><Badge variant="outline">{t(`postService.runStatus.${run.status}`)}</Badge></TableCell><TableCell className="text-end">{canDispatch && run.status === "open" && <Button size="sm" variant="outline" onClick={() => void handleCloseRun(run.id)}>{t("postService.actions.closeRun")}</Button>}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
-      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onReceiveMerchantRepayment={openPostMerchantRepayment} merchantRepaymentAmountByShipment={merchantRepaymentAmountByShipment} onReimburseCourier={openPostCourierReimbursement} courierReimbursementAmountByShipment={courierReimbursementAmountByShipment} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
+      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
       <TabsContent value="merchants" className="mt-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between"><CardTitle>{t("postService.cards.deliveryMerchants")}</CardTitle>{isAdmin && <Button size="sm" onClick={() => setMerchantDialogOpen(true)}><Plus className="me-2 h-4 w-4" />{t("postService.actions.enableMerchant")}</Button>}</CardHeader>
@@ -1816,30 +1824,32 @@ export function PostService() {
         <DialogBody className="space-y-5 py-5">
           <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h3 className="font-semibold">{t("postService.dialogs.postSettlement.courierHandover")}</h3><p className="text-sm text-muted-foreground">{postSettlementTarget?.assignedAgentId ? agentNameById.get(postSettlementTarget.assignedAgentId) : t("postService.dialogs.postSettlement.noCourier")}</p></div>
+              <div><h3 className="font-semibold">{t(isPrepaidPostSettlement ? "postService.actions.reimburseCourier" : "postService.dialogs.postSettlement.courierHandover")}</h3><p className="text-sm text-muted-foreground">{postSettlementTarget?.assignedAgentId ? agentNameById.get(postSettlementTarget.assignedAgentId) : t("postService.dialogs.postSettlement.noCourier")}</p></div>
               <div className="flex flex-col items-end gap-1.5">
-                <Badge variant="outline" className={postSettlementCourier && postSettlementCourier.outstanding > 0.000001 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}>{postSettlementCourier && postSettlementCourier.outstanding > 0.000001 ? formatCurrency(postSettlementCourier.outstanding, postSettlementTarget?.currency ?? features.default_currency, features.iqd_display_preference) : t("postService.dialogs.postSettlement.settled")}</Badge>
-                {(postSettlementTarget?.courierDeliveryFee ?? 0) > 0.000001 ? <Badge variant="outline" className="border-rose-500/25 bg-rose-500/5 text-[10px] font-medium text-rose-700 dark:text-rose-300">{t("postService.dialogs.postSettlement.courierFeeDeducted", { amount: formatCurrency(postSettlementTarget!.courierDeliveryFee ?? 0, postSettlementTarget!.currency, features.iqd_display_preference) })}</Badge> : null}
+                <Badge variant="outline" className={postSettlementCourierOutstanding > 0.000001 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}>{postSettlementCourierOutstanding > 0.000001 ? formatCurrency(postSettlementCourierOutstanding, postSettlementTarget?.currency ?? features.default_currency, features.iqd_display_preference) : t("postService.dialogs.postSettlement.settled")}</Badge>
+                {!isPrepaidPostSettlement && (postSettlementTarget?.courierDeliveryFee ?? 0) > 0.000001 ? <Badge variant="outline" className="border-rose-500/25 bg-rose-500/5 text-[10px] font-medium text-rose-700 dark:text-rose-300">{t("postService.dialogs.postSettlement.courierFeeDeducted", { amount: formatCurrency(postSettlementTarget!.courierDeliveryFee ?? 0, postSettlementTarget!.currency, features.iqd_display_preference) })}</Badge> : null}
               </div>
             </div>
-            {postSettlementTarget?.assignedAgentId ? <div className="grid gap-4 sm:grid-cols-2"><Field label={t("postService.form.amountReceivedPaid")}><CurrencyAmountInput value={postSettlementDraft.courierAmount} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, courierAmount: value }))} currency={postSettlementTarget.currency} iqdPreference={features.iqd_display_preference} /></Field><Field label={t("postService.form.paymentMethod")}><SettlementPaymentMethodSelect t={t} value={postSettlementDraft.courierMethod} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, courierMethod: value }))} /></Field><div className="sm:col-span-2"><PaymentAccountSelector workspaceId={workspaceId} value={postSettlementDraft.courierAccount?.id ?? null} onValueChange={(account) => setPostSettlementDraft((current) => ({ ...current, courierAccount: account }))} disabled={submittingPostSettlement !== null} cashDrawerOnly={postSettlementDraft.courierMethod === "cash"} /></div><div className="sm:col-span-2"><Field label={t("postService.form.noteVariance")}><Textarea value={postSettlementDraft.courierNote} onChange={(event) => setPostSettlementDraft((current) => ({ ...current, courierNote: event.target.value }))} placeholder={t("postService.placeholders.varianceNote")} /></Field></div><div className="sm:col-span-2 flex justify-end"><Button type="button" disabled={submittingPostSettlement !== null || !postSettlementCourier || postSettlementCourier.outstanding <= 0.000001} onClick={() => void handlePostSettlement("courier")}>{t("postService.actions.recordHandover")}</Button></div></div> : null}
+            {postSettlementTarget?.assignedAgentId ? <div className="grid gap-4 sm:grid-cols-2"><Field label={t("postService.form.amountReceivedPaid")}><CurrencyAmountInput value={postSettlementDraft.courierAmount} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, courierAmount: value }))} currency={postSettlementTarget.currency} iqdPreference={features.iqd_display_preference} /></Field><Field label={t("postService.form.paymentMethod")}><SettlementPaymentMethodSelect t={t} value={postSettlementDraft.courierMethod} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, courierMethod: value }))} /></Field><div className="sm:col-span-2"><PaymentAccountSelector workspaceId={workspaceId} value={postSettlementDraft.courierAccount?.id ?? null} onValueChange={(account) => setPostSettlementDraft((current) => ({ ...current, courierAccount: account }))} disabled={submittingPostSettlement !== null} cashDrawerOnly={postSettlementDraft.courierMethod === "cash"} /></div><div className="sm:col-span-2"><Field label={t("postService.form.noteVariance")}><Textarea value={postSettlementDraft.courierNote} onChange={(event) => setPostSettlementDraft((current) => ({ ...current, courierNote: event.target.value }))} placeholder={t("postService.placeholders.varianceNote")} /></Field></div><div className="sm:col-span-2 flex justify-end"><Button type="button" disabled={submittingPostSettlement !== null || postSettlementCourierOutstanding <= 0.000001 || !isPostSettlementCourierAmountValid} onClick={() => void handlePostSettlement("courier")}>{t(isPrepaidPostSettlement ? "postService.actions.reimburseCourier" : "postService.actions.recordHandover")}</Button></div></div> : null}
           </div>
           <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h3 className="font-semibold">{t("postService.dialogs.postSettlement.merchantPayout")}</h3><p className="text-sm text-muted-foreground">{postSettlementTarget ? profileNameById.get(postSettlementTarget.merchantProfileId) : "—"}</p></div>
-              <Badge variant="outline" className={postSettlementMerchant && postSettlementMerchant.outstanding > 0.000001 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}>{postSettlementMerchant && postSettlementMerchant.outstanding > 0.000001 ? formatCurrency(postSettlementMerchant.outstanding, postSettlementTarget?.currency ?? features.default_currency, features.iqd_display_preference) : t("postService.dialogs.postSettlement.settled")}</Badge>
+              <div><h3 className="font-semibold">{t(isPrepaidPostSettlement ? "postService.actions.receiveMerchantRepayment" : "postService.dialogs.postSettlement.merchantPayout")}</h3><p className="text-sm text-muted-foreground">{postSettlementTarget ? profileNameById.get(postSettlementTarget.merchantProfileId) : "—"}</p></div>
+              <Badge variant="outline" className={postSettlementMerchantOutstanding > 0.000001 ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}>{postSettlementMerchantOutstanding > 0.000001 ? formatCurrency(postSettlementMerchantOutstanding, postSettlementTarget?.currency ?? features.default_currency, features.iqd_display_preference) : t("postService.dialogs.postSettlement.settled")}</Badge>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2"><Field label={t("postService.form.amountReceivedPaid")}><CurrencyAmountInput value={postSettlementDraft.merchantAmount} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, merchantAmount: value }))} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} /></Field><Field label={t("postService.form.paymentMethod")}><SettlementPaymentMethodSelect t={t} value={postSettlementDraft.merchantMethod} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, merchantMethod: value }))} /></Field><div className="sm:col-span-2"><PaymentAccountSelector workspaceId={workspaceId} value={postSettlementDraft.merchantAccount?.id ?? null} onValueChange={(account) => setPostSettlementDraft((current) => ({ ...current, merchantAccount: account }))} disabled={submittingPostSettlement !== null} cashDrawerOnly={postSettlementDraft.merchantMethod === "cash"} /></div><div className="sm:col-span-2"><Field label={t("postService.form.noteVariance")}><Textarea value={postSettlementDraft.merchantNote} onChange={(event) => setPostSettlementDraft((current) => ({ ...current, merchantNote: event.target.value }))} placeholder={t("postService.placeholders.varianceNote")} /></Field></div><div className="sm:col-span-2 flex justify-end"><Button type="button" disabled={submittingPostSettlement !== null || !postSettlementMerchant || postSettlementMerchant.outstanding <= 0.000001} onClick={() => void handlePostSettlement("merchant")}>{t("postService.actions.payMerchant")}</Button></div></div>
+            <div className="grid gap-4 sm:grid-cols-2"><Field label={t("postService.form.amountReceivedPaid")}><CurrencyAmountInput value={postSettlementDraft.merchantAmount} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, merchantAmount: value }))} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} /></Field><Field label={t("postService.form.paymentMethod")}><SettlementPaymentMethodSelect t={t} value={postSettlementDraft.merchantMethod} onChange={(value) => setPostSettlementDraft((current) => ({ ...current, merchantMethod: value }))} /></Field><div className="sm:col-span-2"><PaymentAccountSelector workspaceId={workspaceId} value={postSettlementDraft.merchantAccount?.id ?? null} onValueChange={(account) => setPostSettlementDraft((current) => ({ ...current, merchantAccount: account }))} disabled={submittingPostSettlement !== null} cashDrawerOnly={postSettlementDraft.merchantMethod === "cash"} /></div><div className="sm:col-span-2"><Field label={t("postService.form.noteVariance")}><Textarea value={postSettlementDraft.merchantNote} onChange={(event) => setPostSettlementDraft((current) => ({ ...current, merchantNote: event.target.value }))} placeholder={t("postService.placeholders.varianceNote")} /></Field></div><div className="sm:col-span-2 flex justify-end"><Button type="button" disabled={submittingPostSettlement !== null || postSettlementMerchantOutstanding <= 0.000001 || !isPostSettlementMerchantAmountValid} onClick={() => void handlePostSettlement("merchant")}>{t(isPrepaidPostSettlement ? "postService.actions.receiveMerchantRepayment" : "postService.actions.payMerchant")}</Button></div></div>
           </div>
           <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
             <h3 className="font-semibold">{t("postService.dialogs.postSettlement.result")}</h3>
-            <SettlementCalculationLine label={t("postService.dialogs.settlementNet.cashHandover")} amount={postSettlementGrossCourierHandover} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="+" />
-            {postSettlementCourierFee > 0.000001 ? <SettlementCalculationLine label={t("postService.form.courierDeliveryFee")} amount={postSettlementCourierFee} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
-            {postSettlementCourierAdvance > 0.000001 ? <SettlementCalculationLine label={t("postService.dialogs.settlementNet.courierRecipientAdvance")} amount={postSettlementCourierAdvance} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
-            {postSettlementWorkspaceRecipientPayout > 0.000001 ? <SettlementCalculationLine label={t("postService.table.recipientPayout")} amount={postSettlementWorkspaceRecipientPayout} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
+            {!isPrepaidPostSettlement ? <>
+              <SettlementCalculationLine label={t("postService.dialogs.settlementNet.cashHandover")} amount={postSettlementGrossCourierHandover} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="+" />
+              {postSettlementCourierFee > 0.000001 ? <SettlementCalculationLine label={t("postService.form.courierDeliveryFee")} amount={postSettlementCourierFee} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
+              {postSettlementCourierAdvance > 0.000001 ? <SettlementCalculationLine label={t("postService.dialogs.settlementNet.courierRecipientAdvance")} amount={postSettlementCourierAdvance} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
+              {postSettlementWorkspaceRecipientPayout > 0.000001 ? <SettlementCalculationLine label={t("postService.table.recipientPayout")} amount={postSettlementWorkspaceRecipientPayout} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
+            </> : null}
             {postSettlementNet && postSettlementNet.merchantRepayment > 0.000001 ? <SettlementCalculationLine label={t("postService.messages.merchantRepaymentRecorded")} amount={postSettlementNet.merchantRepayment} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="+" /> : null}
             {postSettlementNet && postSettlementNet.courierReimbursement > 0.000001 ? <SettlementCalculationLine label={t("postService.settlementType.courierReimbursement")} amount={postSettlementNet.courierReimbursement} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
-            <SettlementCalculationLine label={t("postService.dialogs.settlementNet.merchantPayout")} amount={postSettlementNet?.merchantPayout ?? 0} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative />
+            {!isPrepaidPostSettlement ? <SettlementCalculationLine label={t("postService.dialogs.settlementNet.merchantPayout")} amount={postSettlementNet?.merchantPayout ?? 0} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="−" negative /> : null}
             <div className="border-t border-dashed" />
             <SettlementCalculationLine label={t("postService.dialogs.settlementNet.profit")} amount={postSettlementNetAmount} currency={postSettlementTarget?.currency ?? features.default_currency} iqdPreference={features.iqd_display_preference} operator="=" emphasized />
           </div>
@@ -2006,7 +2016,7 @@ function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: Post
     <Button type="button" size="sm" variant={value === "grid" ? "secondary" : "ghost"} className="gap-1.5" aria-pressed={value === "grid"} onClick={() => onChange("grid")}><LayoutGrid className="h-4 w-4" />{t("postService.view.grid")}</Button>
   </div>;
 }
-function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onReimburseCourier, courierReimbursementAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment, footer }: {
+function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment, footer }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -2026,10 +2036,6 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
   canReviewCodChange: boolean;
   onOpenSettlementNet: (shipment: DeliveryShipment) => void;
   onOpenPostSettlements: (shipment: DeliveryShipment) => void;
-  onReceiveMerchantRepayment: (shipment: DeliveryShipment, amount: number) => void;
-  merchantRepaymentAmountByShipment: ReadonlyMap<string, number>;
-  onReimburseCourier: (shipment: DeliveryShipment, amount: number) => void;
-  courierReimbursementAmountByShipment: ReadonlyMap<string, number>;
   onPlayVoiceReason: (event: DeliveryShipmentEvent) => void;
   voiceReasonEventByShipment: ReadonlyMap<string, DeliveryShipmentEvent>;
   canPlayVoiceReason: boolean;
@@ -2060,8 +2066,6 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
     </TableRow></TableHeader>
     <TableBody>{shipments.length === 0 ? <EmptyRow columns={canSelect ? 12 : 11} label={t("postService.empty.noPosts")} /> : shipments.map((shipment) => {
       const voiceReasonEvent = voiceReasonEventByShipment.get(shipment.id);
-      const merchantRepaymentAmount = merchantRepaymentAmountByShipment.get(shipment.id) ?? 0;
-      const courierReimbursementAmount = courierReimbursementAmountByShipment.get(shipment.id) ?? 0;
       const pendingCodAdjustment = pendingCodAdjustmentByShipment.get(shipment.id);
       const isPrepaidElectronically = shipment.customerPaymentStatus === "prepaid_electronically";
       const courierSettlementStatus = isPrepaidElectronically
@@ -2089,16 +2093,14 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
-          {canSettle && shipment.status === "delivered" && <Button size="sm" variant="outline" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="me-1.5 h-4 w-4" />{t("postService.actions.settlements")}</Button>}
-          {canSettle && shipment.status === "delivered" && merchantRepaymentAmount > 0.000001 && <Button size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveMerchantRepayment(shipment, merchantRepaymentAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button>}
-          {canSettle && shipment.status === "delivered" && shipment.assignedAgentId && courierReimbursementAmount > 0.000001 && <Button size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onReimburseCourier(shipment, courierReimbursementAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.reimburseCourier")}</Button>}
+          {canSettle && shipment.status === "delivered" && <PostSettlementsButton t={t} activeObligationCount={activeDeliveryShipmentSettlementObligationCount(shipment, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment)} onClick={() => onOpenPostSettlements(shipment)} />}
         </div></TableCell>
       </TableRow>;
     })}</TableBody>
     {footer ? <TableFooter><TableRow className="hover:bg-transparent"><TableCell colSpan={canSelect ? 12 : 11} className="bg-muted/40 py-3">{footer}</TableCell></TableRow></TableFooter> : null}
   </Table>;
 }
-function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onReceiveMerchantRepayment, merchantRepaymentAmountByShipment, onReimburseCourier, courierReimbursementAmountByShipment, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment }: {
+function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -2118,10 +2120,6 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
   canReviewCodChange: boolean;
   onOpenSettlementNet: (shipment: DeliveryShipment) => void;
   onOpenPostSettlements: (shipment: DeliveryShipment) => void;
-  onReceiveMerchantRepayment: (shipment: DeliveryShipment, amount: number) => void;
-  merchantRepaymentAmountByShipment: ReadonlyMap<string, number>;
-  onReimburseCourier: (shipment: DeliveryShipment, amount: number) => void;
-  courierReimbursementAmountByShipment: ReadonlyMap<string, number>;
   onPlayVoiceReason: (event: DeliveryShipmentEvent) => void;
   voiceReasonEventByShipment: ReadonlyMap<string, DeliveryShipmentEvent>;
   canPlayVoiceReason: boolean;
@@ -2143,8 +2141,6 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
       const merchantName = profileNameById.get(shipment.merchantProfileId) ?? t("postService.unknownMerchant");
       const courierName = shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) ?? t("postService.unknownCourier") : "—";
       const voiceReasonEvent = voiceReasonEventByShipment.get(shipment.id);
-      const merchantRepaymentAmount = merchantRepaymentAmountByShipment.get(shipment.id) ?? 0;
-      const courierReimbursementAmount = courierReimbursementAmountByShipment.get(shipment.id) ?? 0;
       const pendingCodAdjustment = pendingCodAdjustmentByShipment.get(shipment.id);
       const isPrepaidElectronically = shipment.customerPaymentStatus === "prepaid_electronically";
       const courierSettlementStatus = isPrepaidElectronically
@@ -2215,9 +2211,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
           {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
-          {canSettle && shipment.status === "delivered" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onOpenPostSettlements(shipment)}><Banknote className="h-4 w-4" />{t("postService.actions.settlements")}</Button>}
-          {canSettle && shipment.status === "delivered" && merchantRepaymentAmount > 0.000001 && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveMerchantRepayment(shipment, merchantRepaymentAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.receiveMerchantRepayment")}</Button>}
-          {canSettle && shipment.status === "delivered" && shipment.assignedAgentId && courierReimbursementAmount > 0.000001 && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onReimburseCourier(shipment, courierReimbursementAmount)}><HandCoins className="h-4 w-4" />{t("postService.actions.reimburseCourier")}</Button>}
+          {canSettle && shipment.status === "delivered" && <PostSettlementsButton t={t} activeObligationCount={activeDeliveryShipmentSettlementObligationCount(shipment, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment)} onClick={() => onOpenPostSettlements(shipment)} />}
         </div>}
       </article>;
     })}
@@ -2339,6 +2333,14 @@ function MerchantAccountBalanceAmounts({ t, balances, iqdPreference }: { t: TFun
     return <div key={currency} className={cn("flex items-center gap-1.5 font-medium", merchantIsOwed ? "text-amber-700 dark:text-amber-300" : "text-rose-700 dark:text-rose-300")}><span>{formatCurrency(Math.abs(amount), currency, iqdPreference)}</span><span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t(merchantIsOwed ? "postService.merchantBalance.owedToMerchant" : "postService.merchantBalance.owedByMerchant")}</span></div>;
   })}</div>;
 }
+function PostSettlementsButton({ t, activeObligationCount, onClick }: { t: TFunction; activeObligationCount: number; onClick: () => void }) {
+  return <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={onClick}>
+    <Banknote className="h-4 w-4" />
+    {t("postService.actions.settlements")}
+    <Badge variant="secondary" className="min-w-5 justify-center rounded-full px-1 py-0 text-[10px] tabular-nums">{activeObligationCount}</Badge>
+  </Button>;
+}
+
 function SettlementNetButton({ t, shipment, settlementNet, iqdPreference, onClick, className }: { t: TFunction; shipment: DeliveryShipment; settlementNet?: ShipmentSettlementNet; iqdPreference: "IQD" | "د.ع"; onClick: () => void; className?: string }) {
   if (!settlementNet) return <Button type="button" variant="outline" size="sm" className={cn("min-w-20 border-dashed text-muted-foreground", className)} onClick={onClick}>---</Button>;
   const workspaceRecipientPayout = settlementNet.hasCourierHandover && (shipment.recipientPayoutFunding ?? "workspace_payment") === "workspace_payment"

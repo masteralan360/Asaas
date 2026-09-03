@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeliveryLedgerEntry } from "@/local-db";
 
-import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
+import { activeDeliveryShipmentSettlementObligationCount, courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
 
 const NOW = "2026-08-17T10:00:00.000Z";
 
@@ -44,6 +44,35 @@ describe("isDeliveryShipmentCompleted", () => {
     expect(isDeliveryShipmentCompleted(prepaidShipment, new Map(), new Map(), settled, settled)).toBe(true);
     expect(isDeliveryShipmentCompleted(prepaidShipment, new Map(), new Map(), partial, settled)).toBe(false);
     expect(isDeliveryShipmentCompleted({ ...prepaidShipment, status: "assigned" }, new Map(), new Map(), settled, settled)).toBe(false);
+  });
+});
+
+describe("activeDeliveryShipmentSettlementObligationCount", () => {
+  it("counts only outstanding or partial obligations for the post payment model", () => {
+    const active = new Map([["s1", "outstanding" as const], ["s2", "partial" as const]]);
+    const settled = new Map([["s1", "settled" as const]]);
+
+    expect(activeDeliveryShipmentSettlementObligationCount(
+      { id: "s1", customerPaymentStatus: "cash_on_delivery" },
+      active,
+      settled,
+      active,
+      active,
+    )).toBe(1);
+    expect(activeDeliveryShipmentSettlementObligationCount(
+      { id: "s1", customerPaymentStatus: "prepaid_electronically" },
+      active,
+      active,
+      active,
+      settled,
+    )).toBe(1);
+    expect(activeDeliveryShipmentSettlementObligationCount(
+      { id: "s2", customerPaymentStatus: "prepaid_electronically" },
+      new Map(),
+      new Map(),
+      active,
+      active,
+    )).toBe(2);
   });
 });
 
