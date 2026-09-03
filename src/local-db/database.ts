@@ -107,6 +107,9 @@ import type {
   ClinicalPreset,
   Profile,
   LocalAccountCredential,
+  ModuleLockerSettings,
+  ModuleLockerLock,
+  ModuleLockerAuditEvent,
   WorkspacePermission,
   ManualEntryTemplate,
   ManualEntry
@@ -484,6 +487,9 @@ export class AtlasDatabase extends Dexie {
   clinical_presets!: EntityTable<ClinicalPreset, 'id'>
   profiles!: EntityTable<Profile, 'id'>
   local_account_credentials!: EntityTable<LocalAccountCredential, 'id'>
+  module_locker_settings!: EntityTable<ModuleLockerSettings, 'id'>
+  module_locker_locks!: EntityTable<ModuleLockerLock, 'id'>
+  module_locker_audit!: EntityTable<ModuleLockerAuditEvent, 'id'>
   workspace_permissions!: EntityTable<WorkspacePermission, 'id'>
   manual_entry_templates!: EntityTable<ManualEntryTemplate, 'id'>
   manual_entries!: EntityTable<ManualEntry, 'id'>
@@ -3180,6 +3186,12 @@ export class AtlasDatabase extends Dexie {
           scrubQueuedPayloads('syncQueue', 'data')
         ])
       })
+
+    this.version(113).stores({
+      module_locker_settings: 'id, workspaceId',
+      module_locker_locks: 'id, workspaceId, moduleHref, [workspaceId+moduleHref]',
+      module_locker_audit: 'id, workspaceId, action, occurredAt, [workspaceId+occurredAt]'
+    })
 
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()

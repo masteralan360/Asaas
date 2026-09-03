@@ -52,6 +52,7 @@ import {
 } from '@/lib/updatePreference'
 import { requestPwaDeploymentUpdate } from '@/lib/pwaUpdateControl'
 import { enrollLocalAccountCredential } from '@/auth/localAccountAuth'
+import { ModuleLockerSettingsCard } from '@/ui/components/module-locker/ModuleLockerSettingsCard'
 
 function getDateFilterDayBoundaryDate(value: string) {
     const [hours, minutes] = value.split(':').map(Number)
@@ -3660,6 +3661,8 @@ export function Settings() {
                             </CardContent>
                         </Card>
                     )}
+
+                    <ModuleLockerSettingsCard />
 
                     {user?.role === 'admin' && (
                         <>

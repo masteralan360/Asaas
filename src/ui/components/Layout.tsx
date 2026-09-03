@@ -1,4 +1,5 @@
 import { type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { Link, useLocation } from 'wouter'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
@@ -49,7 +50,15 @@ import { useWorkspaceUsageMeter } from './workspaceUsageMeter'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { LocalAccountSwitcher } from './LocalAccountSwitcher'
 import { DeploymentRefreshVersion } from './DeploymentRefreshVersion'
+import { ModuleLockerOverlay } from './module-locker/ModuleLockerOverlay'
+import { ModuleLockerPasskeyDialog, type ModuleLockerPasskeyAction } from './module-locker/ModuleLockerPasskeyDialog'
 import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
+import {
+  getModuleLockerLockForPath,
+  getModuleLockerSnapshot,
+  isModuleLockerLockableHref,
+  type ModuleLockerActor
+} from '@/local-db/moduleLocker'
 import { useWorkspaceBranchSwitcher } from '@/hooks/useWorkspaceBranchSwitcher'
 import { useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { refreshToLatestDeployment } from '@/lib/deploymentRefresh'
@@ -78,7 +87,8 @@ import {
   Clock,
   CircleCheck,
   ClipboardCheck,
-  ShieldCheck
+  ShieldCheck,
+  LockKeyhole
 } from 'lucide-react'
 import { Button } from './button'
 import {
@@ -107,7 +117,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from './ui/dropdown-menu'
-import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem } from './ui/context-menu'
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from './ui/context-menu'
 
 import { useTranslation } from 'react-i18next'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
@@ -229,6 +239,15 @@ export function Layout({ children }: LayoutProps) {
   const { hasPermission } = useWorkspacePermissions()
   const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageContentRef = useRef<HTMLElement>(null)
+  const moduleLockerSnapshot = useLiveQuery(
+    () => (user?.workspaceId ? getModuleLockerSnapshot(user.workspaceId) : undefined),
+    [user?.workspaceId]
+  )
+  const [moduleLockerDialog, setModuleLockerDialog] = useState<{
+    action: ModuleLockerPasskeyAction
+    moduleHref: string
+    moduleName: string
+  } | null>(null)
   const {
     branchInfo,
     branches,
@@ -250,6 +269,10 @@ export function Layout({ children }: LayoutProps) {
 
   const { t, i18n } = useTranslation()
   const { toast } = useToast()
+  const moduleLockerActor = useMemo<ModuleLockerActor | undefined>(
+    () => (user ? { userId: user.id, name: user.name || user.email || t('settings.moduleLocker.unknownActor') } : undefined),
+    [t, user]
+  )
   // @ts-ignore
   const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
   const {
@@ -697,6 +720,14 @@ export function Layout({ children }: LayoutProps) {
     isDesktopDevice: isDesktop(),
     whatsappStatus
   })
+  const activeModuleLock = getModuleLockerLockForPath(moduleLockerSnapshot?.locks ?? [], location)
+  const isModuleLockerLoading = Boolean(user?.workspaceId && moduleLockerSnapshot === undefined)
+  const isModuleLockerEnabled = Boolean(moduleLockerSnapshot?.settings)
+
+  const openModuleLockerDialog = (action: ModuleLockerPasskeyAction, moduleHref: string, moduleName: string) => {
+    if (!isModuleLockerEnabled || !moduleLockerActor) return
+    setModuleLockerDialog({ action, moduleHref, moduleName })
+  }
 
   const sidebarCashierShift = useMemo<SidebarCashierShift | null>(() => {
     if (!canUseCashierShiftQuickStart || !user?.id) return null
@@ -1303,7 +1334,12 @@ export function Layout({ children }: LayoutProps) {
                         location === item.href || (item.href !== '/' && location.startsWith(item.href)) || isChildActive
                       const isOpen = isExpandableGroup ? Boolean(expandedNavGroups[item.href]) || isChildActive : false
                       const showChildren = isExpandableGroup && isOpen && !(isSidebarMini && !mobileSidebarOpen)
-
+                      const isModuleLockerTarget = Boolean(
+                        isModuleLockerEnabled && !item.popup && isModuleLockerLockableHref(item.href)
+                      )
+                      const isModuleLocked = isModuleLockerTarget && moduleLockerSnapshot?.locks.some(
+                        (lock) => lock.moduleHref === item.href
+                      )
                       const parentContent = (
                         <span
                           className={cn(
@@ -1319,9 +1355,13 @@ export function Layout({ children }: LayoutProps) {
                           {!(isSidebarMini && !mobileSidebarOpen) && (
                             <>
                               {item.name}
+                              {isModuleLocked && <LockKeyhole className="ms-auto h-3.5 w-3.5 shrink-0 text-primary" />}
                               {isExpandableGroup && (
                                 <ChevronDown
-                                  className={cn('ms-auto w-4 h-4 transition-transform', isOpen && 'rotate-180')}
+                                  className={cn(
+                                    isModuleLocked ? 'w-4 h-4 transition-transform' : 'ms-auto w-4 h-4 transition-transform',
+                                    isOpen && 'rotate-180'
+                                  )}
                                 />
                               )}
                               {!isExpandableGroup && showReorderAutomationBadge && (
@@ -1495,6 +1535,25 @@ export function Layout({ children }: LayoutProps) {
                                     defaultValue: 'Add to desktop as shortcut'
                                   })}
                                 </ContextMenuItem>
+                                {isModuleLockerTarget && (
+                                  <>
+                                    <ContextMenuSeparator />
+                                    {isModuleLocked ? (
+                                      <ContextMenuItem disabled className="gap-2">
+                                        <LockKeyhole className="h-4 w-4" />
+                                        {t('settings.moduleLocker.lockedMenuItem')}
+                                      </ContextMenuItem>
+                                    ) : (
+                                      <ContextMenuItem
+                                        className="gap-2"
+                                        onSelect={() => openModuleLockerDialog('lock', item.href, item.name)}
+                                      >
+                                        <LockKeyhole className="h-4 w-4" />
+                                        {t('settings.moduleLocker.lockModule')}
+                                      </ContextMenuItem>
+                                    )}
+                                  </>
+                                )}
                               </ContextMenuContent>
                             </ContextMenu>
                           ) : item.popup ? (
@@ -2391,7 +2450,7 @@ export function Layout({ children }: LayoutProps) {
             <main
               ref={pageContentRef}
               className={cn(
-                'page-enter flex-1 min-h-0',
+                'page-enter relative flex-1 min-h-0',
                 location === '/whatsapp'
                   ? 'p-0'
                   : isPosLikeRoute
@@ -2400,8 +2459,14 @@ export function Layout({ children }: LayoutProps) {
               )}
             >
               <Suspense fallback={<PageLoading />}>{children}</Suspense>
+              <ModuleLockerOverlay
+                containerRef={pageContentRef}
+                isLoading={isModuleLockerLoading}
+                lock={activeModuleLock}
+                onUnlock={(lock) => openModuleLockerDialog('unlock', lock.moduleHref, lock.moduleName)}
+              />
             </main>
-            <PageFind contentRef={pageContentRef} />
+            {!activeModuleLock && !isModuleLockerLoading && <PageFind contentRef={pageContentRef} />}
           </div>
 
           {/* Sign Out Confirmation Modal */}
@@ -2477,6 +2542,17 @@ export function Layout({ children }: LayoutProps) {
             open={assistantOpen}
             initialQuery={assistantInitialQuery}
             onClose={() => setAssistantOpen(false)}
+          />
+          <ModuleLockerPasskeyDialog
+            open={moduleLockerDialog !== null}
+            action={moduleLockerDialog?.action ?? null}
+            workspaceId={user?.workspaceId}
+            moduleHref={moduleLockerDialog?.moduleHref}
+            moduleName={moduleLockerDialog?.moduleName}
+            actor={moduleLockerActor}
+            onOpenChange={(open) => {
+              if (!open) setModuleLockerDialog(null)
+            }}
           />
         </div>
       </LoanPaymentModalProvider>

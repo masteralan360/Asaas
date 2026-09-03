@@ -121,6 +121,57 @@ export interface LocalAccountCredential {
   lastVerifiedAt: string | null
 }
 
+export type ModuleLockerAuditAction =
+  | 'passkey_set'
+  | 'passkey_changed'
+  | 'passkey_removed'
+  | 'module_locked'
+  | 'module_unlocked'
+  | 'all_modules_unlocked'
+  | 'passkey_failed'
+
+/**
+ * Per-workspace, device-local locker configuration. `verifier` is derived
+ * from the passkey and is intentionally the only passkey material persisted.
+ */
+export interface ModuleLockerSettings {
+  id: string
+  workspaceId: string
+  salt: string
+  verifier: string
+  iterations: number
+  digest: 'SHA-256'
+  failedAttempts: number
+  lockedUntil: string | null
+  createdAt: string
+  createdByUserId: string
+  updatedAt: string
+  updatedByUserId: string
+}
+
+/** A persistent device-local lock for a top-level sidebar module. */
+export interface ModuleLockerLock {
+  id: string
+  workspaceId: string
+  moduleHref: string
+  moduleName: string
+  lockedAt: string
+  lockedByUserId: string
+  lockedByName: string
+}
+
+/** A capped, device-local security activity record. */
+export interface ModuleLockerAuditEvent {
+  id: string
+  workspaceId: string
+  action: ModuleLockerAuditAction
+  moduleHref?: string | null
+  moduleName?: string | null
+  actorUserId: string
+  actorName: string
+  occurredAt: string
+}
+
 export interface Category extends BaseEntity {
   name: string
   description?: string
