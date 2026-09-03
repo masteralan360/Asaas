@@ -1,4 +1,4 @@
-import { supabase } from '@/auth/supabase'
+import { refreshSupabaseSession, supabase } from '@/auth/supabase'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 
 const ACCESS_TOKEN_REFRESH_MARGIN_MS = 60_000
@@ -19,8 +19,6 @@ export type WorkspaceAccessInvokeResult<TData> = {
     data: TData | null
     error?: unknown
 }
-
-let refreshSessionPromise: Promise<SessionLike | null> | null = null
 
 function getErrorMessage(error: unknown) {
     if (error instanceof Error) return error.message
@@ -93,25 +91,17 @@ function shouldRefreshSession(session: SessionLike | null | undefined) {
 }
 
 async function refreshCurrentSession() {
-    if (!refreshSessionPromise) {
-        refreshSessionPromise = (async () => {
-            const { data, error } = await supabase.auth.refreshSession()
-            if (!error && data.session?.access_token) {
-                return data.session
-            }
-
-            if (error) {
-                console.warn('[workspaceAccess] Failed to refresh session before authenticated function call:', error)
-            }
-
-            const { data: latestSessionData } = await supabase.auth.getSession()
-            return latestSessionData.session
-        })().finally(() => {
-            refreshSessionPromise = null
-        })
+    const { data, error } = await refreshSupabaseSession()
+    if (!error && data.session?.access_token) {
+        return data.session
     }
 
-    return refreshSessionPromise
+    if (error) {
+        console.warn('[workspaceAccess] Failed to refresh session before authenticated function call:', error)
+    }
+
+    const { data: latestSessionData } = await supabase.auth.getSession()
+    return latestSessionData.session
 }
 
 async function getWorkspaceAccessToken(forceRefresh: boolean, fallbackAccessToken?: string | null) {

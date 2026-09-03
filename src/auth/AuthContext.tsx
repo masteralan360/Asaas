@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
-import { supabase, isSupabaseConfigured } from './supabase'
+import {
+  supabase,
+  isSupabaseConfigured,
+  refreshSupabaseSession,
+  signOutCurrentSupabaseSession
+} from './supabase'
 import type { User, Session } from '@supabase/supabase-js'
 import type { CashierShiftAssignment, CashierShiftOccurrence, UserRole, WorkspaceDataMode } from '@/local-db/models'
 import { connectionManager } from '@/lib/connectionManager'
@@ -757,7 +762,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('[Auth] Attempting refreshSession as fallback...')
           const { data, error } = (await runSupabaseAction(
             'auth.refreshFallback',
-            () => supabase.auth.refreshSession(),
+            () => refreshSupabaseSession(),
             { timeoutMs: 5000, platform: 'all' }
           )) as any
 
@@ -841,7 +846,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('[Auth] Session invalid after wake, attempting refresh...')
           const { data: refreshData, error: refreshError } = (await runSupabaseAction(
             'auth.wakeRefreshSession',
-            () => supabase.auth.refreshSession(),
+            () => refreshSupabaseSession(),
             { timeoutMs: 5000, platform: 'all' }
           )) as any
 
@@ -898,7 +903,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log(`[Auth] Token expires in ${Math.round(timeUntilExpiry / 1000)}s — proactive refresh`)
           const { data, error } = (await runSupabaseAction(
             'auth.proactiveRefresh',
-            () => supabase.auth.refreshSession(),
+            () => refreshSupabaseSession(),
             { timeoutMs: 5000, platform: 'all' }
           )) as any
           if (error) {
@@ -1244,7 +1249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (isSupabaseConfigured && !isDemoSession) {
-        await supabase.auth.signOut()
+        await signOutCurrentSupabaseSession()
       }
     } catch (err) {
       console.error('[Auth] Error during signOut:', err)
@@ -1289,7 +1294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { session },
       error
-    } = (await runSupabaseAction('auth.refreshUser', () => supabase.auth.refreshSession(), {
+    } = (await runSupabaseAction('auth.refreshUser', () => refreshSupabaseSession(), {
       timeoutMs: 5000,
       platform: 'all'
     })) as any

@@ -3,6 +3,7 @@ import { getAppSettingSync } from '@/local-db/settings'
 import { decrypt, encrypt } from '@/lib/encryption'
 import { createWorkspaceUsageFetch } from '@/lib/workspaceUsageFetch'
 import { isTauri } from '@/lib/platform'
+import { createAuthSessionManager } from './sessionManager'
 
 // Custom storage adapter that encrypts everything in local storage
 const EncryptedStorage = {
@@ -72,14 +73,17 @@ export const supabase = createClient(clientUrl, clientKey, {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: EncryptedStorage,
-        // Custom lock to avoid navigator.locks deadlock with React Strict Mode
-        // navigator.locks can deadlock when effects are double-invoked
-        lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => {
-            return await fn()
-        }
+        storage: EncryptedStorage
     }
 })
+
+const authSessionManager = createAuthSessionManager({
+    refreshSession: () => supabase.auth.refreshSession(),
+    signOut: (options) => supabase.auth.signOut(options)
+})
+
+export const refreshSupabaseSession = () => authSessionManager.refreshSession()
+export const signOutCurrentSupabaseSession = () => authSessionManager.signOutCurrentSession()
 // Database table types for Supabase
 export type SupabaseProduct = {
     id: string

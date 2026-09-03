@@ -2,7 +2,7 @@
  * Service to handle Cloudflare R2 storage operations via the authenticated proxy worker.
  * Public reads use shareable object URLs; privileged writes/lists use the user's Supabase session.
  */
-import { supabase } from '@/auth/supabase';
+import { refreshSupabaseSession, supabase } from '@/auth/supabase';
 import { isTauri } from '@/lib/platform';
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode';
 import {
@@ -130,7 +130,7 @@ class R2Service {
 
     private async getAccessToken(forceRefresh = false): Promise<string | undefined> {
         if (forceRefresh) {
-            const { data } = await supabase.auth.refreshSession();
+            const { data } = await refreshSupabaseSession();
             if (data.session?.access_token) {
                 return data.session.access_token;
             }
@@ -142,7 +142,7 @@ class R2Service {
         }
 
         if (!forceRefresh) {
-            const { data: refreshedData } = await supabase.auth.refreshSession();
+            const { data: refreshedData } = await refreshSupabaseSession();
             return refreshedData.session?.access_token;
         }
 
