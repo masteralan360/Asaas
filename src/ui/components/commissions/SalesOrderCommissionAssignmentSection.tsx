@@ -23,7 +23,6 @@ import {
     type SalesOrderCommissionAssignmentSummary
 } from './salesOrderCommissionSummary'
 import { useCommissionAgentDirectory } from './useCommissionAgentDirectory'
-import { ProductCommissionPreview, type ProductCommissionPreviewItem } from './ProductCommissionPreview'
 
 export interface SalesOrderCommissionAssignmentHandle {
     validate: () => {
@@ -44,7 +43,6 @@ interface SalesOrderCommissionAssignmentSectionProps {
     orderCurrency: CurrencyCode
     orderTotal: number
     exchangeRates: ExchangeRateSnapshot[]
-    orderItems?: ProductCommissionPreviewItem[]
     availableCurrencies: CurrencyCode[]
     iqdDisplayPreference?: 'IQD' | 'د.ع'
     /** Locks this guided flow to the selected customer or sales-account agent. */
@@ -99,7 +97,6 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
     orderCurrency,
     orderTotal,
     exchangeRates,
-    orderItems = [],
     availableCurrencies,
     iqdDisplayPreference,
     fixedRecipientAgentId,
@@ -462,16 +459,6 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
                         <Plus className="h-4 w-4" />
                         {t('salesAgentCommissions.addSalesAgent')}
                     </Button>
-                ) : null}
-                {orderItems.length > 0 ? (
-                    <ProductCommissionPreview
-                        workspaceId={workspaceId}
-                        items={orderItems}
-                        agentIds={drafts.map((draft) => draft.agentId).filter(Boolean)}
-                        currency={orderCurrency}
-                        exchangeRates={exchangeRates}
-                        iqdPreference={iqdDisplayPreference || 'IQD'}
-                    />
                 ) : null}
             </CardContent>
         </Card>

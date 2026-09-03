@@ -33,6 +33,7 @@ import {
     deletePurchaseOrder,
     deleteSalesOrder,
     findLatestUnreversedPaymentTransaction,
+    getActiveSalesOrderAgentAssignments,
     getOrderBalanceAmount,
     getOrderPaidAmount,
     getOrderPaymentStatus,
@@ -51,6 +52,7 @@ import {
     useLoanInstallments,
     useOrderInstallments,
     useProductsByIds,
+    useSalesOrderAgentAssignments,
     useSalesOrder,
     useSalesOrderReturnItems,
     useSalesOrderReturns,
@@ -112,6 +114,12 @@ import { OrderProductAvatar } from './OrderProductAvatars'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
 import { PostReturnAdjustmentDialog } from './PostReturnAdjustmentDialog'
 import { OrderAgentCommissionCard } from '@/ui/components/commissions/OrderAgentCommissionCard'
+import {
+    ProductCommissionPreview,
+    type ProductCommissionPreviewAgent
+} from '@/ui/components/commissions/ProductCommissionPreview'
+import { OLD_SALES_AGENT_CONFIGURATION } from '@/ui/components/commissions/oldSalesAgentConfiguration'
+import { useCommissionAgentDirectory } from '@/ui/components/commissions/useCommissionAgentDirectory'
 
 function statusLabel(t: (key: string) => string, status: string) {
     const translated = t(`orders.status.${status}`)
@@ -242,6 +250,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const storages = useStorages(workspaceId)
     const salesOrder = useSalesOrder(orderId)
     const purchaseOrder = usePurchaseOrder(orderId)
+    const salesOrderAgentAssignments = useSalesOrderAgentAssignments(workspaceId)
+    const commissionAgentDirectory = useCommissionAgentDirectory(workspaceId)
     const salesOrderReturns = useSalesOrderReturns(orderId, workspaceId)
     const salesOrderReturnItems = useSalesOrderReturnItems(orderId, workspaceId)
     const linkedLoanId = salesOrder?.linkedLoanId || purchaseOrder?.linkedLoanId || undefined
@@ -359,6 +369,39 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const canAccessSalesAgentCommissions = canAssignSalesAgents
         || canViewAllAgentCommissions
         || canViewOwnAgentCommissions
+    const productCommissionPreviewAgentIds = useMemo(() => {
+        if (!salesOrder) return []
+        return getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, salesOrder.id)
+            .filter((assignment) => {
+                if (canAssignSalesAgents || canViewAllAgentCommissions) return true
+                const userId = user?.id
+                if (!canViewOwnAgentCommissions || !userId) return false
+                const agent = commissionAgentDirectory.agentById.get(assignment.agentId)
+                return agent?.agent.linkedUserId === userId
+            })
+            .map((assignment) => assignment.agentId)
+    }, [
+        canAssignSalesAgents,
+        canViewAllAgentCommissions,
+        canViewOwnAgentCommissions,
+        commissionAgentDirectory.agentById,
+        salesOrder,
+        salesOrderAgentAssignments,
+        user?.id
+    ])
+    const productCommissionPreviewAgents = useMemo<ProductCommissionPreviewAgent[]>(() => (
+        productCommissionPreviewAgentIds.map((id) => ({
+            id,
+            name: commissionAgentDirectory.agentById.get(id)?.name || t('salesAgentCommissions.salesAgent')
+        }))
+    ), [commissionAgentDirectory.agentById, productCommissionPreviewAgentIds, t])
+    const productCommissionPreviewItems = useMemo(() => salesOrder?.items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        convertedUnitPrice: item.convertedUnitPrice
+    })) || [], [salesOrder])
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canApproveOrderRequests = user?.role === 'admin'
@@ -1286,6 +1329,18 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                     </Card>
 
                     {isSales && canAccessSalesAgentCommissions ? (
+                        <ProductCommissionPreview
+                            workspaceId={workspaceId}
+                            items={productCommissionPreviewItems}
+                            agentIds={productCommissionPreviewAgentIds}
+                            agents={productCommissionPreviewAgents}
+                            currency={currency}
+                            exchangeRates={(order as SalesOrder).exchangeRates ?? []}
+                            iqdPreference={iqd}
+                        />
+                    ) : null}
+
+                    {isSales && canAccessSalesAgentCommissions && OLD_SALES_AGENT_CONFIGURATION.showSalesAgentBeneficiaries ? (
                         <OrderAgentCommissionCard
                             workspaceId={workspaceId}
                             orderId={order.id}

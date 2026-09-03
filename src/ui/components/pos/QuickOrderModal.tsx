@@ -586,7 +586,6 @@ export function QuickOrderModal({
                         orderCurrency={settlementCurrency}
                         orderTotal={totalAmount}
                         exchangeRates={commissionExchangeRates}
-                        orderItems={commissionPreviewItems}
                         availableCurrencies={commissionCurrencies}
                         iqdDisplayPreference={iqdPreference}
                         allowPlanCommissionAmountOverride

@@ -27,6 +27,7 @@ import { isService, SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import {
     createSalesOrder,
     findPartnerProductPriceBookItem,
+    getActiveSalesOrderAgentAssignments,
     getPrimaryStorageFromList,
     updateSalesOrder,
     useAgents,
@@ -35,6 +36,7 @@ import {
     useDiscountPriceResolver,
     usePriceBookCatalogState,
     useProducts,
+    useSalesOrderAgentAssignments,
     useSalesOrder,
     useStockBatches,
     useStorages,
@@ -93,8 +95,14 @@ import { FreeBonusUnitSelect } from './FreeBonusUnitSelect'
 import { useUnitRegistry } from '@/ui/components/unitRegistry'
 import {
     SalesOrderCommissionAssignmentSection,
-    type SalesOrderCommissionAssignmentHandle
+    type SalesOrderCommissionAssignmentHandle,
+    type SalesOrderCommissionAssignmentSummary
 } from '@/ui/components/commissions/SalesOrderCommissionAssignmentSection'
+import {
+    ProductCommissionPreview,
+    type ProductCommissionPreviewAgent
+} from '@/ui/components/commissions/ProductCommissionPreview'
+import { OLD_SALES_AGENT_CONFIGURATION } from '@/ui/components/commissions/oldSalesAgentConfiguration'
 
 interface SalesOrderFormPageProps {
     workspaceId: string
@@ -226,10 +234,12 @@ export function SalesOrderFormPage({
     const customerPartners = useBusinessPartners(workspaceId, { roles: ['customer'] })
     const agentPartners = useBusinessPartners(workspaceId, { roles: ['agent'], includeAgentRoles: true })
     const agents = useAgents(workspaceId)
+    const salesOrderAgentAssignments = useSalesOrderAgentAssignments(workspaceId)
     const editingOrder = useSalesOrder(editingOrderId)
     const salesAgentCommissionsEnabled = hasFeature('sales_agent_commissions')
     const agentSalesAccountsEnabled = hasFeature('agent_sales_accounts')
-    const canAssignSalesAgents = salesAgentCommissionsEnabled
+    const canAssignSalesAgents = OLD_SALES_AGENT_CONFIGURATION.showSalesAgentBeneficiaries
+        && salesAgentCommissionsEnabled
         && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
     const storageOptionsForModal = useMemo(() => {
@@ -263,6 +273,7 @@ export function SalesOrderFormPage({
     const { isAccessKeyHeld } = useUiAccess()
     const formOpenedAtRef = useRef(new Date().toISOString())
     const commissionAssignmentRef = useRef<SalesOrderCommissionAssignmentHandle>(null)
+    const [commissionAssignmentSummaries, setCommissionAssignmentSummaries] = useState<SalesOrderCommissionAssignmentSummary[]>([])
     const [isOrderCreationPickerOpen, setIsOrderCreationPickerOpen] = useState(false)
     const canEditOrderCreation = user?.role === 'admin' && (isAccessKeyHeld || isOrderCreationPickerOpen)
     const [prioritizedMethod, setPrioritizedMethod] = useState<string | null>(getPrioritizedPaymentMethod)
@@ -444,6 +455,37 @@ export function SalesOrderFormPage({
     }, [agentPartners, agents, salesAccountAgentId])
     const selectedCustomer = selectedSalesAccount?.partner ?? selectedCustomerFromPicker
     const isCustomerSelectionRequired = !editingOrderId && !selectedCustomer
+    const activeCommissionAssignments = useMemo(
+        () => editingOrderId
+            ? getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, editingOrderId)
+            : [],
+        [editingOrderId, salesOrderAgentAssignments]
+    )
+    const productCommissionAgentIds = useMemo(() => {
+        const agentIds = new Set(activeCommissionAssignments.map((assignment) => assignment.agentId))
+        if (selectedSalesAccount) agentIds.add(selectedSalesAccount.agent.id)
+        for (const summary of commissionAssignmentSummaries) agentIds.add(summary.agentId)
+        return [...agentIds]
+    }, [activeCommissionAssignments, commissionAssignmentSummaries, selectedSalesAccount])
+    const productCommissionPreviewAgents = useMemo<ProductCommissionPreviewAgent[]>(() => {
+        const agentNameById = new Map(commissionAssignmentSummaries.map((summary) => [summary.agentId, summary.agentName]))
+        const partnerById = new Map(agentPartners.map((partner) => [partner.id, partner]))
+        for (const agent of agents) {
+            const name = partnerById.get(agent.businessPartnerId)?.partnerName
+            if (name && !agentNameById.has(agent.id)) agentNameById.set(agent.id, name)
+        }
+        return productCommissionAgentIds.map((id) => ({
+            id,
+            name: agentNameById.get(id) || t('salesAgentCommissions.salesAgent')
+        }))
+    }, [agentPartners, agents, commissionAssignmentSummaries, productCommissionAgentIds, t])
+    const productCommissionPreviewItems = useMemo(() => items.map((item) => ({
+        id: String(item.seq),
+        productId: item.productId,
+        productName: item.productSearch,
+        quantity: Number(item.quantity) || 0,
+        convertedUnitPrice: Number(item.unitPrice) || 0
+    })), [items])
     const inventoryByStorageProduct = useMemo(() => new Map(
         inventory.map((row) => [`${row.storageId}:${row.productId}`, row.quantity])
     ), [inventory])
@@ -1209,16 +1251,10 @@ export function SalesOrderFormPage({
                                     orderCurrency={currency}
                                     orderTotal={preview}
                                     exchangeRates={adjustmentExchangeRates}
-                                    orderItems={items.map((item) => ({
-                                        id: String(item.seq),
-                                        productId: item.productId,
-                                        productName: item.productSearch,
-                                        quantity: Number(item.quantity) || 0,
-                                        convertedUnitPrice: Number(item.unitPrice) || 0
-                                    }))}
                                     availableCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}
                                     iqdDisplayPreference={features.iqd_display_preference}
                                     allowPlanCommissionAmountOverride
+                                    onCommissionSummaryChange={setCommissionAssignmentSummaries}
                                     disabled={isSaving}
                                 />
                             </PartnerRequiredSection>
@@ -1798,6 +1834,17 @@ export function SalesOrderFormPage({
                                 </CardContent>
                             </Card>
                         </PartnerRequiredSection>
+                        {salesAgentCommissionsEnabled && productCommissionAgentIds.length > 0 ? (
+                            <ProductCommissionPreview
+                                workspaceId={workspaceId}
+                                items={productCommissionPreviewItems}
+                                agentIds={productCommissionAgentIds}
+                                agents={productCommissionPreviewAgents}
+                                currency={currency}
+                                exchangeRates={adjustmentExchangeRates}
+                                iqdPreference={features.iqd_display_preference}
+                            />
+                        ) : null}
                         <Card className="border-border/60 shadow-sm">
                             <CardHeader className="space-y-1">
                                 <CardTitle className="text-xl">{t('common.actions') || 'Actions'}</CardTitle>
