@@ -40,6 +40,7 @@ import {
     type SalesOrderItem
 } from '@/local-db'
 import { isService, SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
+import { isPosPaymentTypeAllowed, type PosPaymentType } from '@/lib/posPaymentPolicy'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { roundOrderValue } from '@/lib/orderPrecision'
@@ -178,8 +179,6 @@ type CompletedActivityCheckout = {
     transaction: ActivityTransaction
     lines: ActivityTransactionLine[]
 }
-
-type PosPaymentType = 'cash' | 'digital' | 'loan' | 'order'
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
     if (!value || typeof value !== 'object') return false
@@ -955,9 +954,16 @@ export function POS() {
         if (isActivitiesStorage || isServicesStorage) {
             setSelectedCategory('all')
             setShowExchangeTicker(false)
-            if (paymentType === 'loan' || paymentType === 'order') setPaymentType('cash')
         }
-    }, [isActivitiesStorage, isServicesStorage, paymentType])
+
+        if (!isPosPaymentTypeAllowed(paymentType, {
+            isActivitiesStorage,
+            isServicesStorage,
+            quickOrderEnabled
+        })) {
+            setPaymentType('cash')
+        }
+    }, [isActivitiesStorage, isServicesStorage, paymentType, quickOrderEnabled])
 
     useEffect(() => {
         if (!showOrderFreeBonus) {
