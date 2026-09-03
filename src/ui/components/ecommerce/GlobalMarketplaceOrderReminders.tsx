@@ -25,7 +25,7 @@ type MarketplaceOrderRecord = {
     customer_city: string | null
     total: number
     currency: string
-    items: Array<{ quantity?: number | null }> | null
+    items: Array<{ product_id?: unknown; quantity?: number | null }> | null
     created_at: string
 }
 
@@ -118,6 +118,9 @@ function getMarketplaceOrderItemCount(items: MarketplaceOrderRecord['items']) {
     }
 
     return items.reduce((sum, item) => {
+        // Marketplace orders can contain non-product display metadata, such as
+        // Jumla Khaleej's delivery fee. It is never a countable order item.
+        if (typeof item?.product_id !== 'string' || !item.product_id) return sum
         const quantity = Number(item?.quantity)
         return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
     }, 0)

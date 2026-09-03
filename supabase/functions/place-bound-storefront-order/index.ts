@@ -20,6 +20,10 @@ import {
     parseWebsiteStorefrontMode,
     resolveModePrice
 } from '../_shared/websiteStorefront.ts'
+import {
+    createJumlaKhaleejDeliveryMetadata,
+    getJumlaKhaleejDeliveryCity,
+} from '../_shared/jumlaKhaleejDelivery.ts'
 
 type PlaceStorefrontOrderRequest = {
     mode?: string
@@ -119,12 +123,14 @@ Deno.serve(async (req) => {
         const customerPhone = sanitizeMarketplaceText(body.customer?.phone, 40)
         const customerEmail = sanitizeNullableMarketplaceText(body.customer?.email, 120)
         const customerAddress = sanitizeNullableMarketplaceText(body.customer?.address, 200)
-        const customerCity = sanitizeNullableMarketplaceText(body.customer?.city, 80)
+        const customerCityKey = sanitizeMarketplaceText(body.customer?.city, 80)
         const customerNotes = sanitizeNullableMarketplaceText(body.customer?.notes, 500)
         const checkoutRequestId = sanitizeMarketplaceText(body.checkout_request_id, 64).toLowerCase()
 
         if (!customerName) return errorResponse('Customer name is required')
         if (!customerPhone || countDigits(customerPhone) < 7) return errorResponse('Customer phone is required')
+        const deliveryCity = getJumlaKhaleejDeliveryCity(customerCityKey)
+        if (!deliveryCity) return errorResponse('A valid delivery city is required')
         if (!isUuid(checkoutRequestId)) return errorResponse('A valid checkout request id is required')
 
         const normalizedItems = new Map<string, number>()
@@ -295,6 +301,11 @@ Deno.serve(async (req) => {
         }
 
         const currency = orderItems[0]?.currency ?? (context.workspace.default_currency ?? 'iqd').toLowerCase()
+        // Delivery is immutable display metadata, never an item. Deliberately
+        // append it only after subtotal has been calculated from product lines.
+        // marketplace_orders.total and every downstream financial flow retain
+        // the product-only subtotal value.
+        orderItems.push(createJumlaKhaleejDeliveryMetadata(deliveryCity))
         const { data: insertedOrder, error: insertError } = await adminClient
             .from('marketplace_orders')
             .insert({
@@ -303,7 +314,7 @@ Deno.serve(async (req) => {
                 customer_phone: customerPhone,
                 customer_email: customerEmail,
                 customer_address: customerAddress,
-                customer_city: customerCity,
+                customer_city: deliveryCity.names[language],
                 customer_notes: customerNotes,
                 items: orderItems,
                 subtotal,

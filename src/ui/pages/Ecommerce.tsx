@@ -100,6 +100,9 @@ type MarketplaceTransitionResponse = {
 
 type MarketplaceOrderItemRecord = EditableMarketplaceOrderItem
 
+const JUMLA_KHALEEJ_STOREFRONT_KEY = 'jumla-khaleej'
+const JUMLA_KHALEEJ_DELIVERY_METADATA_TYPE = 'jumla_khaleej_delivery_fee'
+
 function getMarketplaceDisplayItems(items: MarketplaceOrderItemRecord[]) {
     const groupedItems = new Map<string, MarketplaceOrderItemRecord>()
 
@@ -142,6 +145,7 @@ type MarketplaceOrderRecord = {
     inquiry_pdf_document_number: string | null
     inquiry_pdf_uploaded_at: string | null
     items: MarketplaceOrderItemRecord[]
+    delivery_fee: number | null
     subtotal: number
     total: number
     currency: string
@@ -155,6 +159,10 @@ type MarketplaceOrderRecord = {
     inventory_deducted: boolean
     created_at: string
     updated_at: string
+}
+
+type MarketplaceOrderDatabaseRecord = Omit<MarketplaceOrderRecord, 'delivery_fee'> & {
+    website_storefront_key: string | null
 }
 
 const MARKETPLACE_ORDER_SELECT = `
@@ -173,6 +181,7 @@ const MARKETPLACE_ORDER_SELECT = `
     inquiry_pdf_storage_id,
     inquiry_pdf_document_number,
     inquiry_pdf_uploaded_at,
+    website_storefront_key,
     items,
     subtotal,
     total,
@@ -188,6 +197,25 @@ const MARKETPLACE_ORDER_SELECT = `
     created_at,
     updated_at
 `
+
+function isMarketplaceOrderItem(value: unknown): value is MarketplaceOrderItemRecord {
+    return Boolean(value
+        && typeof value === 'object'
+        && typeof (value as { product_id?: unknown }).product_id === 'string'
+        && (value as { product_id: string }).product_id.length > 0)
+}
+
+function getJumlaKhaleejDeliveryFee(items: unknown[], storefrontKey: string | null) {
+    if (storefrontKey !== JUMLA_KHALEEJ_STOREFRONT_KEY) return null
+
+    const metadata = items.find((item) => Boolean(
+        item
+        && typeof item === 'object'
+        && (item as { metadata_type?: unknown }).metadata_type === JUMLA_KHALEEJ_DELIVERY_METADATA_TYPE
+    )) as { delivery_fee?: unknown } | undefined
+    const fee = Number(metadata?.delivery_fee)
+    return Number.isInteger(fee) && fee > 0 ? fee : null
+}
 
 const MARKETPLACE_ORDER_REFRESH_EVENT = 'marketplace-orders:changed'
 
@@ -270,6 +298,23 @@ function EcommerceStatusBadge({ status }: { status: MarketplaceOrderStatus }) {
     return (
         <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] ${classes[status]}`}>
             {t(`ecommerce.status.${status}`, { defaultValue: status })}
+        </span>
+    )
+}
+
+function MarketplaceDeliveryFeeBadge({ fee }: { fee: number | null }) {
+    const { t } = useTranslation()
+    const { features } = useWorkspace()
+
+    if (fee === null) return null
+
+    return (
+        <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[10px] font-black tracking-wide text-violet-700 dark:text-violet-300">
+            <Truck className="h-3 w-3" aria-hidden="true" />
+            {t('ecommerce.deliveryFeeBadge', {
+                amount: formatCurrency(fee, 'iqd', features.iqd_display_preference),
+                defaultValue: '+{{amount}} Delivery'
+            })}
         </span>
     )
 }
@@ -705,6 +750,7 @@ function EcommerceListView({
                                             <div className="truncate text-xs text-muted-foreground">
                                                 {getEcommerceOrderSummary(order.items)}
                                             </div>
+                                            {order.delivery_fee !== null ? <div className="mt-1"><MarketplaceDeliveryFeeBadge fee={order.delivery_fee} /></div> : null}
                                         </div>
                                     </div>
                                 </TableCell>
@@ -752,6 +798,7 @@ function EcommerceListView({
                                 <div className="min-w-0 space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-sm font-bold text-primary">{order.order_number}</span>
+                                        <MarketplaceDeliveryFeeBadge fee={order.delivery_fee} />
                                     </div>
                                     <div className="text-base font-bold text-foreground">{order.customer_name}</div>
                                     <div className="text-xs text-muted-foreground truncate max-w-[200px]">
@@ -1186,6 +1233,7 @@ function EcommerceDetailView({
                                         {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
                                     </span>
                                     <EcommerceStatusBadge status={order.status} />
+                                    <MarketplaceDeliveryFeeBadge fee={order.delivery_fee} />
                                     {order.status === 'delivered' && (
                                         <span className={cn(
                                             'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
@@ -1230,6 +1278,15 @@ function EcommerceDetailView({
                                     <div className="font-semibold">{order.currency.toUpperCase()}</div>
                                 </div>
                             </div>
+                            {order.delivery_fee !== null ? (
+                                <div className="mt-4 flex items-center justify-between gap-3 border-t border-violet-500/20 pt-3">
+                                    <div>
+                                        <div className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">{t('ecommerce.deliveryFee', { defaultValue: 'Delivery fee' })}</div>
+                                        <div className="mt-1 text-xs text-muted-foreground">{t('ecommerce.deliveryFeeExcluded', { defaultValue: 'Shown separately; not included in the order total.' })}</div>
+                                    </div>
+                                    <MarketplaceDeliveryFeeBadge fee={order.delivery_fee} />
+                                </div>
+                            ) : null}
                         </div>
                     </div>
 
@@ -1243,7 +1300,7 @@ function EcommerceDetailView({
                             <div className="mt-2 truncate text-2xl font-black">{order.customer_phone}</div>
                         </div>
                         <div className="rounded-2xl border bg-background/70 p-4">
-                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customer_city', { defaultValue: 'City' })}</div>
+                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('ecommerce.customerCity', { defaultValue: 'City' })}</div>
                             <div className="mt-2 text-2xl font-black">{order.customer_city || '—'}</div>
                         </div>
                         <div className="rounded-2xl border bg-background/70 p-4">
@@ -1368,11 +1425,11 @@ function EcommerceDetailView({
                                     <div className="mt-1 font-medium">{formatDateTime(order.created_at)}</div>
                                 </div>
                                 <div className="rounded-2xl border bg-muted/20 p-3">
-                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.lastUpdated', { defaultValue: 'Last Updated' })}</div>
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('ecommerce.lastUpdated', { defaultValue: 'Last Updated' })}</div>
                                     <div className="mt-1 font-medium">{formatDateTime(order.updated_at)}</div>
                                 </div>
                                 <div className="rounded-2xl border bg-muted/20 p-3">
-                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('pos.currency', { defaultValue: 'Currency' })}</div>
+                                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('common.currency', { defaultValue: 'Currency' })}</div>
                                     <div className="mt-1 font-medium">{order.currency.toUpperCase()}</div>
                                 </div>
                                 <div className="rounded-2xl border bg-muted/20 p-3">
@@ -1487,16 +1544,20 @@ export function Ecommerce() {
                     .from('marketplace_orders')
                     .select(MARKETPLACE_ORDER_SELECT)
                     .order('created_at', { ascending: false })
-            ) as { data: MarketplaceOrderRecord[] | null; error: Error | null }
+            ) as { data: MarketplaceOrderDatabaseRecord[] | null; error: Error | null }
 
             if (error) {
                 throw error
             }
 
-            setOrders((data ?? []).map((order) => ({
-                ...order,
-                items: Array.isArray(order.items) ? order.items : []
-            })))
+            setOrders((data ?? []).map((order) => {
+                const rawItems: unknown[] = Array.isArray(order.items) ? order.items : []
+                return {
+                    ...order,
+                    items: rawItems.filter(isMarketplaceOrderItem),
+                    delivery_fee: getJumlaKhaleejDeliveryFee(rawItems, order.website_storefront_key)
+                }
+            }))
         } catch (error) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
