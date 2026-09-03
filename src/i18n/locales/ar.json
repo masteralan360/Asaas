@@ -6866,6 +6866,7 @@
       "markDelivered": "تم التسليم",
       "postpone": "تأجيل",
       "return": "إرجاع",
+      "receiveReturn": "استلام المرتجع",
       "transferPost": "نقل الشحنة",
       "settlements": "التسويات",
       "recordHandover": "تسجيل التسليم",
@@ -7096,7 +7097,7 @@
     "filters": {
       "all": "الكل",
       "showCompleted": "إظهار المكتملة",
-      "showReturned": "إظهار المرتجعة",
+      "showReturned": "إظهار المرتجعات بانتظار الاستلام",
       "showCancelled": "إظهار الملغاة"
     },
     "status": {
@@ -7106,6 +7107,9 @@
       "completed": "مكتملة",
       "postponed": "مؤجل",
       "returned": "مرتجع",
+      "returnAwaitingReceipt": "مرتجعات بانتظار الاستلام",
+      "awaitingReceipt": "بانتظار الاستلام",
+      "returnHistory": "سجل المرتجعات",
       "cancelled": "ملغى",
       "requestChange": "طلب تغيير"
     },
@@ -7201,6 +7205,10 @@
         "title": "نقل الشحنة",
         "description": "أنشئ كشف مندوب جديداً للشحنة {{trackingNumber}} · {{recipient}}."
       },
+      "returnReceipt": {
+        "title": "استلام الشحنة المرتجعة",
+        "description": "أكد أن {{trackingNumber}} تم استلامها فعلياً من المندوب. ستُزال من قائمة المرتجعات النشطة."
+      },
       "status": {
         "title": "تحديد حالة الشحنة: {{status}}"
       },
@@ -7286,6 +7294,8 @@
       "postTransferred": "تم نقل الشحنة",
       "postTransferredDescription": "تم تعيين {{run}} إلى المندوب الجديد.",
       "transferPostFailed": "تعذر نقل الشحنة",
+      "returnReceived": "تم استلام المرتجع",
+      "returnReceiptFailed": "تعذر استلام المرتجع",
       "postUpdated": "تم تحديث الشحنة",
       "postUpdatedDescription": "تبقى جاهزة للتوزيع.",
       "postEditedAndDispatched": "تم تعديل الشحنة وتوزيعها",
@@ -7325,6 +7335,11 @@
       "selectShipment": "اختر شحنة واحدة على الأقل.",
       "shipmentNotDispatchable": "لا يمكن توزيع إلا الشحنات غير المعينة أو المستلمة أو المؤجلة.",
       "returnedTransferOnly": "يمكن نقل الشحنات المرتجعة فقط.",
+      "receivedReturnTransferBlocked": "لا يمكن نقل مرتجع استلمته مساحة العمل بالفعل.",
+      "returnReceiptAdminOnly": "يمكن للمسؤول فقط استلام شحنة مرتجعة.",
+      "returnReceiptOnly": "يمكن استلام الشحنات المرتجعة فقط.",
+      "returnAlreadyReceived": "تم استلام هذه الشحنة المرتجعة بالفعل.",
+      "returnReceiptChanged": "تغيرت هذه الشحنة. حدّثها قبل استلام المرتجع.",
       "differentCourierRequired": "اختر مندوباً مختلفاً.",
       "shipmentNotFound": "لم يتم العثور على الشحنة.",
       "completedShipment": "لا يمكن تغيير شحنة مكتملة. سجل تسوية بدلاً من ذلك.",

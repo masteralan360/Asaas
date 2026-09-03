@@ -6917,6 +6917,7 @@
       "markDelivered": "گەیشت",
       "postpone": "دواخستن",
       "return": "گەڕاندنەوە",
+      "receiveReturn": "وەرگرتنی گەڕاوە",
       "transferPost": "گواستنەوەی پۆست",
       "settlements": "تەسویەکان",
       "recordHandover": "تۆمارکردنی تەسلیمکردن",
@@ -7147,7 +7148,7 @@
     "filters": {
       "all": "هەموو",
       "showCompleted": "نیشاندانی تەواوکراوەکان",
-      "showReturned": "نیشاندانی گەڕاوەکان",
+      "showReturned": "نیشاندانی گەڕاوەکان کە چاوەڕێی وەرگرتنن",
       "showCancelled": "نیشاندانی هەڵوەشاوەکان"
     },
     "status": {
@@ -7157,8 +7158,11 @@
       "completed": "تەواوکراو",
       "postponed": "دواخراو",
       "returned": "گەڕاوەتەوە",
+      "returnAwaitingReceipt": "گەڕاوەکان چاوەڕێی وەرگرتنن",
+      "awaitingReceipt": "چاوەڕێی وەرگرتن",
+      "returnHistory": "مێژووی گەڕاوەکان",
       "cancelled": "هەڵوەشاوە",
-      "requestChange": "داوای گۆڕان"
+      "requestChange": "داوای گۆڕین"
     },
     "settlementStatus": {
       "handedOver": "تەسلیم کراوە",
@@ -7252,6 +7256,10 @@
         "title": "گواستنەوەی پۆست",
         "description": "لیستێکی نوێی مەندوب بۆ {{trackingNumber}} · {{recipient}} دروست بکە."
       },
+      "returnReceipt": {
+        "title": "وەرگرتنی پۆستی گەڕاوە",
+        "description": "پشتڕاستی بکەوە کە {{trackingNumber}} بە ڕاستی لە مەندوب وەرگیراوەتەوە. لە لیستی گەڕاوە چالاکەکان لادەبرێت."
+      },
       "status": {
         "title": "دۆخی پۆست بکە بە {{status}}"
       },
@@ -7337,6 +7345,8 @@
       "postTransferred": "پۆست گوازرایەوە",
       "postTransferredDescription": "{{run}} بۆ مەندوبی نوێ دیاری کرا.",
       "transferPostFailed": "گواستنەوەی پۆست سەرکەوتوو نەبوو",
+      "returnReceived": "گەڕاوەکە وەرگیرا",
+      "returnReceiptFailed": "وەرگرتنی گەڕاوە سەرکەوتوو نەبوو",
       "postUpdated": "پۆست نوێ کرایەوە",
       "postUpdatedDescription": "هێشتا ئامادەی دابەشکردنە.",
       "postEditedAndDispatched": "پۆست دەستکاری و دابەشکرا",
@@ -7376,6 +7386,11 @@
       "selectShipment": "لانیکەم یەک پۆست هەڵبژێرە.",
       "shipmentNotDispatchable": "تەنها پۆستە نادیاریکراوەکان، وەرگیراوەکان یان دواخراوەکان دەتوانرێن دابەش بکرێن.",
       "returnedTransferOnly": "تەنها پۆستە گەڕاوەکان دەتوانرێن بگوازرێنەوە.",
+      "receivedReturnTransferBlocked": "گەڕاوەیەک کە شوێنی کار پێشتر وەریگرتووە ناتوانرێت بگوازرێتەوە.",
+      "returnReceiptAdminOnly": "تەنها بەڕێوەبەر دەتوانێت پۆستی گەڕاوە وەربگرێت.",
+      "returnReceiptOnly": "تەنها پۆستە گەڕاوەکان دەتوانرێن وەربگیرێن.",
+      "returnAlreadyReceived": "ئەم پۆستە گەڕاوەیە پێشتر وەرگیراوە.",
+      "returnReceiptChanged": "ئەم پۆستە گۆڕاوە. پێش وەرگرتنی گەڕاوەکە نوێی بکەرەوە.",
       "differentCourierRequired": "مەندوبێکی جیاواز هەڵبژێرە.",
       "shipmentNotFound": "پۆست نەدۆزرایەوە.",
       "completedShipment": "پۆستی تەواوبوو ناتوانرێت بگۆڕدرێت. لەبری ئەوە ڕێکخستن تۆمار بکە.",

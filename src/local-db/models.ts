@@ -574,16 +574,22 @@ export interface DeliveryShipment extends BaseEntity {
   deliveredAt?: string | null
   postponedAt?: string | null
   returnedAt?: string | null
+  /** When the workspace physically received a returned package from its courier. */
+  returnReceivedAt?: string | null
   statusNote?: string | null
   sourceSalesOrderId?: string | null
   createdBy?: string | null
 }
+
+export type DeliveryShipmentEventAction = 'status_change' | 'return_received'
 
 /** Immutable log of every operational change to a shipment. */
 export interface DeliveryShipmentEvent extends BaseEntity {
   shipmentId: string
   previousStatus?: DeliveryShipmentStatus | null
   status: DeliveryShipmentStatus
+  /** Legacy events omit this and are treated as status changes. */
+  action?: DeliveryShipmentEventAction
   note?: string | null
   /** Private `voice` bucket path for a returned/postponed reason. */
   voiceReasonPath?: string | null

@@ -146,6 +146,15 @@ export interface TransferReturnedDeliveryShipmentInput {
   createdBy?: string | null;
 }
 
+/** Confirms that the workspace physically received a returned package. */
+export interface ReceiveReturnedDeliveryShipmentInput {
+  shipmentId: string;
+  expectedVersion: number;
+  actorRole: "admin";
+  actorUserId?: string | null;
+  note?: string | null;
+}
+
 /**
  * Administrative correction for a post that has not been completed. Received
  * posts are dispatched; assigned posts are placed on a fresh manifest so the
@@ -1290,6 +1299,7 @@ async function createDeliveryShipmentWithId(
     deliveredAt: null,
     postponedAt: null,
     returnedAt: null,
+    returnReceivedAt: null,
     statusNote: null,
     sourceSalesOrderId: input.sourceSalesOrderId ?? null,
     createdBy: input.createdBy ?? null,
@@ -1556,6 +1566,9 @@ export async function transferReturnedDeliveryShipment(workspaceId: string, inpu
   if (!shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId || shipment.status !== "returned") {
     throw new Error("Only returned shipments can be transferred");
   }
+  if (shipment.returnReceivedAt) {
+    throw new Error("A received return cannot be transferred");
+  }
   if (!shipment.assignedAgentId || shipment.assignedAgentId === input.agentId) {
     throw new Error("Select a different courier");
   }
@@ -1569,6 +1582,57 @@ export async function transferReturnedDeliveryShipment(workspaceId: string, inpu
     createdBy: input.createdBy,
     allowReturnedShipment: true,
   });
+}
+
+export async function receiveReturnedDeliveryShipment(
+  workspaceId: string,
+  input: ReceiveReturnedDeliveryShipmentInput,
+) {
+  if (input.actorRole !== "admin") {
+    throw new Error("Only an administrator can receive a returned post");
+  }
+  const original = await db.delivery_shipments.get(input.shipmentId);
+  if (!original || original.isDeleted || original.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (original.status !== "returned") {
+    throw new Error("Only returned posts can be received");
+  }
+  if (original.returnReceivedAt) {
+    throw new Error("This returned post has already been received");
+  }
+  if (original.version !== input.expectedVersion) {
+    throw new Error("This post has changed. Refresh it before receiving its return");
+  }
+
+  const now = new Date().toISOString();
+  const updated: DeliveryShipment = {
+    ...original,
+    returnReceivedAt: now,
+    updatedAt: now,
+    version: original.version + 1,
+    ...getSyncMetadata(workspaceId, now),
+  };
+  const event = makeBase(workspaceId, {
+    shipmentId: original.id,
+    previousStatus: "returned" as const,
+    status: "returned" as const,
+    action: "return_received" as const,
+    note: normalizeText(input.note),
+    actorUserId: input.actorUserId ?? null,
+    actorAgentId: original.assignedAgentId ?? null,
+    occurredAt: now,
+  }) as DeliveryShipmentEvent;
+
+  await db.transaction("rw", [db.delivery_shipments, db.delivery_shipment_events], async () => {
+    await db.delivery_shipments.put(updated);
+    await db.delivery_shipment_events.put(event);
+  });
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [SHIPMENT_TABLE, [updated]],
+    [EVENT_TABLE, [event]],
+  ]);
+  return updated;
 }
 
 export async function adminEditAndRedispatchDeliveryShipment(

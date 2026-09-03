@@ -17,6 +17,7 @@ let createDeliveryRun: typeof import("./postService").createDeliveryRun;
 let adminEditReceivedDeliveryShipment: typeof import("./postService").adminEditReceivedDeliveryShipment;
 let adminEditAndRedispatchDeliveryShipment: typeof import("./postService").adminEditAndRedispatchDeliveryShipment;
 let transferReturnedDeliveryShipment: typeof import("./postService").transferReturnedDeliveryShipment;
+let receiveReturnedDeliveryShipment: typeof import("./postService").receiveReturnedDeliveryShipment;
 let updateDeliveryShipmentStatus: typeof import("./postService").updateDeliveryShipmentStatus;
 let settleDeliveryCourier: typeof import("./postService").settleDeliveryCourier;
 let payDeliveryCourierFee: typeof import("./postService").payDeliveryCourierFee;
@@ -77,7 +78,7 @@ describe("Post Service COD accounting", () => {
   beforeAll(async () => {
     installBrowserEnvironment();
     const postService = await import("./postService");
-    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, adminEditReceivedDeliveryShipment, adminEditAndRedispatchDeliveryShipment, transferReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
+    ({ createDeliveryMerchantProfile, createDeliveryShipment, createAndDispatchDeliveryShipment, createDeliveryRun, adminEditReceivedDeliveryShipment, adminEditAndRedispatchDeliveryShipment, transferReturnedDeliveryShipment, receiveReturnedDeliveryShipment, updateDeliveryShipmentStatus, settleDeliveryCourier, payDeliveryCourierFee, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, updateDeliveryMerchantProfile, hardDeleteDeliveryMerchantProfile, toUISaleFromDeliveryShipment, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment } = postService);
   });
 
   beforeEach(async () => {
@@ -912,6 +913,70 @@ describe("Post Service COD accounting", () => {
     expect(originalRunItem?.returnedAt).toBeTruthy();
     expect(transferRunItem).toMatchObject({ runId: transferRun.id, shipmentId: shipment.id, returnedAt: null });
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ previousStatus: "returned", status: "assigned", actorAgentId: replacementCourier.id, note: "Transfer after return" })]));
+  });
+
+  it("records physical return receipt without creating settlement or payment records", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const deliveryCourier = courier(crypto.randomUUID());
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id, recipientPhone: "07500000000",
+      recipientAddress: "Baghdad", currency: "iqd", codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    await updateDeliveryShipmentStatus(shipment.id, {
+      status: "returned", note: "Recipient unavailable", actorAgentId: deliveryCourier.id,
+    });
+    const returned = await db.delivery_shipments.get(shipment.id);
+    expect(returned).toBeDefined();
+
+    await expect(receiveReturnedDeliveryShipment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      expectedVersion: returned!.version - 1,
+      actorRole: "admin",
+    })).rejects.toThrow("This post has changed. Refresh it before receiving its return");
+
+    const received = await receiveReturnedDeliveryShipment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      expectedVersion: returned!.version,
+      actorRole: "admin",
+      actorUserId: "00000000-0000-4000-8000-000000000111",
+      note: "Package received at the branch",
+    });
+    const events = await db.delivery_shipment_events
+      .where("[workspaceId+shipmentId]")
+      .equals([WORKSPACE_ID, shipment.id])
+      .toArray();
+
+    expect(received).toMatchObject({
+      status: "returned",
+      returnReceivedAt: expect.any(String),
+      version: returned!.version + 1,
+    });
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        previousStatus: "returned",
+        status: "returned",
+        action: "return_received",
+        note: "Package received at the branch",
+        actorUserId: "00000000-0000-4000-8000-000000000111",
+        actorAgentId: deliveryCourier.id,
+      }),
+    ]));
+    expect(await db.delivery_ledger_entries.where("workspaceId").equals(WORKSPACE_ID).toArray()).toHaveLength(0);
+    expect(await db.payment_transactions.where("workspaceId").equals(WORKSPACE_ID).toArray()).toHaveLength(0);
+
+    await expect(receiveReturnedDeliveryShipment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      expectedVersion: received.version,
+      actorRole: "admin",
+    })).rejects.toThrow("This returned post has already been received");
+    await expect(transferReturnedDeliveryShipment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      agentId: courier(crypto.randomUUID()).id,
+    })).rejects.toThrow("A received return cannot be transferred");
   });
 
   it("allows an admin to edit a received post and dispatch it in one operation", async () => {

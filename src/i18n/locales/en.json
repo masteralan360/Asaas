@@ -7118,6 +7118,7 @@
       "markDelivered": "Delivered",
       "postpone": "Postpone",
       "return": "Return",
+      "receiveReturn": "Receive return",
       "transferPost": "Transfer post",
       "settlements": "Settlements",
       "recordHandover": "Record handover",
@@ -7348,7 +7349,7 @@
     "filters": {
       "all": "All",
       "showCompleted": "Show completed",
-      "showReturned": "Show returned",
+      "showReturned": "Show returns awaiting receipt",
       "showCancelled": "Show cancelled"
     },
     "status": {
@@ -7358,6 +7359,9 @@
       "completed": "Completed",
       "postponed": "Postponed",
       "returned": "Returned",
+      "returnAwaitingReceipt": "Returns awaiting receipt",
+      "awaitingReceipt": "Awaiting receipt",
+      "returnHistory": "Return history",
       "cancelled": "Cancelled",
       "requestChange": "Request change"
     },
@@ -7453,6 +7457,10 @@
         "title": "Transfer post",
         "description": "Create a new courier manifest for {{trackingNumber}} · {{recipient}}."
       },
+      "returnReceipt": {
+        "title": "Receive returned post",
+        "description": "Confirm that {{trackingNumber}} was physically received back from the courier. It will be removed from the active returns list."
+      },
       "status": {
         "title": "Mark post {{status}}"
       },
@@ -7538,6 +7546,8 @@
       "postTransferred": "Post transferred",
       "postTransferredDescription": "{{run}} was assigned to the new courier.",
       "transferPostFailed": "Could not transfer post",
+      "returnReceived": "Return received",
+      "returnReceiptFailed": "Could not receive return",
       "postUpdated": "Post updated",
       "postUpdatedDescription": "It remains ready to dispatch.",
       "postEditedAndDispatched": "Post edited and dispatched",
@@ -7577,6 +7587,11 @@
       "selectShipment": "Select at least one shipment.",
       "shipmentNotDispatchable": "Only unassigned, received, or postponed shipments can be dispatched.",
       "returnedTransferOnly": "Only returned posts can be transferred.",
+      "receivedReturnTransferBlocked": "A return already received by the workspace cannot be transferred.",
+      "returnReceiptAdminOnly": "Only an administrator can receive a returned post.",
+      "returnReceiptOnly": "Only returned posts can be received.",
+      "returnAlreadyReceived": "This returned post has already been received.",
+      "returnReceiptChanged": "This post has changed. Refresh it before receiving its return.",
       "differentCourierRequired": "Select a different courier.",
       "shipmentNotFound": "Shipment not found.",
       "completedShipment": "A completed shipment cannot be changed. Record an adjustment instead.",

@@ -5,7 +5,7 @@ import { Banknote, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, C
 
 import { useAuth } from "@/auth";
 import {
-  adminEditAndRedispatchDeliveryShipment, adminEditReceivedDeliveryShipment, closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment,
+  adminEditAndRedispatchDeliveryShipment, adminEditReceivedDeliveryShipment, closeDeliveryRun, createAndDispatchDeliveryShipment, createBusinessPartner, createDeliveryMerchantProfile, createDeliveryRun, createDeliveryShipment, hardDeleteDeliveryMerchantProfile, payDeliveryCourierReimbursement, payDeliveryMerchant, receiveDeliveryMerchantRepayment, receiveReturnedDeliveryShipment,
   refreshPostServiceTab, requestDeliveryShipmentCodAdjustment, reviewDeliveryShipmentCodAdjustment, settleDeliveryCourier, summarizeDeliveryBalanceMetrics, updateBusinessPartner, updateDeliveryMerchantProfile, updateDeliveryShipmentStatus, useAgents, useBusinessPartners, useCourierDeliveryBalances,
   useDeliveryMerchantProfiles, useDeliveryRuns, useDeliverySettlements, useDeliveryShipmentCodAdjustmentRequests, useDeliveryShipmentEvents, useDeliveryShipments, useFleetVehicles,
   transferReturnedDeliveryShipment, useMerchantDeliveryAccountBalances, useMerchantDeliveryBalances, useDeliveryLedgerEntries, type Agent, type BusinessPartner, type CreateDeliveryShipmentInput, type CurrencyCode, type DeliveryCustomerPaymentStatus, type DeliveryMerchantProfile, type DeliveryRecipientPayoutFunding, type DeliveryShipment, type DeliveryShipmentCodAdjustmentRequest, type DeliveryShipmentEvent, type DeliveryShipmentStatus, type PaymentAccount, type PostServiceTab, type WorkspacePaymentMethod,
@@ -44,7 +44,7 @@ type ShipmentForm = {
 
 type StandardPaymentMethod = typeof STANDARD_PAYMENT_METHODS[number];
 
-type PostStatusFilter = "all" | DeliveryShipmentStatus;
+type PostStatusFilter = "all" | DeliveryShipmentStatus | "return_history";
 type PostSettlementFilter = "all" | ShipmentSettlementStatus;
 type PostsViewMode = "details" | "grid";
 
@@ -96,6 +96,7 @@ const statusFilterIcons = {
   delivered: CheckCircle2,
   postponed: Clock,
   returned: Undo2,
+  return_history: History,
   cancelled: XCircle,
 } satisfies Record<PostStatusFilter, LucideIcon>;
 
@@ -159,6 +160,11 @@ function localizedError(t: TFunction, error: unknown) {
     "Select at least one shipment": "selectShipment",
     "Only unassigned, received, or postponed shipments can be dispatched": "shipmentNotDispatchable",
     "Only returned shipments can be transferred": "returnedTransferOnly",
+    "A received return cannot be transferred": "receivedReturnTransferBlocked",
+    "Only an administrator can receive a returned post": "returnReceiptAdminOnly",
+    "Only returned posts can be received": "returnReceiptOnly",
+    "This returned post has already been received": "returnAlreadyReceived",
+    "This post has changed. Refresh it before receiving its return": "returnReceiptChanged",
     "Select a different courier": "differentCourierRequired",
     "Shipment not found": "shipmentNotFound",
     "A completed shipment cannot be changed. Record an adjustment instead.": "completedShipment",
@@ -264,7 +270,7 @@ export function PostService() {
     }
     return result;
   }, [codAdjustmentRequests]);
-  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (completedOnly ? isCompletedShipment(shipment) : showCompleted || !isCompletedShipment(shipment)) && (showReturned || shipment.status !== "returned") && (showCancelled || shipment.status !== "cancelled") && (statusFilter === "all" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, showReturned, showCancelled, completedOnly, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
+  const visibleShipments = useMemo(() => shipments.filter((shipment) => isDateInDateRange(shipment.createdAt, dateRange, customDates) && (completedOnly ? isCompletedShipment(shipment) : showCompleted || !isCompletedShipment(shipment)) && (statusFilter === "return_history" ? shipment.status === "returned" && Boolean(shipment.returnReceivedAt) : shipment.status !== "returned" || !shipment.returnReceivedAt && (isAdmin || showReturned)) && (showCancelled || shipment.status !== "cancelled") && (statusFilter === "all" || statusFilter === "return_history" || shipment.status === statusFilter) && (!pendingCodChangeFilter || pendingCodAdjustmentByShipment.has(shipment.id)) && (handoverFilter === "all" || (courierHandoverStatuses.get(shipment.id) ?? null) === handoverFilter) && (payoutFilter === "all" || (merchantPayoutStatuses.get(shipment.id) ?? null) === payoutFilter)), [shipments, statusFilter, pendingCodChangeFilter, pendingCodAdjustmentByShipment, handoverFilter, payoutFilter, showCompleted, showReturned, showCancelled, completedOnly, isAdmin, isCompletedShipment, dateRange, customDates, courierHandoverStatuses, merchantPayoutStatuses]);
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
   const [shipmentForm, setShipmentForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
   const [showRecipientPayout, setShowRecipientPayout] = useState(false);
@@ -298,6 +304,9 @@ export function PostService() {
   const [transferVehicleId, setTransferVehicleId] = useState("none");
   const [transferNotes, setTransferNotes] = useState("");
   const [isTransferring, setIsTransferring] = useState(false);
+  const [returnReceiptTarget, setReturnReceiptTarget] = useState<DeliveryShipment | null>(null);
+  const [returnReceiptNote, setReturnReceiptNote] = useState("");
+  const [isReceivingReturn, setIsReceivingReturn] = useState(false);
   const [editRedispatchTarget, setEditRedispatchTarget] = useState<DeliveryShipment | null>(null);
   const [editRedispatchForm, setEditRedispatchForm] = useState<ShipmentForm>(() => initialShipmentForm(features.default_currency));
   const [showEditRecipientPayout, setShowEditRecipientPayout] = useState(false);
@@ -592,12 +601,14 @@ export function PostService() {
   const postStatusMetrics = useMemo(() => {
     const counts = new Map<DeliveryShipmentStatus, number>();
     for (const shipment of shipments) {
+      if (shipment.status === "returned" && shipment.returnReceivedAt) continue;
       if (shipment.status === "delivered" && isCompletedShipment(shipment)) continue;
       counts.set(shipment.status, (counts.get(shipment.status) ?? 0) + 1);
     }
     const statuses = isAdmin ? ADMIN_STATUS_CARD_STATUSES : STAFF_STATUS_CARD_STATUSES;
     return statuses.map((status) => ({ status, value: counts.get(status) ?? 0 }));
   }, [isAdmin, isCompletedShipment, shipments]);
+  const returnHistoryCount = useMemo(() => shipments.filter((shipment) => shipment.status === "returned" && Boolean(shipment.returnReceivedAt)).length, [shipments]);
   const completedPostCount = useMemo(() => shipments.filter(isCompletedShipment).length, [isCompletedShipment, shipments]);
   const pendingCodAdjustmentCount = useMemo(
     () => codAdjustmentRequests.filter((request) => request.status === "pending").length,
@@ -719,6 +730,18 @@ export function PostService() {
     setPendingPostsStatusShortcut(true);
   }, [handleTabChange, statusFilter]);
 
+  const handleReturnHistoryMetricClick = useCallback(() => {
+    const nextReturnHistoryOnly = statusFilter !== "return_history";
+    setPendingCodChangeFilter(false);
+    setCompletedOnly(false);
+    setShowCompleted(false);
+    setShowReturned(false);
+    setShowCancelled(false);
+    setStatusFilter(nextReturnHistoryOnly ? "return_history" : "all");
+    handleTabChange("posts");
+    setPendingPostsStatusShortcut(true);
+  }, [handleTabChange, statusFilter]);
+
   const handleCancelledPostMetricClick = useCallback(() => {
     const nextCancelledOnly = statusFilter !== "cancelled";
     setPendingCodChangeFilter(false);
@@ -765,11 +788,12 @@ export function PostService() {
   }, [activeTab, pendingPostsStatusShortcut]);
 
   const isStatusMetricActive = (status: DeliveryShipmentStatus) => (
-    (status === "returned" ? showReturned : status === "cancelled" ? showCancelled : true)
+    (status === "returned" ? isAdmin || showReturned : status === "cancelled" ? showCancelled : true)
     && !pendingCodChangeFilter
     && !completedOnly
     && statusFilter === status
   );
+  const isReturnHistoryMetricActive = !pendingCodChangeFilter && !completedOnly && statusFilter === "return_history";
   const handleStatusMetricClick = (status: DeliveryShipmentStatus) => {
     if (status === "returned") {
       handleReturnedPostMetricClick();
@@ -990,6 +1014,36 @@ export function PostService() {
     setTransferCourierDeliveryFee("");
     setTransferVehicleId("none");
     setTransferNotes("");
+  }
+  function openReturnReceiptDialog(shipment: DeliveryShipment) {
+    setReturnReceiptTarget(shipment);
+    setReturnReceiptNote("");
+  }
+  function closeReturnReceiptDialog() {
+    if (isReceivingReturn) return;
+    setReturnReceiptTarget(null);
+    setReturnReceiptNote("");
+  }
+  async function handleReturnReceipt(event: FormEvent) {
+    event.preventDefault();
+    if (!workspaceId || !returnReceiptTarget || !canAdminEditAndRedispatch) return;
+    setIsReceivingReturn(true);
+    try {
+      await receiveReturnedDeliveryShipment(workspaceId, {
+        shipmentId: returnReceiptTarget.id,
+        expectedVersion: returnReceiptTarget.version,
+        actorRole: "admin",
+        actorUserId: user?.id ?? null,
+        note: returnReceiptNote || null,
+      });
+      toast({ title: t("postService.messages.returnReceived") });
+      setReturnReceiptTarget(null);
+      setReturnReceiptNote("");
+    } catch (error) {
+      toast({ title: t("postService.messages.returnReceiptFailed"), description: localizedError(t, error), variant: "destructive" });
+    } finally {
+      setIsReceivingReturn(false);
+    }
   }
   function openEditAndRedispatchDialog(shipment: DeliveryShipment) {
     const currentRun = shipment.assignedRunId ? runs.find((run) => run.id === shipment.assignedRunId) : null;
@@ -1357,8 +1411,12 @@ export function PostService() {
   return <div className="w-full min-w-0 space-y-6 overflow-x-hidden" dir={pageDirection}>
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><PackageCheck className="h-6 w-6 text-primary" />{t("postService.title")}</h1><p className="text-muted-foreground">{t("postService.subtitle")} <ModulePageFreshness className="ms-2" /></p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" className="gap-2" onClick={() => setMerchantDialogOpen(true)}><Store className="h-4 w-4" />{t("postService.actions.enableMerchant")}</Button><Button className="gap-2" onClick={() => setShipmentDialogOpen(true)}><Plus className="h-4 w-4" />{t("postService.actions.newPost")}</Button></div>}</div>
     <div className="space-y-3">
-      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-6")}>{postStatusMetrics.filter(({ status }) => !isAdmin ? status !== "cancelled" : !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} onClick={() => handleStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} onClick={handlePendingCodChangeMetricClick} /></> : <><StatusMetric icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} />{postStatusMetrics.filter(({ status }) => status === "cancelled").map(({ status, value }) => <StatusMetric key={status} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} onClick={() => handleStatusMetricClick(status)} />)}</>}</div>
-      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{postStatusMetrics.filter(({ status }) => status === "returned" || status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} onClick={() => handleStatusMetricClick(status)} />)}{deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : isStaff ? <div className="grid gap-4 sm:grid-cols-2">{staffCourierObligationMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
+      <div className={cn("grid sm:grid-cols-2", isAdmin ? "gap-3 lg:grid-cols-6" : "gap-4 xl:grid-cols-6")}>{postStatusMetrics.filter(({ status }) => !isAdmin ? status !== "cancelled" : !["returned", "cancelled"].includes(status)).map(({ status, value }) => <StatusMetric key={status} compact={isAdmin} icon={statusFilterIcons[status]} title={status === "returned" ? t("postService.status.returnAwaitingReceipt") : shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} selectionTone={status === "returned" ? "amber" : status === "cancelled" ? "rose" : "primary"} onClick={() => handleStatusMetricClick(status)} />)}{isAdmin ? <><StatusMetric compact icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} /><StatusMetric compact icon={FilePenLine} title={t("postService.status.requestChange")} value={pendingCodAdjustmentCount} active={pendingCodChangeFilter} selectionTone="amber" onClick={handlePendingCodChangeMetricClick} /></> : <><StatusMetric icon={PackageCheck} title={t("postService.status.completed")} value={completedPostCount} active={completedOnly} onClick={handleCompletedPostMetricClick} />{postStatusMetrics.filter(({ status }) => status === "cancelled").map(({ status, value }) => <StatusMetric key={status} icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} selectionTone="rose" onClick={() => handleStatusMetricClick(status)} />)}</>}</div>
+      {isAdmin ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <ReturnStatusMetric awaitingValue={postStatusMetrics.find(({ status }) => status === "returned")?.value ?? 0} historyValue={returnHistoryCount} awaitingActive={isStatusMetricActive("returned")} historyActive={isReturnHistoryMetricActive} awaitingTitle={t("postService.status.returnAwaitingReceipt")} historyTitle={t("postService.status.returnHistory")} onAwaitingClick={handleReturnedPostMetricClick} onHistoryClick={handleReturnHistoryMetricClick} />
+        {postStatusMetrics.filter(({ status }) => status === "cancelled").map(({ status, value }) => <StatusMetric key={status} compact icon={statusFilterIcons[status]} title={shipmentStatusLabel(t, status)} value={value} active={isStatusMetricActive(status)} selectionTone="rose" onClick={() => handleStatusMetricClick(status)} />)}
+        {deliveryBalanceMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}
+      </div> : isStaff ? <div className="grid gap-4 sm:grid-cols-2">{staffCourierObligationMetrics.map((metric) => <DeliveryBalanceMetric key={metric.id} {...metric} />)}</div> : null}
     </div>
     <Tabs value={activeTab} onValueChange={handleTabChange} dir={pageDirection} className="min-w-0"><TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 sm:w-auto"><TabsTrigger value="posts"><ClipboardList className="me-2 h-4 w-4" />{t("postService.tabs.posts")}</TabsTrigger>{isAdmin && <><TabsTrigger value="dispatch"><Send className="me-2 h-4 w-4" />{t("postService.tabs.dispatch")}</TabsTrigger><TabsTrigger value="my-deliveries"><Route className="me-2 h-4 w-4" />{t("postService.tabs.myDeliveries")}</TabsTrigger><TabsTrigger value="merchants"><Store className="me-2 h-4 w-4" />{t("postService.tabs.merchants")}</TabsTrigger><TabsTrigger value="courier"><Truck className="me-2 h-4 w-4" />{t("postService.tabs.courier")}</TabsTrigger><TabsTrigger value="settlements"><Banknote className="me-2 h-4 w-4" />{t("postService.tabs.settlements")}</TabsTrigger></>}</TabsList>
       <TabsContent ref={postsPanelRef} value="posts" tabIndex={-1} className="mt-4 min-w-0 scroll-mt-24 outline-none">
@@ -1374,17 +1432,17 @@ export function PostService() {
             <div className="flex flex-col gap-2 sm:items-end">
               <span className="text-sm text-muted-foreground">{t("postService.selectedForDispatch", { count: selectedCount })}</span>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { const nextStatus = value as PostStatusFilter; setPendingCodChangeFilter(false); setCompletedOnly(false); if (nextStatus === "returned") setShowReturned(true); if (nextStatus === "cancelled") setShowCancelled(true); setStatusFilter(nextStatus); }} />
+                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { const nextStatus = value as PostStatusFilter; setPendingCodChangeFilter(false); setCompletedOnly(false); setShowCompleted(false); setShowReturned(nextStatus === "returned"); setShowCancelled(nextStatus === "cancelled"); setStatusFilter(nextStatus); }} />
                 <FilterDropdown dir={pageDirection} value={handoverFilter} icon={settlementFilterIcons[handoverFilter]} label={t("postService.table.cashHandover")} options={settlementFilterOptions(t, t("postService.settlementStatus.handedOver"))} onChange={(value) => setHandoverFilter(value as PostSettlementFilter)} />
                 <FilterDropdown dir={pageDirection} value={payoutFilter} icon={settlementFilterIcons[payoutFilter]} label={t("postService.table.merchantPayout")} options={settlementFilterOptions(t, t("postService.settlementStatus.paid"))} onChange={(value) => setPayoutFilter(value as PostSettlementFilter)} />
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
                   <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCompleted} onCheckedChange={(checked) => { const nextShowCompleted = checked === true; setShowCompleted(nextShowCompleted); if (!nextShowCompleted) setCompletedOnly(false); }} />
                   {t("postService.filters.showCompleted")}
                 </label>
-                <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
+                {!isAdmin && <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
                   <Checkbox className="h-5 w-5 rounded-[6px]" checked={showReturned} onCheckedChange={(checked) => { const nextShowReturned = checked === true; setShowReturned(nextShowReturned); if (!nextShowReturned && statusFilter === "returned") setStatusFilter("all"); }} />
                   {t("postService.filters.showReturned")}
-                </label>
+                </label>}
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
                   <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCancelled} onCheckedChange={(checked) => { const nextShowCancelled = checked === true; setShowCancelled(nextShowCancelled); if (!nextShowCancelled && statusFilter === "cancelled") setStatusFilter("all"); }} />
                   {t("postService.filters.showCancelled")}
@@ -1398,15 +1456,15 @@ export function PostService() {
               <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="ps-9" placeholder={t("postService.placeholders.searchPosts")} />
             </div>
             <div className={cn("grid grid-cols-1 gap-4", postsViewMode === "grid" ? "md:grid-cols-2 2xl:grid-cols-3" : "md:hidden")}>
-              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} />
+              <ShipmentGrid t={t} shipments={searchedShipments} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onReceiveReturn={openReturnReceiptDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} canReceiveReturn={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} />
             </div>
-            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
+            {postsViewMode === "details" && <div className="hidden overflow-x-auto md:block"><ShipmentTable t={t} shipments={searchedShipments} footer={postsTotalsFooter} selectedIds={selectedShipmentIds} onToggle={toggleShipment} canSelect={canDispatch} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onReceiveReturn={openReturnReceiptDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} canReceiveReturn={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier?.id ?? null} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /></div>}
           </CardContent>
         </Card>
       </TabsContent>
       {isAdmin && <>
       <TabsContent value="dispatch" className="mt-4 space-y-4"><Card><CardHeader><CardTitle>{t("postService.cards.createManifest")}</CardTitle></CardHeader><CardContent>{canDispatch ? <form className="grid gap-4 md:grid-cols-2" onSubmit={handleDispatch}><Field label={t("postService.form.postsSelected")}><div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{t("postService.selectedAndAvailable", { selected: selectedCount, available: assignableShipments.length })}</div></Field><Field label={t("postService.form.courier")}><Select value={dispatchAgentId} onValueChange={handleDispatchCourierChange}><SelectTrigger><SelectValue placeholder={t("postService.placeholders.selectCourier")} /></SelectTrigger><SelectContent>{agents.filter((agent) => agent.status === "active" && agent.agentType === "courier").map((agent) => <SelectItem key={agent.id} value={agent.id}>{agentNameById.get(agent.id)} · {agent.zone}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.courierDeliveryFee")}><div className="grid gap-1"><div className="relative"><Input className="pe-12" value={formatNumericInput(dispatchCourierDeliveryFee)} onChange={(event) => setDispatchCourierDeliveryFee(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} inputMode="decimal" placeholder="0" disabled={!dispatchAgentId} /><span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currencySuffix(features.default_currency, features.iqd_display_preference)}</span></div><p className="text-xs text-muted-foreground">{t("postService.form.courierDeliveryFeeHint")}</p></div></Field><Field label={t("postService.form.vehicleOptional")}><Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("postService.options.noVehicle")}</SelectItem>{vehicles.filter((vehicle) => vehicle.status === "active").map((vehicle) => <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber} · {vehicle.model}</SelectItem>)}</SelectContent></Select></Field><Field label={t("postService.form.manifestNote")}><Input value={dispatchNotes} onChange={(event) => setDispatchNotes(event.target.value)} placeholder={t("postService.placeholders.manifestNote")} /></Field><div className="md:col-span-2"><Button disabled={isSubmitting || !dispatchAgentId || selectedCount === 0} type="submit"><Send className="me-2 h-4 w-4" />{t("postService.actions.assignSelected")}</Button></div></form> : <p className="text-sm text-muted-foreground">{t("postService.permissionRequired.dispatch")}</p>}</CardContent></Card><Card><CardHeader><CardTitle>{t("postService.cards.recentRuns")}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t("postService.table.run")}</TableHead><TableHead>{t("postService.table.courier")}</TableHead><TableHead>{t("postService.table.courierDeliveryFee")}</TableHead><TableHead>{t("postService.table.dispatched")}</TableHead><TableHead>{t("postService.table.status")}</TableHead><TableHead /></TableRow></TableHeader><TableBody>{runs.length === 0 ? <EmptyRow columns={6} label={t("postService.empty.noRuns")} /> : runs.map((run) => <TableRow key={run.id}><TableCell className="font-medium">{run.runNumber}</TableCell><TableCell>{agentNameById.get(run.agentId)}</TableCell><TableCell>{formatCurrency(run.courierDeliveryFee ?? 0, features.default_currency, features.iqd_display_preference)}</TableCell><TableCell>{formatDateTime(run.dispatchedAt)}</TableCell><TableCell><Badge variant="outline">{t(`postService.runStatus.${run.status}`)}</Badge></TableCell><TableCell className="text-end">{canDispatch && run.status === "open" && <Button size="sm" variant="outline" onClick={() => void handleCloseRun(run.id)}>{t("postService.actions.closeRun")}</Button>}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></TabsContent>
-      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
+      <TabsContent value="my-deliveries" className="mt-4"><Card><CardHeader><CardTitle>{t("postService.cards.myAssignedPosts")}</CardTitle></CardHeader><CardContent className="overflow-x-auto">{linkedCourier ? <ShipmentTable t={t} shipments={shipments.filter((shipment) => shipment.assignedAgentId === linkedCourier.id)} selectedIds={new Set()} onToggle={() => undefined} canSelect={false} profileNameById={profileNameById} agentNameById={agentNameById} onStatus={openStatusDialog} onTransfer={openTransferDialog} onReceiveReturn={openReturnReceiptDialog} onEditAndRedispatch={openEditAndRedispatchDialog} canAdminEditAndRedispatch={canAdminEditAndRedispatch} canReceiveReturn={canAdminEditAndRedispatch} onRequestCodChange={openCodAdjustmentRequest} onReviewCodChange={openCodAdjustmentReview} pendingCodAdjustmentByShipment={pendingCodAdjustmentByShipment} canRequestCodChange={user?.role === "staff" && !!linkedCourier} requesterCourierId={linkedCourier.id} canReviewCodChange={isAdmin} onOpenSettlementNet={setSettlementNetTarget} onOpenPostSettlements={openPostSettlementDialog} onPlayVoiceReason={setVoicePlaybackEvent} voiceReasonEventByShipment={voiceReasonEventByShipment} canPlayVoiceReason={isAdmin} canSettle={canSettle} canTransfer={canDispatch} canUpdate={isEditor} iqdPreference={features.iqd_display_preference} handoverStatusByShipment={courierHandoverStatuses} payoutStatusByShipment={merchantPayoutStatuses} courierReimbursementStatusByShipment={courierReimbursementStatuses} merchantRepaymentStatusByShipment={merchantRepaymentStatuses} settlementNetByShipment={perShipmentSettlementNet} /> : <div className="py-10 text-center text-sm text-muted-foreground">{t("postService.empty.noLinkedCourier")}</div>}</CardContent></Card></TabsContent>
       <TabsContent value="merchants" className="mt-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between"><CardTitle>{t("postService.cards.deliveryMerchants")}</CardTitle>{isAdmin && <Button size="sm" onClick={() => setMerchantDialogOpen(true)}><Plus className="me-2 h-4 w-4" />{t("postService.actions.enableMerchant")}</Button>}</CardHeader>
@@ -1519,6 +1577,32 @@ export function PostService() {
           <AppDialogFooter>
             <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={closeTransferDialog}>{t("postService.actions.cancel")}</Button>
             <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isTransferring || !transferAgentId}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>
+          </AppDialogFooter>
+        </form>
+      </AppDialogContent>
+    </AppDialog>
+    <AppDialog open={!!returnReceiptTarget} onOpenChange={(open) => { if (!open) closeReturnReceiptDialog(); }}>
+      <AppDialogContent
+        className="max-w-xl"
+        showCloseButton={!isReceivingReturn}
+        onPointerDownOutside={(event) => { if (isReceivingReturn) event.preventDefault(); }}
+        onEscapeKeyDown={(event) => { if (isReceivingReturn) event.preventDefault(); }}
+      >
+        <form onSubmit={handleReturnReceipt} className="flex min-h-0 flex-1 flex-col">
+          <AppDialogHeader>
+            <AppDialogTitle>{t("postService.dialogs.returnReceipt.title")}</AppDialogTitle>
+            <AppDialogDescription>{returnReceiptTarget && t("postService.dialogs.returnReceipt.description", { trackingNumber: returnReceiptTarget.trackingNumber })}</AppDialogDescription>
+          </AppDialogHeader>
+          <AppDialogBody className="space-y-4">
+            <Field label={t("postService.form.optionalNote")}>
+              <Textarea value={returnReceiptNote} onChange={(event) => setReturnReceiptNote(event.target.value)} placeholder={t("postService.placeholders.deliveryNote")} disabled={isReceivingReturn} />
+            </Field>
+          </AppDialogBody>
+          <AppDialogFooter>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isReceivingReturn} onClick={closeReturnReceiptDialog}>{t("postService.actions.cancel")}</Button>
+            <Button type="submit" className="w-full gap-2 sm:w-auto" disabled={isReceivingReturn} aria-busy={isReceivingReturn}>
+              <PackageCheck className="h-4 w-4" />{isReceivingReturn ? t("common.processing") : t("postService.actions.receiveReturn")}
+            </Button>
           </AppDialogFooter>
         </form>
       </AppDialogContent>
@@ -1953,16 +2037,40 @@ function SettlementPaymentMethodSelect({ t, value, onChange }: { t: TFunction; v
 function LinkedMerchantBadge({ t, name, onClear }: { t: TFunction; name: string; onClear: () => void }) {
   return <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm"><div className="flex min-w-0 items-center gap-2"><Users className="h-4 w-4 shrink-0 text-primary" /><div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-wide text-primary">{t("loans.belongsTo")}</div><div className="truncate font-medium">{name}</div></div></div><Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClear} aria-label="Clear linked business partner"><X className="h-4 w-4" /></Button></div>;
 }
-function StatusMetric({ icon: Icon, title, value, active, compact = false, onClick }: { icon: LucideIcon; title: string; value: number; active: boolean; compact?: boolean; onClick: () => void }) {
+function StatusMetric({ icon: Icon, title, value, active, compact = false, selectionTone = "primary", onClick }: { icon: LucideIcon; title: string; value: number; active: boolean; compact?: boolean; selectionTone?: "primary" | "amber" | "rose"; onClick: () => void }) {
+  const selectionClasses = {
+    primary: "border-primary bg-primary/10 ring-primary/20",
+    amber: "border-amber-500 bg-amber-500/10 ring-amber-500/20",
+    rose: "border-rose-500 bg-rose-500/10 ring-rose-500/20",
+  }[selectionTone];
+  const selectionIconClasses = {
+    primary: "bg-primary text-primary-foreground",
+    amber: "bg-amber-500 text-white",
+    rose: "bg-rose-500 text-white",
+  }[selectionTone];
   return <button type="button" className="group w-full rounded-xl text-start outline-none" aria-pressed={active} onClick={onClick}>
-    <Card className={cn("relative h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary/50 group-focus-visible:ring-offset-2 group-active:translate-y-0", active && "border-primary bg-primary/10 shadow-md ring-2 ring-primary/20")}>
-      {active ? <div className="absolute end-2.5 top-2.5 rounded-full bg-primary p-0.5 text-primary-foreground shadow-sm" aria-hidden="true"><CheckCircle2 className="h-3.5 w-3.5" /></div> : null}
+    <Card className={cn("relative h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/35 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary/50 group-focus-visible:ring-offset-2 group-active:translate-y-0", active && cn("shadow-md ring-2", selectionClasses))}>
+      {active ? <div className={cn("absolute end-2.5 top-2.5 rounded-full p-0.5 shadow-sm", selectionIconClasses)} aria-hidden="true"><CheckCircle2 className="h-3.5 w-3.5" /></div> : null}
       <CardContent className={cn("flex items-center", compact ? "gap-2.5 p-3" : "gap-3 p-4")}>
-        <div className={cn("rounded-xl bg-muted text-muted-foreground transition-colors", compact ? "p-1.5" : "p-2", active && "bg-primary text-primary-foreground shadow-sm", !active && "group-hover:bg-primary/10 group-hover:text-primary")}><Icon className={compact ? "h-4 w-4" : "h-5 w-5"} /></div>
+        <div className={cn("rounded-xl bg-muted text-muted-foreground transition-colors", compact ? "p-1.5" : "p-2", active && cn("shadow-sm", selectionIconClasses), !active && "group-hover:bg-primary/10 group-hover:text-primary")}><Icon className={compact ? "h-4 w-4" : "h-5 w-5"} /></div>
         <div className="min-w-0"><div className={cn("font-bold tabular-nums", compact ? "text-xl" : "text-2xl")}>{value}</div><div className="truncate text-xs text-muted-foreground">{title}</div></div>
       </CardContent>
     </Card>
   </button>;
+}
+function ReturnStatusMetric({ awaitingValue, historyValue, awaitingActive, historyActive, awaitingTitle, historyTitle, onAwaitingClick, onHistoryClick }: { awaitingValue: number; historyValue: number; awaitingActive: boolean; historyActive: boolean; awaitingTitle: string; historyTitle: string; onAwaitingClick: () => void; onHistoryClick: () => void }) {
+  return <Card className={cn("h-full overflow-hidden", awaitingActive && "border-amber-500 shadow-md ring-2 ring-amber-500/20", historyActive && "border-rose-500 shadow-md ring-2 ring-rose-500/20")}>
+    <CardContent className="grid h-full grid-cols-2 divide-x p-0">
+      <button type="button" className={cn("group relative flex min-w-0 items-center gap-2 p-3 text-start outline-none transition-colors hover:bg-primary/5 focus-visible:bg-primary/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50", awaitingActive && "bg-amber-500/10")} aria-pressed={awaitingActive} onClick={onAwaitingClick}>
+        <div className={cn("rounded-xl bg-muted p-1.5 text-muted-foreground transition-colors", awaitingActive && "bg-amber-500 text-white shadow-sm", !awaitingActive && "group-hover:bg-primary/10 group-hover:text-primary")}><Undo2 className="h-4 w-4" /></div>
+        <div className="min-w-0"><div className="text-xl font-bold tabular-nums">{awaitingValue}</div><div className="truncate text-[11px] leading-tight text-muted-foreground" title={awaitingTitle}>{awaitingTitle}</div></div>
+      </button>
+      <button type="button" className={cn("group relative flex min-w-0 items-center gap-2 p-3 text-start outline-none transition-colors hover:bg-primary/5 focus-visible:bg-primary/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50", historyActive && "bg-rose-500/10")} aria-pressed={historyActive} onClick={onHistoryClick}>
+        <div className={cn("rounded-xl bg-muted p-1.5 text-muted-foreground transition-colors", historyActive && "bg-rose-500 text-white shadow-sm", !historyActive && "group-hover:bg-primary/10 group-hover:text-primary")}><History className="h-4 w-4" /></div>
+        <div className="min-w-0"><div className="text-xl font-bold tabular-nums">{historyValue}</div><div className="truncate text-[11px] leading-tight text-muted-foreground" title={historyTitle}>{historyTitle}</div></div>
+      </button>
+    </CardContent>
+  </Card>;
 }
 function DeliveryBalanceMetric({ icon: Icon, title, value, tone }: { icon: LucideIcon; title: string; value: string; tone: "amber" | "emerald" | "sky" | "rose" }) {
   const toneClasses = {
@@ -1977,8 +2085,8 @@ function EmptyRow({ columns, label }: { columns: number; label: string }) {
   return <TableRow><TableCell colSpan={columns} className="py-10 text-center text-muted-foreground">{label}</TableCell></TableRow>;
 }
 function statusFilterOptions(t: TFunction) {
-  return (["all", "received", "assigned", "delivered", "postponed", "returned", "cancelled"] as PostStatusFilter[]).map((value) => ({
-    value, icon: statusFilterIcons[value], label: value === "all" ? t("common.all") : shipmentStatusLabel(t, value), rose: value === "returned" || value === "cancelled",
+  return (["all", "received", "assigned", "delivered", "postponed", "returned", "return_history", "cancelled"] as PostStatusFilter[]).map((value) => ({
+    value, icon: statusFilterIcons[value], label: value === "all" ? t("common.all") : value === "returned" ? t("postService.status.returnAwaitingReceipt") : value === "return_history" ? t("postService.status.returnHistory") : shipmentStatusLabel(t, value), rose: value === "returned" || value === "cancelled",
   }));
 }
 function settlementFilterOptions(t: TFunction, settledLabel: string) {
@@ -2016,7 +2124,14 @@ function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: Post
     <Button type="button" size="sm" variant={value === "grid" ? "secondary" : "ghost"} className="gap-1.5" aria-pressed={value === "grid"} onClick={() => onChange("grid")}><LayoutGrid className="h-4 w-4" />{t("postService.view.grid")}</Button>
   </div>;
 }
-function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment, footer }: {
+function ShipmentStatusBadges({ t, shipment }: { t: TFunction; shipment: DeliveryShipment }) {
+  const isReturnAwaitingReceipt = shipment.status === "returned" && !shipment.returnReceivedAt;
+  return <>
+    <Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge>
+    {isReturnAwaitingReceipt ? <span className="whitespace-nowrap text-[10px] font-semibold text-amber-700 dark:text-amber-300">{t("postService.status.awaitingReceipt")}</span> : null}
+  </>;
+}
+function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onReceiveReturn, onEditAndRedispatch, canAdminEditAndRedispatch, canReceiveReturn, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment, footer }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -2026,8 +2141,10 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
   agentNameById: Map<string, string>;
   onStatus: (shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") => void;
   onTransfer: (shipment: DeliveryShipment) => void;
+  onReceiveReturn: (shipment: DeliveryShipment) => void;
   onEditAndRedispatch: (shipment: DeliveryShipment) => void;
   canAdminEditAndRedispatch: boolean;
+  canReceiveReturn: boolean;
   onRequestCodChange: (shipment: DeliveryShipment) => void;
   onReviewCodChange: (request: DeliveryShipmentCodAdjustmentRequest) => void;
   pendingCodAdjustmentByShipment: ReadonlyMap<string, DeliveryShipmentCodAdjustmentRequest>;
@@ -2083,7 +2200,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
         <TableCell>{shipment.recipientPayoutAmount > 0.000001 ? <span className="font-medium tabular-nums text-rose-700 dark:text-rose-300">{formatCurrency(shipment.recipientPayoutAmount, shipment.currency, iqdPreference)}</span> : "—"}</TableCell>
         <TableCell><SettlementNetButton t={t} shipment={shipment} settlementNet={settlementNetByShipment.get(shipment.id)} iqdPreference={iqdPreference} onClick={() => onOpenSettlementNet(shipment)} /></TableCell>
         <TableCell>{shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) : "—"}</TableCell>
-        <TableCell><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div></TableCell>
+        <TableCell><div className="flex flex-wrap items-center gap-1.5"><ShipmentStatusBadges t={t} shipment={shipment} />{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div></TableCell>
         <TableCell><SettlementStatusBadge t={t} kind={isPrepaidElectronically ? "reimbursement" : "handover"} status={courierSettlementStatus} /></TableCell>
         <TableCell><SettlementStatusBadge t={t} kind={isPrepaidElectronically ? "repayment" : "payout"} status={merchantSettlementStatus} /></TableCell>
         <TableCell className="text-end"><div className="flex justify-end gap-1">
@@ -2092,7 +2209,8 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
           {canUpdate && ["assigned", "postponed"].includes(shipment.status) && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}{shipment.status === "assigned" ? <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button> : null}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
-          {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
+          {canReceiveReturn && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveReturn(shipment)}><PackageCheck className="h-4 w-4" />{t("postService.actions.receiveReturn")}</Button>}
+          {canTransfer && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <PostSettlementsButton t={t} activeObligationCount={activeDeliveryShipmentSettlementObligationCount(shipment, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment)} onClick={() => onOpenPostSettlements(shipment)} />}
         </div></TableCell>
       </TableRow>;
@@ -2100,7 +2218,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, profile
     {footer ? <TableFooter><TableRow className="hover:bg-transparent"><TableCell colSpan={canSelect ? 12 : 11} className="bg-muted/40 py-3">{footer}</TableCell></TableRow></TableFooter> : null}
   </Table>;
 }
-function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onEditAndRedispatch, canAdminEditAndRedispatch, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment }: {
+function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileNameById, agentNameById, onStatus, onTransfer, onReceiveReturn, onEditAndRedispatch, canAdminEditAndRedispatch, canReceiveReturn, onRequestCodChange, onReviewCodChange, pendingCodAdjustmentByShipment, canRequestCodChange, requesterCourierId, canReviewCodChange, onOpenSettlementNet, onOpenPostSettlements, onPlayVoiceReason, voiceReasonEventByShipment, canPlayVoiceReason, canSettle, canTransfer, canUpdate, iqdPreference, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment, settlementNetByShipment }: {
   t: TFunction;
   shipments: DeliveryShipment[];
   selectedIds: Set<string>;
@@ -2110,8 +2228,10 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
   agentNameById: Map<string, string>;
   onStatus: (shipment: DeliveryShipment, status: "delivered" | "postponed" | "returned") => void;
   onTransfer: (shipment: DeliveryShipment) => void;
+  onReceiveReturn: (shipment: DeliveryShipment) => void;
   onEditAndRedispatch: (shipment: DeliveryShipment) => void;
   canAdminEditAndRedispatch: boolean;
+  canReceiveReturn: boolean;
   onRequestCodChange: (shipment: DeliveryShipment) => void;
   onReviewCodChange: (request: DeliveryShipmentCodAdjustmentRequest) => void;
   pendingCodAdjustmentByShipment: ReadonlyMap<string, DeliveryShipmentCodAdjustmentRequest>;
@@ -2159,7 +2279,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
               <p className="mt-1 text-xs text-muted-foreground"><span className="tabular-nums">{formatDateTime(shipment.createdAt)}</span></p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1"><Badge variant="outline" className={shipmentStatusClass(shipment.status)}>{shipmentStatusLabel(t, shipment.status)}</Badge>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div>
+          <div className="flex shrink-0 flex-col items-end gap-1"><div className="flex flex-wrap justify-end gap-1.5"><ShipmentStatusBadges t={t} shipment={shipment} /></div>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div>
         </div>
 
         <div className="mt-4 grid gap-3 rounded-xl border bg-muted/25 p-3 sm:grid-cols-2">
@@ -2200,7 +2320,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2"><span className="text-xs text-muted-foreground">{t(isPrepaidElectronically ? "postService.settlementType.merchantRepayment" : "postService.table.merchantPayout")}</span><SettlementStatusBadge t={t} kind={isPrepaidElectronically ? "repayment" : "payout"} status={merchantSettlementStatus} /></div>
         </div>
 
-        {(canPlayVoiceReason && voiceReasonEvent || canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) || canUpdate && ["assigned", "postponed"].includes(shipment.status) || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canTransfer && shipment.status === "returned" || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+        {(canPlayVoiceReason && voiceReasonEvent || canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) || canUpdate && ["assigned", "postponed"].includes(shipment.status) || canRequestCodChange && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) || canReviewCodChange && pendingCodAdjustment || canReceiveReturn && shipment.status === "returned" && !shipment.returnReceivedAt || canTransfer && shipment.status === "returned" && !shipment.returnReceivedAt || canSettle && shipment.status === "delivered") && <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
           {canPlayVoiceReason && voiceReasonEvent && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onPlayVoiceReason(voiceReasonEvent)}><Play className="h-4 w-4" />{t("postService.actions.playback")}</Button>}
           {canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
           {canUpdate && ["assigned", "postponed"].includes(shipment.status) && <>
@@ -2210,7 +2330,8 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, profileN
           </>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
           {canReviewCodChange && pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
-          {canTransfer && shipment.status === "returned" && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
+          {canReceiveReturn && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveReturn(shipment)}><PackageCheck className="h-4 w-4" />{t("postService.actions.receiveReturn")}</Button>}
+          {canTransfer && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <PostSettlementsButton t={t} activeObligationCount={activeDeliveryShipmentSettlementObligationCount(shipment, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment)} onClick={() => onOpenPostSettlements(shipment)} />}
         </div>}
       </article>;
