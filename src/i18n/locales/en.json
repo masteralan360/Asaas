@@ -1358,6 +1358,7 @@
     "title": "Customers",
     "subtitle": "customers in database",
     "addCustomer": "Add Customer",
+    "addCustomerAdvanced": "Add Customer (Advanced)",
     "editCustomer": "Edit Customer",
     "searchPlaceholder": "Search customers...",
     "table": {

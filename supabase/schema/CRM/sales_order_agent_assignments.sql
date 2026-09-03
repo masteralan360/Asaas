@@ -3,7 +3,7 @@ CREATE TABLE crm.sales_order_agent_assignments (
   workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   order_id uuid NOT NULL REFERENCES crm.sales_orders(id) ON DELETE RESTRICT,
   agent_id uuid NOT NULL REFERENCES crm.agents(id) ON DELETE RESTRICT,
-  assignment_source text NOT NULL DEFAULT 'manual' CHECK (assignment_source IN ('manual', 'sales_account')),
+  assignment_source text NOT NULL DEFAULT 'manual' CHECK (assignment_source IN ('manual', 'sales_account', 'order_creator_product')),
   assigned_at timestamptz NOT NULL DEFAULT now(),
   unassigned_at timestamptz NULL CHECK (unassigned_at IS NULL OR unassigned_at >= assigned_at),
   assigned_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -55,6 +55,9 @@ CREATE TABLE crm.sales_order_agent_assignments (
       AND jsonb_typeof(COALESCE(manual_commission_exchange_rates, '[]'::jsonb)) = 'array')
   )
 );
+
+COMMENT ON COLUMN crm.sales_order_agent_assignments.assignment_source IS
+  'manual is user-selected, sales_account follows the selected agent account, and order_creator_product is a product-only attribution derived from the linked staff user who created the sale.';
 
 CREATE INDEX sales_order_agent_assignments_workspace_idx ON crm.sales_order_agent_assignments (workspace_id);
 CREATE INDEX sales_order_agent_assignments_order_idx

@@ -2415,6 +2415,15 @@ async function completePaidQuickSalesOrderAtomically(
         )
     }
 
+    // The atomic checkout commits the paid order before any optional form
+    // assignment callback runs. Reconcile once here so the server can derive
+    // a product-only beneficiary from the linked staff user who made the sale.
+    await reconcileSalesOrderCommissionBestEffort(
+        order.workspaceId,
+        completedOrder.id,
+        completedOrder.createdBy
+    )
+
     // Customer/partner totals and reorder suggestions are derived projections.
     // Refresh them after the authoritative transaction without holding the POS
     // success dialog behind more network round trips.

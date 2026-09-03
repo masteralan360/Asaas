@@ -43,6 +43,7 @@ const MEMBERSHIP_TABLE = "agent_commission_memberships";
 const ASSIGNMENT_TABLE = "sales_order_agent_assignments";
 const ENTRY_TABLE = "agent_commission_entries";
 const RECONCILIATION_ENTITY = "sales_agent_commission_reconciliation";
+export const ORDER_CREATOR_PRODUCT_ASSIGNMENT_SOURCE = "order_creator_product" as const;
 
 // Sales-account beneficiaries are derived from an order and can be requested
 // by its save lifecycle, form assignment lifecycle, and agent-details
@@ -1300,12 +1301,151 @@ type ProductCommissionTarget = {
   commissionPerUnit: number;
 };
 
-function productCommissionEventAt(order: SalesOrder, assignment: SalesOrderAgentAssignment) {
+function orderCommissionEventAt(order: SalesOrder, assignedAt: string) {
   const orderEventAt = [order.actualDeliveryDate, order.paidAt]
     .filter((value): value is string => !!value)
     .sort((left, right) => right.localeCompare(left))[0];
-  return [assignment.assignedAt, orderEventAt ?? order.updatedAt]
+  return [assignedAt, orderEventAt ?? order.updatedAt]
     .sort((left, right) => right.localeCompare(left))[0];
+}
+
+function productCommissionEventAt(order: SalesOrder, assignment: SalesOrderAgentAssignment) {
+  return orderCommissionEventAt(order, assignment.assignedAt);
+}
+
+function emptyCommissionCalculation(currency: CurrencyCode): CommissionCalculation {
+  return {
+    currency,
+    revenueAmount: 0,
+    costAmount: 0,
+    taxAmount: 0,
+    deliveryChargeAmount: 0,
+    basisAmount: 0,
+    ratePercent: 0,
+    commissionAmount: 0,
+  };
+}
+
+/**
+ * Local Mode counterpart of the server-side creator attribution helper.
+ * Creator-derived assignments intentionally carry product commission only;
+ * a normal manual or sales-account assignment for the same agent takes
+ * precedence and keeps its ordinary plan behavior.
+ */
+async function ensureLocalOrderCreatorProductCommissionAssignmentInternal(order: SalesOrder) {
+  if (
+    !order.createdBy
+    || order.status !== "completed"
+    || (!order.isPaid && order.paymentStatus !== "paid")
+    || order.returnStatus === "full"
+    || order.isDeleted
+  ) {
+    return null;
+  }
+
+  const creatorAgent = await db.agents
+    .where("workspaceId")
+    .equals(order.workspaceId)
+    .and((agent) => (
+      !agent.isDeleted
+      && agent.status === "active"
+      && agent.agentType === "field_agent"
+      && agent.linkedUserId === order.createdBy
+    ))
+    .first();
+  if (!creatorAgent) return null;
+
+  const history = await db.sales_order_agent_assignments
+    .where("[workspaceId+orderId]")
+    .equals([order.workspaceId, order.id])
+    .and((assignment) => !assignment.isDeleted)
+    .toArray();
+  const active = getActiveSalesOrderAgentAssignments(history, order.id)
+    .find((assignment) => assignment.agentId === creatorAgent.id);
+  if (active) return active;
+
+  const occurredAt = orderCommissionEventAt(order, order.updatedAt);
+  const productIds = [...new Set((order.items || [])
+    .filter((item) => (
+      getOrderLinePaidQuantity(item)
+      - Math.min(getOrderLineInventoryQuantity(item), Math.max(0, Number(item.returnedQuantity ?? 0)))
+    ) > 0)
+    .map((item) => item.productId)
+    .filter(Boolean))];
+  if (productIds.length === 0) return null;
+
+  const [rules, recipients] = await Promise.all([
+    db.product_commission_rules
+      .where("workspaceId")
+      .equals(order.workspaceId)
+      .and((rule) => !rule.isDeleted && rule.isActive && productIds.includes(rule.productId))
+      .toArray(),
+    db.product_commission_rule_agents
+      .where("workspaceId")
+      .equals(order.workspaceId)
+      .and((recipient) => !recipient.isDeleted && recipient.agentId === creatorAgent.id)
+      .toArray(),
+  ]);
+  const recipientRuleIds = new Set(recipients.map((recipient) => recipient.ruleId));
+  const eligible = productIds.some((productId) => {
+    const rule = activeProductCommissionRule(rules, productId, occurredAt);
+    return Boolean(rule && (
+      rule.recipientScope === "all_assigned" || recipientRuleIds.has(rule.id)
+    ));
+  });
+  if (!eligible) return null;
+
+  const previous = history
+    .filter((assignment) => assignment.agentId === creatorAgent.id)
+    .sort((left, right) => right.assignedAt.localeCompare(left.assignedAt))[0] ?? null;
+  const assignedAt = previous?.unassignedAt && previous.unassignedAt > occurredAt
+    ? previous.unassignedAt
+    : occurredAt;
+  const now = new Date().toISOString();
+  const assignment: SalesOrderAgentAssignment = {
+    id: generateId(),
+    workspaceId: order.workspaceId,
+    orderId: order.id,
+    agentId: creatorAgent.id,
+    assignmentSource: ORDER_CREATOR_PRODUCT_ASSIGNMENT_SOURCE,
+    assignedAt,
+    unassignedAt: null,
+    assignedBy: order.createdBy,
+    unassignedBy: null,
+    reassignmentReason: "Automatically attributed from the staff user who created the sale",
+    previousAssignmentId: previous?.id ?? null,
+    customerCitySnapshot: null,
+    deliveryChargeAmount: 0,
+    internalDeliveryCostAmount: 0,
+    manualCommissionType: null,
+    manualCommissionSourceAmount: null,
+    manualCommissionSourceCurrency: null,
+    manualCommissionConvertedAmount: null,
+    manualCommissionExchangeRate: null,
+    manualCommissionExchangeRateSource: null,
+    manualCommissionExchangeRateTimestamp: null,
+    manualCommissionExchangeRates: null,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    isDeleted: false,
+    ...getSyncMetadata(order.workspaceId, now),
+  };
+  await db.sales_order_agent_assignments.put(assignment);
+  return assignment;
+}
+
+async function ensureLocalOrderCreatorProductCommissionAssignment(order: SalesOrder) {
+  return db.transaction(
+    "rw",
+    [
+      db.agents,
+      db.sales_order_agent_assignments,
+      db.product_commission_rules,
+      db.product_commission_rule_agents,
+    ],
+    () => ensureLocalOrderCreatorProductCommissionAssignmentInternal(order),
+  );
 }
 
 async function getProductCommissionTargets(
@@ -1507,13 +1647,21 @@ export async function accrueSalesOrderCommission(
     const reconciled = await requestServerCommissionReconciliation(workspaceId, orderId);
     if (reconciled) {
       await Promise.all([
+        hydrateTable(ASSIGNMENT_TABLE, workspaceId),
         hydrateTable(ENTRY_TABLE, workspaceId),
+        fetchTableFromSupabase(
+          "agent_product_commission_entries",
+          db.agent_product_commission_entries,
+          workspaceId,
+        ),
         fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
       ]);
     }
     return null;
   }
   if (order.status !== "completed" || (!order.isPaid && order.paymentStatus !== "paid")) return null;
+
+  await ensureLocalOrderCreatorProductCommissionAssignment(order);
 
   const assignments = await db.sales_order_agent_assignments
     .where("[workspaceId+orderId]")
@@ -1547,9 +1695,14 @@ async function accrueSalesOrderAssignmentCommission(
   const occurredAt = productCommissionEventAt(order, assignment);
   const productCommission = await reconcileProductCommissionLines(order, assignment, occurredAt, createdBy);
   const manualCommission = getAssignmentManualSalesAgentCommission(assignment);
-  const terms = manualCommission ? null : await findMembershipAndPlan(assignment.agentId, occurredAt);
+  const isCreatorProductOnly = assignment.assignmentSource === ORDER_CREATOR_PRODUCT_ASSIGNMENT_SOURCE;
+  const terms = manualCommission || isCreatorProductOnly
+    ? null
+    : await findMembershipAndPlan(assignment.agentId, occurredAt);
   if (!terms && !manualCommission && productCommission.amount <= 0) return null;
-  const calculation = manualCommission
+  const calculation = isCreatorProductOnly
+    ? emptyCommissionCalculation(order.currency)
+    : manualCommission
     ? calculateManualSalesOrderCommission(order, assignment, productCommission.basisAmount)
     : terms
       ? calculateSalesOrderCommission(order, terms.plan, assignment, productCommission.productIds)
@@ -1654,12 +1807,19 @@ export async function reconcileSalesOrderCommission(
     const reconciled = await requestServerCommissionReconciliation(workspaceId, orderId);
     if (reconciled) {
       await Promise.all([
+        hydrateTable(ASSIGNMENT_TABLE, workspaceId),
         hydrateTable(ENTRY_TABLE, workspaceId),
+        fetchTableFromSupabase(
+          "agent_product_commission_entries",
+          db.agent_product_commission_entries,
+          workspaceId,
+        ),
         fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
       ]);
     }
     return null;
   }
+  await ensureLocalOrderCreatorProductCommissionAssignment(order);
   const assignments = await db.sales_order_agent_assignments
     .where("[workspaceId+orderId]")
     .equals([workspaceId, orderId])
@@ -1710,7 +1870,9 @@ async function reconcileSalesOrderAssignmentCommission(
     isEligible && !assignment.unassignedAt,
   );
   const calculation = isEligible && !assignment.unassignedAt
-      ? accrual.membershipId == null && accrual.planId == null
+    ? assignment.assignmentSource === ORDER_CREATOR_PRODUCT_ASSIGNMENT_SOURCE
+      ? emptyCommissionCalculation(order.currency)
+      : accrual.membershipId == null && accrual.planId == null
       ? calculateManualSalesOrderCommission(order, assignment, productCommission.basisAmount)
       : calculateSalesOrderCommission(order, accrualPlan ?? {
         ratePercent: accrual.ratePercent,
@@ -1718,16 +1880,7 @@ async function reconcileSalesOrderAssignmentCommission(
         includeTax: accrual.includeTax,
         includeDeliveryCharge: accrual.includeDeliveryCharge,
       }, assignment, productCommission.productIds)
-    : {
-      currency: accrual.currency,
-      revenueAmount: 0,
-      costAmount: 0,
-      taxAmount: 0,
-      deliveryChargeAmount: 0,
-      basisAmount: 0,
-      ratePercent: accrual.ratePercent,
-      commissionAmount: 0,
-    };
+    : { ...emptyCommissionCalculation(accrual.currency), ratePercent: accrual.ratePercent };
   if (!calculation) return null;
   const recognized = roundCommissionAmount(entries
     .filter(isOrderTargetCommissionEntry)
@@ -2066,7 +2219,7 @@ async function replaceSalesOrderAgentAssignmentsInternal(
   }
 
   const manualAssignments = input.assignments
-    .filter((assignment) => (assignment.assignmentSource ?? "manual") !== "sales_account");
+    .filter((assignment) => (assignment.assignmentSource ?? "manual") === "manual");
   const salesAccountAssignments = input.assignments
     .filter((assignment) => assignment.assignmentSource === "sales_account");
   const requestedManualAgentIds = new Set(manualAssignments.map((assignment) => assignment.agentId));
@@ -2080,7 +2233,7 @@ async function replaceSalesOrderAgentAssignmentsInternal(
     input.orderId,
   );
   const activeManualAssignments = allActiveAssignments
-    .filter((assignment) => assignment.assignmentSource !== "sales_account");
+    .filter((assignment) => (assignment.assignmentSource ?? "manual") === "manual");
   for (const assignment of activeManualAssignments) {
     if (requestedManualAgentIds.has(assignment.agentId)) continue;
     await unassignSalesOrderAgent(workspaceId, {
@@ -2575,6 +2728,12 @@ async function settlePaidSalesOrderCommissionsLocally(
   const payouts: AgentCommissionEntry[] = [];
   for (const assignment of assignments) {
     if (assignment.isDeleted || assignment.unassignedAt) continue;
+    if (
+      order.commissionEnabled === false
+      && assignment.assignmentSource !== ORDER_CREATOR_PRODUCT_ASSIGNMENT_SOURCE
+    ) {
+      continue;
+    }
     const entries = await db.agent_commission_entries
       .where('assignmentId')
       .equals(assignment.id)

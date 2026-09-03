@@ -45,6 +45,7 @@ import {
     CompactBusinessPartnerFormDialog,
     type CompactBusinessPartnerFormPayload
 } from '@/ui/components/crm/CompactBusinessPartnerFormDialog'
+import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
@@ -57,6 +58,7 @@ import {
     hasEligibleProductCommission,
     ProductCommissionPreview
 } from '@/ui/components/commissions/ProductCommissionPreview'
+import { findLinkedProductCommissionAgent } from '@/ui/components/commissions/productCommissionAgent'
 
 export type QuickOrderCheckoutData = {
     customer: BusinessPartner
@@ -180,6 +182,7 @@ interface QuickOrderModalProps {
     loansEnabled: boolean
     installmentsEnabled: boolean
     agentSalesAccountsEnabled: boolean
+    productCommissionsEnabled: boolean
     commissionAssignmentsEnabled: boolean
     commissionExchangeRates: ExchangeRateSnapshot[]
     commissionCurrencies: CurrencyCode[]
@@ -197,10 +200,12 @@ export function QuickOrderModal({
     totalAmount,
     settlementCurrency,
     defaultCurrency,
+    availableCurrencies,
     iqdPreference,
     loansEnabled,
     installmentsEnabled,
     agentSalesAccountsEnabled,
+    productCommissionsEnabled,
     commissionAssignmentsEnabled,
     commissionExchangeRates,
     commissionCurrencies,
@@ -217,6 +222,8 @@ export function QuickOrderModal({
     const [customer, setCustomer] = useState<BusinessPartner | null>(null)
     const [isCreateCustomerOpen, setIsCreateCustomerOpen] = useState(false)
     const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
+    const [isCreateAdvancedCustomerOpen, setIsCreateAdvancedCustomerOpen] = useState(false)
+    const [isCreatingAdvancedCustomer, setIsCreatingAdvancedCustomer] = useState(false)
     const [salesAccountAgentId, setSalesAccountAgentId] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethodOption>('cash')
     const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null)
@@ -227,14 +234,16 @@ export function QuickOrderModal({
     const handleCommissionSummaryChange = useCallback((next: SalesOrderCommissionAssignmentSummary[]) => {
         setCommissionSummaries((current) => hasSameCommissionSummaries(current, next) ? current : next)
     }, [])
-    const canLoadAgents = agentSalesAccountsEnabled || commissionAssignmentsEnabled
+    const canLoadAgents = agentSalesAccountsEnabled
+        || productCommissionsEnabled
+        || commissionAssignmentsEnabled
     const agentPartners = useBusinessPartners(
         canLoadAgents ? workspaceId : undefined,
         { roles: ['agent'], includeAgentRoles: true }
     )
     const agents = useAgents(canLoadAgents ? workspaceId : undefined)
-    const productCommissionRules = useProductCommissionRules(commissionAssignmentsEnabled ? workspaceId : undefined)
-    const productCommissionRuleAgents = useProductCommissionRuleAgents(commissionAssignmentsEnabled ? workspaceId : undefined)
+    const productCommissionRules = useProductCommissionRules(productCommissionsEnabled ? workspaceId : undefined)
+    const productCommissionRuleAgents = useProductCommissionRuleAgents(productCommissionsEnabled ? workspaceId : undefined)
     const selectedSalesAccount = useMemo(() => {
         if (!agentSalesAccountsEnabled) return null
         const agent = agents.find((candidate) => (
@@ -279,16 +288,30 @@ export function QuickOrderModal({
         && selectedSalesAccount?.agent.agentType === 'field_agent'
         ? selectedSalesAccount.agent
         : null
-    const productCommissionPreviewAgents = useMemo(() => commissionRecipient
-        ? [{
-            id: commissionRecipient.id,
-            name: selectedSalesAccount?.partner.partnerName ?? customer?.partnerName ?? t('salesAgentCommissions.salesAgent')
-        }]
-        : [], [commissionRecipient, customer?.partnerName, selectedSalesAccount?.partner.partnerName, t])
-    const hasAutomaticProductCommission = commissionRecipient
+    const creatorCommissionAgent = useMemo(
+        () => findLinkedProductCommissionAgent(agents, commissionAssignedBy),
+        [agents, commissionAssignedBy]
+    )
+    const productCommissionAgentIds = useMemo(() => [...new Set([
+        selectedSalesAccount?.agent.id,
+        creatorCommissionAgent?.id
+    ].filter((id): id is string => Boolean(id)))], [creatorCommissionAgent?.id, selectedSalesAccount?.agent.id])
+    const productCommissionPreviewAgents = useMemo(() => {
+        const partnerNameById = new Map(agentPartners.map((partner) => [partner.id, partner.partnerName]))
+        return productCommissionAgentIds.map((agentId) => {
+            const agent = agents.find((candidate) => candidate.id === agentId)
+            return {
+                id: agentId,
+                name: agent
+                    ? partnerNameById.get(agent.businessPartnerId) ?? t('salesAgentCommissions.salesAgent')
+                    : t('salesAgentCommissions.salesAgent')
+            }
+        })
+    }, [agentPartners, agents, productCommissionAgentIds, t])
+    const hasAutomaticProductCommission = productCommissionAgentIds.length > 0
         ? hasEligibleProductCommission({
             items: commissionPreviewItems,
-            agentIds: [commissionRecipient.id],
+            agentIds: productCommissionAgentIds,
             rules: productCommissionRules,
             recipients: productCommissionRuleAgents,
             at: new Date().toISOString()
@@ -367,6 +390,27 @@ export function QuickOrderModal({
             })
         } finally {
             setIsCreatingCustomer(false)
+        }
+    }
+
+    const handleCreateAdvancedCustomer = async (payload: BusinessPartnerFormPayload) => {
+        setIsCreatingAdvancedCustomer(true)
+        try {
+            const partner = await createBusinessPartner(workspaceId, payload)
+            setCustomer(partner)
+            setCustomerSearch(partner.partnerName)
+            setIsCommissionPanelOpen(false)
+            setCommissionSummaries([])
+            setIsCreateAdvancedCustomerOpen(false)
+            toast({ title: t('customers.messages.addSuccess') })
+        } catch (error: any) {
+            toast({
+                title: t('common.error'),
+                description: error?.message || t('customers.messages.addError'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsCreatingAdvancedCustomer(false)
         }
     }
 
@@ -517,6 +561,12 @@ export function QuickOrderModal({
                                 label={t('customers.addCustomer')}
                                 disabled={isSubmitting || isCommissionPanelOpen}
                             />
+                            <AddPartnerButton
+                                onClick={() => setIsCreateAdvancedCustomerOpen(true)}
+                                label={t('customers.addCustomerAdvanced')}
+                                disabled={isSubmitting || isCommissionPanelOpen}
+                                advanced
+                            />
                         </div>
                     ) : null}
                     {orderCounterparty ? (
@@ -614,11 +664,11 @@ export function QuickOrderModal({
                     </div>
                 ) : null}
 
-                {commissionRecipient ? (
+                {productCommissionAgentIds.length > 0 ? (
                     <ProductCommissionPreview
                         workspaceId={workspaceId}
                         items={commissionPreviewItems}
-                        agentIds={[commissionRecipient.id]}
+                        agentIds={productCommissionAgentIds}
                         agents={productCommissionPreviewAgents}
                         currency={settlementCurrency}
                         exchangeRates={commissionExchangeRates}
@@ -698,6 +748,20 @@ export function QuickOrderModal({
                 submitLabel={t('common.create')}
                 isSaving={isCreatingCustomer}
                 onSubmit={handleCreateCustomer}
+            />
+            <BusinessPartnerFormDialog
+                isOpen={isCreateAdvancedCustomerOpen}
+                onOpenChange={(open) => {
+                    if (!isCreatingAdvancedCustomer) setIsCreateAdvancedCustomerOpen(open)
+                }}
+                defaultCurrency={defaultCurrency}
+                availableCurrencies={availableCurrencies}
+                initialRole="customer"
+                lockedRole="customer"
+                title={t('customers.addCustomerAdvanced')}
+                submitLabel={t('common.create')}
+                isSaving={isCreatingAdvancedCustomer}
+                onSubmit={handleCreateAdvancedCustomer}
             />
         </div>
     )

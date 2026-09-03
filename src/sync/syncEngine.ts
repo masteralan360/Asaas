@@ -225,8 +225,9 @@ export function isExistingCommissionEntryRetry(
   return error?.code === "23505" && existingId === requestedId;
 }
 
-function isAutomaticSalesAccountAssignment(payload: Record<string, unknown>) {
-  return (payload.assignmentSource ?? payload.assignment_source) === "sales_account";
+function isDerivedSalesOrderAssignment(payload: Record<string, unknown>) {
+  const source = payload.assignmentSource ?? payload.assignment_source;
+  return source === "sales_account" || source === "order_creator_product";
 }
 
 interface MutationSyncOrderItem {
@@ -1353,7 +1354,7 @@ export async function processMutationQueue(
             // Normal assignment insert/update completed.
           } else if (
             (error as { code?: unknown }).code === "23505"
-            && isAutomaticSalesAccountAssignment(dbPayload)
+            && isDerivedSalesOrderAssignment(dbPayload)
           ) {
             const orderId = dbPayload.order_id;
             const agentId = dbPayload.agent_id;
@@ -1361,8 +1362,8 @@ export async function processMutationQueue(
               throw error;
             }
 
-            // A previous build could enqueue the same derived beneficiary
-            // twice. An existing active row for that order and agent means the
+            // Multiple clients can enqueue the same derived beneficiary.
+            // An existing active row for that order and agent means the
             // desired server state already exists, so retain the authoritative
             // row and remove only the duplicate local record.
             const { data: existingAssignment, error: lookupError } = await client

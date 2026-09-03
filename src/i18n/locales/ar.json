@@ -1345,6 +1345,7 @@
     "title": "العملاء",
     "subtitle": "العملاء في قاعدة البيانات",
     "addCustomer": "إضافة عميل",
+    "addCustomerAdvanced": "إضافة عميل (متقدم)",
     "editCustomer": "تعديل عميل",
     "searchPlaceholder": "البحث في العملاء...",
     "details": {

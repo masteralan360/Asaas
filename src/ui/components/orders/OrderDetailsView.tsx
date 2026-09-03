@@ -118,6 +118,7 @@ import {
     ProductCommissionPreview,
     type ProductCommissionPreviewAgent
 } from '@/ui/components/commissions/ProductCommissionPreview'
+import { findOwnedOrderCreatorProductCommissionAgent } from '@/ui/components/commissions/productCommissionAgent'
 import { OLD_SALES_AGENT_CONFIGURATION } from '@/ui/components/commissions/oldSalesAgentConfiguration'
 import { useCommissionAgentDirectory } from '@/ui/components/commissions/useCommissionAgentDirectory'
 
@@ -369,9 +370,16 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const canAccessSalesAgentCommissions = canAssignSalesAgents
         || canViewAllAgentCommissions
         || canViewOwnAgentCommissions
+    const ownedOrderCreatorProductCommissionAgent = useMemo(() => (
+        findOwnedOrderCreatorProductCommissionAgent(
+            commissionAgentDirectory.agents.map((entry) => entry.agent),
+            user?.id,
+            salesOrder?.createdBy
+        )
+    ), [commissionAgentDirectory.agents, salesOrder?.createdBy, user?.id])
     const productCommissionPreviewAgentIds = useMemo(() => {
         if (!salesOrder) return []
-        return getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, salesOrder.id)
+        const agentIds = new Set(getActiveSalesOrderAgentAssignments(salesOrderAgentAssignments, salesOrder.id)
             .filter((assignment) => {
                 if (canAssignSalesAgents || canViewAllAgentCommissions) return true
                 const userId = user?.id
@@ -379,12 +387,15 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                 const agent = commissionAgentDirectory.agentById.get(assignment.agentId)
                 return agent?.agent.linkedUserId === userId
             })
-            .map((assignment) => assignment.agentId)
+            .map((assignment) => assignment.agentId))
+        if (ownedOrderCreatorProductCommissionAgent) agentIds.add(ownedOrderCreatorProductCommissionAgent.id)
+        return [...agentIds]
     }, [
         canAssignSalesAgents,
         canViewAllAgentCommissions,
         canViewOwnAgentCommissions,
         commissionAgentDirectory.agentById,
+        ownedOrderCreatorProductCommissionAgent,
         salesOrder,
         salesOrderAgentAssignments,
         user?.id
@@ -1328,7 +1339,7 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                         </CardContent>
                     </Card>
 
-                    {isSales && canAccessSalesAgentCommissions ? (
+                    {isSales && salesAgentCommissionsEnabled && productCommissionPreviewAgentIds.length > 0 ? (
                         <ProductCommissionPreview
                             workspaceId={workspaceId}
                             items={productCommissionPreviewItems}

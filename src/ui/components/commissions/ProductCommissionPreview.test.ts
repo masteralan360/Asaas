@@ -3,6 +3,10 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import type { ProductCommissionRule, ProductCommissionRuleAgent } from '@/local-db'
 
 import type { ProductCommissionPreviewItem } from './ProductCommissionPreview'
+import {
+    findLinkedProductCommissionAgent,
+    findOwnedOrderCreatorProductCommissionAgent
+} from './productCommissionAgent'
 
 const AT = '2026-08-29T12:00:00.000Z'
 let hasEligibleProductCommission: typeof import('./ProductCommissionPreview').hasEligibleProductCommission
@@ -22,6 +26,13 @@ beforeAll(async () => {
         value: {
             visibilityState: 'visible',
             documentElement: { lang: 'en', dir: 'ltr' },
+            head: { appendChild: () => undefined },
+            getElementsByTagName: () => [{ appendChild: () => undefined }],
+            createElement: () => ({
+                setAttribute: () => undefined,
+                appendChild: () => undefined
+            }),
+            createTextNode: () => ({}),
             addEventListener: () => undefined,
             removeEventListener: () => undefined
         }
@@ -30,11 +41,28 @@ beforeAll(async () => {
         configurable: true,
         value: { onLine: false }
     })
+    Object.defineProperty(globalThis, 'DOMMatrix', {
+        configurable: true,
+        value: class DOMMatrix {}
+    })
+    Object.defineProperty(globalThis, 'ImageData', {
+        configurable: true,
+        value: class ImageData {}
+    })
+    Object.defineProperty(globalThis, 'Path2D', {
+        configurable: true,
+        value: class Path2D {}
+    })
+    Object.defineProperty(globalThis.URL, 'createObjectURL', {
+        configurable: true,
+        value: () => 'blob:vitest'
+    })
     Object.defineProperty(globalThis, 'window', {
         configurable: true,
         value: {
             localStorage: storage,
             sessionStorage: storage,
+            URL: globalThis.URL,
             location: { hash: '', origin: 'http://localhost', pathname: '/' },
             addEventListener: () => undefined,
             removeEventListener: () => undefined
@@ -72,6 +100,35 @@ const items: ProductCommissionPreviewItem[] = [{
 }]
 
 describe('hasEligibleProductCommission', () => {
+    it('resolves only the active field agent linked to the order creator', () => {
+        const eligible = {
+            id: 'agent-eligible', linkedUserId: 'user-1', agentType: 'field_agent', status: 'active', isDeleted: false
+        }
+        const agents = [
+            { id: 'agent-driver', linkedUserId: 'user-1', agentType: 'driver', status: 'active', isDeleted: false },
+            { id: 'agent-inactive', linkedUserId: 'user-1', agentType: 'field_agent', status: 'inactive', isDeleted: false },
+            eligible
+        ]
+
+        expect(findLinkedProductCommissionAgent(agents, 'user-1')).toBe(eligible)
+        expect(findLinkedProductCommissionAgent(agents, 'missing-user')).toBeNull()
+        expect(findLinkedProductCommissionAgent(agents, null)).toBeNull()
+    })
+
+    it('allows a linked agent to preview only an order they created', () => {
+        const agent = {
+            id: 'agent-1',
+            linkedUserId: 'user-1',
+            agentType: 'field_agent',
+            status: 'active',
+            isDeleted: false
+        }
+
+        expect(findOwnedOrderCreatorProductCommissionAgent([agent], 'user-1', 'user-1')).toBe(agent)
+        expect(findOwnedOrderCreatorProductCommissionAgent([agent], 'user-1', 'user-2')).toBeNull()
+        expect(findOwnedOrderCreatorProductCommissionAgent([agent], null, 'user-1')).toBeNull()
+    })
+
     it('automatically qualifies an assigned agent for all-assigned product rules', () => {
         expect(hasEligibleProductCommission({
             items,

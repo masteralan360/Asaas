@@ -4784,6 +4784,7 @@ export function POS() {
                 loansEnabled={hasFeature('loans')}
                 installmentsEnabled={hasFeature('installments')}
                 agentSalesAccountsEnabled={hasFeature('agent_sales_accounts')}
+                productCommissionsEnabled={hasFeature('sales_agent_commissions')}
                 commissionAssignmentsEnabled={canAssignQuickOrderCommissions}
                 commissionExchangeRates={quickOrderCommissionExchangeRates}
                 commissionCurrencies={Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]}

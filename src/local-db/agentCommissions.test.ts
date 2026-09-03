@@ -619,6 +619,153 @@ describe("sales agent commission lifecycle", () => {
     });
   });
 
+  it("automatically credits an all-assigned product commission to the linked staff creator only", async () => {
+    const productCommissions = await import("./productCommissions");
+    const order = completedOrder(crypto.randomUUID());
+    const creatorAgent = {
+      ...fieldAgent(crypto.randomUUID()),
+      linkedUserId: order.createdBy,
+    };
+    const commissionedProductId = order.items[0].productId;
+    const ordinaryProductId = crypto.randomUUID();
+    order.items = [
+      { ...order.items[0], id: "creator-product-line", quantity: 2, lineTotal: 200 },
+      { ...order.items[0], id: "creator-ordinary-line", productId: ordinaryProductId, quantity: 3, lineTotal: 300 },
+    ];
+    order.subtotal = 500;
+    order.total = 500;
+    order.paidAmount = 500;
+    // POS customer checkout can leave the optional order-wide commission
+    // switch off. Creator product commission remains automatic.
+    order.commissionEnabled = false;
+    await db.agents.put(creatorAgent);
+    await db.sales_orders.put(order);
+
+    const plan = await commissions.createAgentCommissionPlan(WORKSPACE_ID, {
+      name: "Creator ordinary plan",
+      level: "creator-ordinary-plan",
+      ratePercent: 10,
+      calculationBasis: "net_revenue",
+    });
+    await commissions.setAgentCommissionMembership(WORKSPACE_ID, {
+      agentId: creatorAgent.id,
+      planId: plan.id,
+    });
+    await productCommissions.replaceProductCommissionRule(WORKSPACE_ID, commissionedProductId, {
+      commissionType: "fixed_amount",
+      fixedAmount: 7,
+      fixedCurrency: "usd",
+      recipientScope: "all_assigned",
+      effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    await commissions.accrueSalesOrderCommission(WORKSPACE_ID, order.id, order.createdBy);
+    await commissions.replaceSalesOrderAgentAssignments(WORKSPACE_ID, {
+      orderId: order.id,
+      assignments: [],
+      assignedBy: order.createdBy,
+    });
+    await commissions.accrueSalesOrderCommission(WORKSPACE_ID, order.id, order.createdBy);
+
+    const assignments = commissions.getActiveSalesOrderAgentAssignments(
+      await db.sales_order_agent_assignments.where("[workspaceId+orderId]").equals([WORKSPACE_ID, order.id]).toArray(),
+      order.id,
+    );
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0]).toMatchObject({
+      agentId: creatorAgent.id,
+      assignmentSource: "order_creator_product",
+    });
+    const accrual = await db.agent_commission_entries
+      .where("assignmentId").equals(assignments[0].id)
+      .and((entry) => entry.kind === "accrual")
+      .first();
+    expect(accrual).toMatchObject({
+      membershipId: null,
+      planId: null,
+      planCommissionAmount: 0,
+      productCommissionAmount: 14,
+      amount: 14,
+    });
+    expect(await db.agent_commission_entries
+      .where("assignmentId").equals(assignments[0].id)
+      .and((entry) => entry.kind === "accrual")
+      .count()).toBe(1);
+    expect(await db.agent_product_commission_entries
+      .where("assignmentId").equals(assignments[0].id)
+      .and((entry) => entry.kind === "accrual")
+      .count()).toBe(1);
+    const payout = await db.agent_commission_entries
+      .where("assignmentId").equals(assignments[0].id)
+      .and((entry) => entry.kind === "payout")
+      .first();
+    expect(payout).toMatchObject({ amount: -14, status: "paid" });
+  });
+
+  it("credits a selected-assigned product rule to its linked staff creator with per-unit rounding", async () => {
+    const productCommissions = await import("./productCommissions");
+    const order = completedOrder(crypto.randomUUID());
+    const creatorAgent = {
+      ...fieldAgent(crypto.randomUUID()),
+      linkedUserId: order.createdBy,
+    };
+    order.items = [{
+      ...order.items[0],
+      id: "creator-percentage-line",
+      quantity: 3,
+      convertedUnitPrice: 10.01,
+      lineTotal: 30.03,
+    }];
+    order.subtotal = 30.03;
+    order.total = 30.03;
+    order.paidAmount = 30.03;
+    await db.agents.put(creatorAgent);
+    await db.sales_orders.put(order);
+    await productCommissions.replaceProductCommissionRule(WORKSPACE_ID, order.items[0].productId, {
+      commissionType: "percentage",
+      ratePercent: 12.5,
+      recipientScope: "selected_assigned",
+      agentIds: [creatorAgent.id],
+      effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    await commissions.accrueSalesOrderCommission(WORKSPACE_ID, order.id, order.createdBy);
+
+    const assignment = await db.sales_order_agent_assignments.where("orderId").equals(order.id).first();
+    const line = await db.agent_product_commission_entries.where("assignmentId").equals(assignment!.id).first();
+    expect(line).toMatchObject({
+      agentId: creatorAgent.id,
+      quantity: 3,
+      commissionPerUnit: 1.25125,
+      amount: 3.75375,
+    });
+  });
+
+  it("does not assign a linked staff creator excluded by a selected-assigned product rule", async () => {
+    const productCommissions = await import("./productCommissions");
+    const order = completedOrder(crypto.randomUUID());
+    const creatorAgent = {
+      ...fieldAgent(crypto.randomUUID()),
+      linkedUserId: order.createdBy,
+    };
+    const selectedAgent = fieldAgent(crypto.randomUUID());
+    await db.agents.bulkPut([creatorAgent, selectedAgent]);
+    await db.sales_orders.put(order);
+    await productCommissions.replaceProductCommissionRule(WORKSPACE_ID, order.items[0].productId, {
+      commissionType: "fixed_amount",
+      fixedAmount: 5,
+      fixedCurrency: "usd",
+      recipientScope: "selected_assigned",
+      agentIds: [selectedAgent.id],
+      effectiveFrom: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    await commissions.accrueSalesOrderCommission(WORKSPACE_ID, order.id, order.createdBy);
+
+    expect(await db.sales_order_agent_assignments.where("orderId").equals(order.id).count()).toBe(0);
+    expect(await db.agent_product_commission_entries.where("orderId").equals(order.id).count()).toBe(0);
+  });
+
   it("saves an order-specific fixed amount override for an agent with an effective plan", async () => {
     const agent = fieldAgent(crypto.randomUUID());
     const order = completedOrder(crypto.randomUUID());

@@ -842,7 +842,7 @@ export type ManualSalesAgentCommissionType = CommissionPlanType
 export type ProductCommissionRecipientScope = 'all_assigned' | 'selected_assigned'
 export type CommissionEntryKind = 'estimate' | 'accrual' | 'approval' | 'reversal' | 'payout' | 'adjustment'
 export type CommissionEntryStatus = 'estimated' | 'earned' | 'approved' | 'paid' | 'reversed'
-export type SalesOrderAgentAssignmentSource = 'manual' | 'sales_account'
+export type SalesOrderAgentAssignmentSource = 'manual' | 'sales_account' | 'order_creator_product'
 
 /** Effective-dated commission terms. No commission fields are added to Agent. */
 export interface AgentCommissionPlan extends BaseEntity {
@@ -907,7 +907,7 @@ export interface ProductCommissionRuleAgent extends BaseEntity {
 export interface SalesOrderAgentAssignment extends BaseEntity {
   orderId: string
   agentId: string
-  /** Whether a user selected this beneficiary or it follows the sales account. */
+  /** Whether a user selected this beneficiary or it was derived from order attribution. */
   assignmentSource?: SalesOrderAgentAssignmentSource
   assignedAt: string
   unassignedAt?: string | null

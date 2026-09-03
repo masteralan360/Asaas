@@ -780,54 +780,57 @@ describe('fullSync error reporting', () => {
         expect(payload).not.toHaveProperty('storage_id')
     })
 
-    it('adopts the existing server beneficiary for a duplicate automatic assignment', async () => {
-        const duplicateAssignmentError = Object.assign(
-            new Error('duplicate key value violates unique constraint "sales_order_agent_assignments_one_active_agent_idx"'),
-            { code: '23505' }
-        )
-        dbMock.rows.push({
-            id: 'duplicate-automatic-assignment',
-            workspaceId: 'workspace-1',
-            entityType: 'sales_order_agent_assignments',
-            entityId: 'assignment-local-duplicate',
-            operation: 'create',
-            payload: {
-                id: 'assignment-local-duplicate',
+    it.each(['sales_account', 'order_creator_product'] as const)(
+        'adopts the existing server beneficiary for a duplicate %s assignment',
+        async (assignmentSource) => {
+            const duplicateAssignmentError = Object.assign(
+                new Error('duplicate key value violates unique constraint "sales_order_agent_assignments_one_active_agent_idx"'),
+                { code: '23505' }
+            )
+            dbMock.rows.push({
+                id: 'duplicate-automatic-assignment',
+                workspaceId: 'workspace-1',
+                entityType: 'sales_order_agent_assignments',
+                entityId: 'assignment-local-duplicate',
+                operation: 'create',
+                payload: {
+                    id: 'assignment-local-duplicate',
+                    orderId: 'order-1',
+                    agentId: 'agent-1',
+                    assignmentSource,
+                    assignedAt: '2026-08-29T00:00:00.000Z'
+                },
+                createdAt: '2026-08-29T00:00:00.000Z',
+                status: 'pending'
+            })
+            supabaseMock.upsert.mockResolvedValueOnce({ data: null, error: duplicateAssignmentError })
+            supabaseMock.setActiveSalesOrderAssignment({
+                id: 'assignment-server',
+                workspace_id: 'workspace-1',
+                order_id: 'order-1',
+                agent_id: 'agent-1',
+                assignment_source: assignmentSource,
+                assigned_at: '2026-08-29T00:00:00.000Z',
+                unassigned_at: null,
+                is_deleted: false,
+                version: 1
+            })
+
+            const result = await fullSync('user-1', 'workspace-1', null)
+
+            expect(result.success).toBe(true)
+            expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
+            expect(dbMock.salesOrderAgentAssignments.delete).toHaveBeenCalledWith('assignment-local-duplicate')
+            expect(dbMock.salesOrderAgentAssignments.put).toHaveBeenCalledWith(expect.objectContaining({
+                id: 'assignment-server',
+                workspaceId: 'workspace-1',
                 orderId: 'order-1',
                 agentId: 'agent-1',
-                assignmentSource: 'sales_account',
-                assignedAt: '2026-08-29T00:00:00.000Z'
-            },
-            createdAt: '2026-08-29T00:00:00.000Z',
-            status: 'pending'
-        })
-        supabaseMock.upsert.mockResolvedValueOnce({ data: null, error: duplicateAssignmentError })
-        supabaseMock.setActiveSalesOrderAssignment({
-            id: 'assignment-server',
-            workspace_id: 'workspace-1',
-            order_id: 'order-1',
-            agent_id: 'agent-1',
-            assignment_source: 'sales_account',
-            assigned_at: '2026-08-29T00:00:00.000Z',
-            unassigned_at: null,
-            is_deleted: false,
-            version: 1
-        })
-
-        const result = await fullSync('user-1', 'workspace-1', null)
-
-        expect(result.success).toBe(true)
-        expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
-        expect(dbMock.salesOrderAgentAssignments.delete).toHaveBeenCalledWith('assignment-local-duplicate')
-        expect(dbMock.salesOrderAgentAssignments.put).toHaveBeenCalledWith(expect.objectContaining({
-            id: 'assignment-server',
-            workspaceId: 'workspace-1',
-            orderId: 'order-1',
-            agentId: 'agent-1',
-            assignmentSource: 'sales_account',
-            syncStatus: 'synced'
-        }))
-    })
+                assignmentSource,
+                syncStatus: 'synced'
+            }))
+        }
+    )
 
     it('keeps an unknown-column mutation, blocks later writes for that record, and syncs unrelated work', async () => {
         const schemaError = Object.assign(

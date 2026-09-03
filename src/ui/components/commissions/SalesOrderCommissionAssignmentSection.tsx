@@ -68,7 +68,9 @@ function createDraft(
     orderCurrency: CurrencyCode,
     assignment?: SalesOrderAgentAssignment,
     customerCity = '',
-    assignmentSource: AssignmentDraft['assignmentSource'] = assignment?.assignmentSource ?? 'manual'
+    assignmentSource: AssignmentDraft['assignmentSource'] = assignment?.assignmentSource === 'sales_account'
+        ? 'sales_account'
+        : 'manual'
 ): AssignmentDraft {
     return {
         key: assignment?.id || crypto.randomUUID(),
@@ -131,8 +133,11 @@ export const SalesOrderCommissionAssignmentSection = forwardRef<
 
     useEffect(() => {
         if (!editingOrderId) return
-        setDrafts(activeAssignments.length > 0
-            ? activeAssignments.map((assignment) => createDraft(orderCurrency, assignment, customerCity))
+        const editableAssignments = activeAssignments.filter(
+            (assignment) => assignment.assignmentSource !== 'order_creator_product'
+        )
+        setDrafts(editableAssignments.length > 0
+            ? editableAssignments.map((assignment) => createDraft(orderCurrency, assignment, customerCity))
             : [])
     }, [activeAssignments, customerCity, editingOrderId, orderCurrency])
 

@@ -102,6 +102,7 @@ import {
     ProductCommissionPreview,
     type ProductCommissionPreviewAgent
 } from '@/ui/components/commissions/ProductCommissionPreview'
+import { findLinkedProductCommissionAgent } from '@/ui/components/commissions/productCommissionAgent'
 import { OLD_SALES_AGENT_CONFIGURATION } from '@/ui/components/commissions/oldSalesAgentConfiguration'
 
 interface SalesOrderFormPageProps {
@@ -461,12 +462,17 @@ export function SalesOrderFormPage({
             : [],
         [editingOrderId, salesOrderAgentAssignments]
     )
+    const creatorCommissionAgent = useMemo(() => {
+        const creatorUserId = editingOrder?.createdBy ?? user?.id
+        return findLinkedProductCommissionAgent(agents, creatorUserId)
+    }, [agents, editingOrder?.createdBy, user?.id])
     const productCommissionAgentIds = useMemo(() => {
         const agentIds = new Set(activeCommissionAssignments.map((assignment) => assignment.agentId))
         if (selectedSalesAccount) agentIds.add(selectedSalesAccount.agent.id)
+        if (creatorCommissionAgent) agentIds.add(creatorCommissionAgent.id)
         for (const summary of commissionAssignmentSummaries) agentIds.add(summary.agentId)
         return [...agentIds]
-    }, [activeCommissionAssignments, commissionAssignmentSummaries, selectedSalesAccount])
+    }, [activeCommissionAssignments, commissionAssignmentSummaries, creatorCommissionAgent, selectedSalesAccount])
     const productCommissionPreviewAgents = useMemo<ProductCommissionPreviewAgent[]>(() => {
         const agentNameById = new Map(commissionAssignmentSummaries.map((summary) => [summary.agentId, summary.agentName]))
         const partnerById = new Map(agentPartners.map((partner) => [partner.id, partner]))
