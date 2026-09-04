@@ -6619,6 +6619,37 @@
     "empty": "No templates yet.",
     "emptyDescription": "Create your first manual entry template to get started."
   },
+  "paygGraphPage": {
+    "scheduleTitle": "PAYG pricing schedule",
+    "scheduleDescription": "Publish one global IQD schedule. Protected checkpoints are fixed at 1 GB = Free, 15 GB = 10,000 IQD, and 100 GB = 40,000 IQD; intermediate checkpoints use linear interpolation.",
+    "pricingVersion": "Pricing version {{version}}",
+    "gb": "Checkpoint (GB) *",
+    "amountIqd": "Total amount (IQD) *",
+    "protected": "Protected pricing checkpoint",
+    "graphAriaLabel": "PAYG pricing graph from 0 GB through 100 GB",
+    "graphPointLabel": "{{gb}} GB = {{amount}} IQD. Show checkpoint details",
+    "graphHint": "Hover or tap anywhere in the graph to see the GB and price for that column. Points also support keyboard focus.",
+    "graphInterpolatedPrice": "Price at this usage",
+    "customCheckpoint": "Custom pricing checkpoint",
+    "gbValue": "{{value}} GB",
+    "iqdValue": "{{value}} IQD",
+    "calculator": {
+      "title": "PAYG calculator",
+      "description": "Preview the displayed schedule, including unpublished edits. This does not change workspace billing.",
+      "usageInput": "Usage (GB) *",
+      "amountInput": "Amount (IQD) *",
+      "chargeOutput": "Estimated charge (IQD)",
+      "usageOutput": "Equivalent usage (GB)",
+      "swap": "Swap",
+      "swapToIqd": "Switch to IQD → GB",
+      "swapToGb": "Switch to GB → IQD",
+      "emptyResult": "—",
+      "invalidGb": "Enter usage between 0 and 100 GB.",
+      "invalidIqd": "Enter a whole-IQD amount between 0 and 40,000.",
+      "forwardHint": "0–100 GB only. Usage through 1 GB is free; the final charge is rounded to whole IQD.",
+      "reverseHint": "An estimate from the curve before whole-IQD rounding, shown to 6 decimal places. Flat-price segments use their highest GB point; 0 IQD includes the free usage tier."
+    }
+  },
   "monthlyUsageCalculator": {
     "button": "Monthly Usage Calculator",
     "headerLabel": "Usage estimator",

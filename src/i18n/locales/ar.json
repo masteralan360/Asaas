@@ -6372,6 +6372,37 @@
       }
     }
   },
+  "paygGraphPage": {
+    "scheduleTitle": "جدول تسعير PAYG",
+    "scheduleDescription": "انشر جدول IQD عالمياً واحداً. نقاط التسعير المحمية ثابتة عند 1 GB = مجاناً، و15 GB = 10,000 IQD، و100 GB = 40,000 IQD؛ وتُحسب النقاط المتوسطة بالاستيفاء الخطي.",
+    "pricingVersion": "إصدار التسعير {{version}}",
+    "gb": "نقطة التسعير (GB) *",
+    "amountIqd": "المبلغ الإجمالي (IQD) *",
+    "protected": "نقطة تسعير محمية",
+    "graphAriaLabel": "رسم تسعير PAYG من 0 GB إلى 100 GB",
+    "graphPointLabel": "{{gb}} GB = {{amount}} IQD. عرض تفاصيل نقطة التسعير",
+    "graphHint": "مرّر المؤشر أو اضغط في أي مكان داخل الرسم لعرض GB والسعر لذلك العمود. تدعم النقاط أيضاً التركيز بلوحة المفاتيح.",
+    "graphInterpolatedPrice": "السعر عند هذا الاستخدام",
+    "customCheckpoint": "نقطة تسعير مخصصة",
+    "gbValue": "{{value}} GB",
+    "iqdValue": "{{value}} IQD",
+    "calculator": {
+      "title": "حاسبة PAYG",
+      "description": "عاين جدول التسعير المعروض، بما في ذلك التعديلات غير المنشورة. لا يغيّر ذلك فوترة مساحة العمل.",
+      "usageInput": "الاستخدام (GB) *",
+      "amountInput": "المبلغ (IQD) *",
+      "chargeOutput": "الرسوم التقديرية (IQD)",
+      "usageOutput": "الاستخدام المكافئ (GB)",
+      "swap": "تبديل",
+      "swapToIqd": "التبديل إلى IQD ← GB",
+      "swapToGb": "التبديل إلى GB ← IQD",
+      "emptyResult": "—",
+      "invalidGb": "أدخل استخداماً بين 0 و100 GB.",
+      "invalidIqd": "أدخل مبلغاً صحيحاً بين 0 و40,000 IQD.",
+      "forwardHint": "من 0 إلى 100 GB فقط. الاستخدام حتى 1 GB مجاني، وتُقرّب الرسوم النهائية إلى IQD صحيح.",
+      "reverseHint": "تقدير من المنحنى قبل التقريب إلى IQD صحيح، ويُعرض حتى 6 منازل عشرية. تستخدم المقاطع ذات السعر الثابت أعلى نقطة GB فيها؛ ويشمل 0 IQD مستوى الاستخدام المجاني."
+    }
+  },
   "monthlyUsageCalculator": {
     "button": "حاسبة الاستخدام الشهري",
     "headerLabel": "تقدير الاستخدام",

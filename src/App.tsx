@@ -120,6 +120,11 @@ const MonthlyUsageCalculator = lazy(() =>
     default: m.MonthlyUsageCalculator,
   })),
 );
+const PaygGraphPage = lazy(() =>
+  import("@/ui/pages/PaygGraphPage").then((m) => ({
+    default: m.PaygGraphPage,
+  })),
+);
 const InvoicesHistory = lazy(() =>
   import("@/ui/pages/InvoicesHistory").then((m) => ({
     default: m.InvoicesHistory,
@@ -1419,6 +1424,11 @@ function App() {
                       {!isTauri && (
                         <Route path="/monthly-usage-calculator">
                           <MonthlyUsageCalculator />
+                        </Route>
+                      )}
+                      {!isTauri && (
+                        <Route path="/graph">
+                          <PaygGraphPage />
                         </Route>
                       )}
                       {isDemoEnabled() && (
