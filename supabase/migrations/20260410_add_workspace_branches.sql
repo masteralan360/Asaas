@@ -113,7 +113,6 @@ DECLARE
     'public.category_discounts',
     'crm.sales_orders',
     'crm.purchase_orders',
-    'crm.travel_agency_sales',
     'crm.business_partner_merge_candidates',
     'crm.customers',
     'crm.suppliers',
@@ -210,9 +209,6 @@ BEGIN
   WHERE workspace_id = p_branch_workspace_id;
 
   DELETE FROM crm.purchase_orders
-  WHERE workspace_id = p_branch_workspace_id;
-
-  DELETE FROM crm.travel_agency_sales
   WHERE workspace_id = p_branch_workspace_id;
 
   DELETE FROM crm.business_partner_merge_candidates

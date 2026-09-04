@@ -67,7 +67,7 @@ export function getPaymentMethodLabel(method: PaymentMethodOption, t: TFunction)
         case 'ecommerce':
             return t('directTransactions.paymentMethod.ecommerce', { defaultValue: 'E-Commerce' })
         case 'hawala':
-            return t('travelAgency.paymentMethod.hawala', { defaultValue: 'Money Transfer (Hawala)' })
+            return t('directTransactions.paymentMethod.hawala', { defaultValue: 'Hawala' })
         case 'credit':
             return t('activities.paymentMethods.credit', { defaultValue: 'Credit' })
         case 'unknown':

@@ -6,7 +6,6 @@ import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSn
 import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
-import { getTravelSaleCost } from '@/lib/travelAgency'
 import {
     canSelectProductForExcludedCategories,
     filterSelectableProducts,
@@ -37,8 +36,7 @@ import type {
     Loan,
     PurchaseOrder,
     SalesOrder,
-    Supplier,
-    TravelAgencySale
+    Supplier
 } from './models'
 import { isRealEstateBusinessPartnerRole } from './models'
 
@@ -625,22 +623,6 @@ async function getPartnerPurchaseOrders(partner: BusinessPartner) {
     }).toArray()
 
     return rows as PurchaseOrder[]
-}
-
-async function getPartnerTravelSales(partner: BusinessPartner) {
-    const rows = await db.travel_agency_sales.where('workspaceId').equals(partner.workspaceId).and((item) => {
-        if (item.isDeleted) {
-            return false
-        }
-
-        if (item.businessPartnerId && item.businessPartnerId === partner.id) {
-            return true
-        }
-
-        return Boolean(partner.supplierFacetId && item.supplierId === partner.supplierFacetId)
-    }).toArray()
-
-    return rows as TravelAgencySale[]
 }
 
 async function getPartnerLoans(partner: BusinessPartner) {
@@ -1487,7 +1469,6 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     fetchTableFromSupabase('agent_excluded_categories', db.agent_excluded_categories, workspaceId),
                     fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId),
                     fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId),
-                    fetchTableFromSupabase('travel_agency_sales', db.travel_agency_sales, workspaceId),
                     fetchTableFromSupabase('loans', db.loans, workspaceId),
                     fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId)
                 ])
@@ -1935,12 +1916,10 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
 
     const salesOrders = await db.sales_orders.where('workspaceId').equals(primary.workspaceId).and((item) => !item.isDeleted && item.businessPartnerId === secondary.id).toArray()
     const purchaseOrders = await db.purchase_orders.where('workspaceId').equals(primary.workspaceId).and((item) => !item.isDeleted && item.businessPartnerId === secondary.id).toArray()
-    const travelSales = await db.travel_agency_sales.where('workspaceId').equals(primary.workspaceId).and((item) => !item.isDeleted && item.businessPartnerId === secondary.id).toArray()
     const loans = await db.loans.where('workspaceId').equals(primary.workspaceId).and((item) => !item.isDeleted && item.linkedPartyId === secondary.id).toArray()
 
     await Promise.all(salesOrders.map((order) => db.sales_orders.update(order.id, { businessPartnerId: primary.id, customerId: mergedPrimary.customerFacetId || order.customerId })))
     await Promise.all(purchaseOrders.map((order) => db.purchase_orders.update(order.id, { businessPartnerId: primary.id, supplierId: mergedPrimary.supplierFacetId || order.supplierId })))
-    await Promise.all(travelSales.map((sale) => db.travel_agency_sales.update(sale.id, { businessPartnerId: primary.id, supplierId: mergedPrimary.supplierFacetId || sale.supplierId })))
     await Promise.all(loans.map((loan) => db.loans.update(loan.id, { linkedPartyId: primary.id, linkedPartyType: 'business_partner' })))
 
     const candidates = await db.business_partner_merge_candidates.where('workspaceId').equals(primary.workspaceId).and((item) => {

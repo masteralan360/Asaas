@@ -197,7 +197,6 @@ function sourceModuleLabel(transaction: PaymentTransaction | null, t: ReturnType
     case 'clinical_appointments': return t('ledger.sourceModule.clinicalAppointments', { defaultValue: 'Appointments' })
     case 'post_service': return t('ledger.sourceModule.postService', { defaultValue: 'Post Service' })
     case 'car_rental': return t('ledger.sourceModule.carRental', { defaultValue: 'Car Rental' })
-    case 'travel_agency': return t('paymentAccounts.sourceModules.travelAgency', { defaultValue: 'Travel Agency' })
     case 'payment_accounts': return t('paymentAccounts.title', { defaultValue: 'Payment Accounts' })
     case 'payments': return transaction?.sourceType === 'payment_account_opening_balance'
       ? t('paymentAccounts.title', { defaultValue: 'Payment Accounts' })
@@ -211,7 +210,6 @@ function movementTypeLabel(transaction: PaymentTransaction | null, t: ReturnType
 
   switch (transaction.sourceType) {
     case 'pos_sale': return t('ledger.type.posSale', { defaultValue: 'POS Sale' })
-    case 'travel_agency_sale': return t('paymentAccounts.transactionTypes.travelSale', { defaultValue: 'Travel Sale' })
     case 'loan_origination': return transaction.direction === 'incoming'
       ? t('ledger.type.loanTaken', { defaultValue: 'Loan Taken' })
       : t('ledger.type.loanGiven', { defaultValue: 'Loan Given' })

@@ -90,12 +90,6 @@ export function WorkspaceWarmup() {
             )
         }
         if (hasFeature('ecommerce')) tasks.push(() => import('@/ui/pages/Ecommerce'))
-        if (hasFeature('travel_agency')) {
-            tasks.push(
-                () => import('@/ui/pages/TravelAgency'),
-                () => import('@/ui/pages/TravelAgencySaleForm'),
-            )
-        }
         if (hasFeature('real_estate')) tasks.push(() => import('@/ui/pages/RealEstate'))
         if (hasFeature('activities')) tasks.push(() => import('@/ui/pages/Activities'))
         if (hasFeature('currency_exchange')) tasks.push(() => import('@/ui/pages/CurrencyExchange'))

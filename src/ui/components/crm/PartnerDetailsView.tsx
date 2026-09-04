@@ -26,7 +26,6 @@ import { getLoanDetailsPath, getLoanDirection, getLoanDirectionLabel, isSimpleLo
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import type { CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
 
-import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import {
     courierSettlementBreakdownByParty,
     merchantSettlementBreakdownByParty
@@ -46,7 +45,6 @@ import {
     useSales,
     useSalesOrders,
     useSupplierPurchaseOrders,
-    useSupplierTravelAgencySales,
     useWorkspaceContacts,
     useWorkspaceUsers,
     type BusinessPartnerRole,
@@ -57,7 +55,6 @@ import {
     type PaymentTransaction,
     type Sale,
     type SalesOrder,
-    type TravelAgencySale,
     type LoanInstallment,
     db,
 } from '@/local-db'
@@ -122,7 +119,7 @@ type AgentCurrencyPerformance = CurrencyAmountItem & {
 }
 type RelatedTransaction = {
     id: string
-    source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment' | 'delivery_shipment' | 'delivery_settlement' | 'delivery_recipient_payout'
+    source: 'sales_order' | 'purchase_order' | 'loan' | 'simple_loan' | 'direct_transaction' | 'clinical_appointment' | 'delivery_shipment' | 'delivery_settlement' | 'delivery_recipient_payout'
     reference: string
     displayDate: string
     sortDate: string
@@ -206,8 +203,6 @@ function sourceLabel(source: ActivitySource, t: TranslationFn) {
             return t('orders.tabs.sales', { defaultValue: 'Sales Order' })
         case 'purchase_order':
             return t('orders.tabs.purchase', { defaultValue: 'Purchase Order' })
-        case 'travel_sale':
-            return t('travelAgency.title', { defaultValue: 'Travel Sale' })
         case 'simple_loan':
             return t('loans.simpleTab', { defaultValue: 'Loans' })
         case 'direct_transaction':
@@ -233,8 +228,6 @@ function sourceBadgeClass(source: ActivitySource) {
             return 'border-emerald-200 bg-emerald-500/10 text-emerald-700'
         case 'purchase_order':
             return 'border-sky-200 bg-sky-500/10 text-sky-700'
-        case 'travel_sale':
-            return 'border-violet-200 bg-violet-500/10 text-violet-700'
         case 'direct_transaction':
             return 'border-fuchsia-200 bg-fuchsia-500/10 text-fuchsia-700'
         case 'clinical_appointment':
@@ -302,25 +295,8 @@ function getEnrichedSaleItems(sale: Sale): Record<string, unknown>[] {
         : []
 }
 
-function getTravelSaleSummary(sale: TravelAgencySale) {
-    if (sale.travelPackages.length > 0) {
-        return sale.travelPackages.join(', ')
-    }
-
-    return sale.touristCount === 1 ? '1 traveller' : `${sale.touristCount} travellers`
-}
-
 function toPartnerCurrency(order: RelatedProductOrder, currency: SalesOrder['currency']) {
     return convertCurrencyAmountWithSnapshot(order.total, order.currency, currency, order.exchangeRates)
-}
-
-function toPartnerCurrencyFromTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']) {
-    return convertCurrencyAmountWithSnapshot(
-        getTravelSaleCost(sale),
-        sale.currency,
-        currency,
-        sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
-    )
 }
 
 function linkedOrderFinancingFields(loan: Loan | undefined, t: TranslationFn) {
@@ -396,33 +372,6 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
         isCompleted: order.status === 'received' || order.status === 'completed',
         isOutstanding: remainingAmount > 0 && (order.status === 'ordered' || order.status === 'received' || order.status === 'completed'),
         ...financingFields
-    }
-}
-
-function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']): RelatedTransaction {
-    const cost = getTravelSaleCost(sale)
-    return {
-        id: sale.id,
-        source: 'travel_sale',
-        reference: sale.saleNumber,
-        displayDate: sale.saleDate,
-        sortDate: sale.updatedAt || sale.saleDate || sale.createdAt,
-        activityDate: sale.paidAt || sale.updatedAt || sale.saleDate || sale.createdAt,
-        status: sale.status,
-        statusLabel: getTravelStatusLabel(sale.status),
-        isPaid: sale.isPaid,
-        summary: getTravelSaleSummary(sale),
-        total: cost,
-        originalAmount: cost,
-        paidAmount: sale.paidAmount,
-        remainingAmount: cost - sale.paidAmount,
-        currency: sale.currency,
-        totalInPartnerCurrency: toPartnerCurrencyFromTravelSale(sale, currency),
-        units: 0,
-        viewHref: `/travel-agency/${sale.id}/view`,
-        isActive: sale.status !== 'draft',
-        isCompleted: sale.status === 'completed',
-        isOutstanding: !sale.isPaid && sale.status === 'completed'
     }
 }
 
@@ -631,7 +580,6 @@ export function PartnerDetailsView({
         [commissionFeatureData?.assignments]
     )
     const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
-    const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
     const sales = useSales(workspaceId)
     const loans = useLoans(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId)
@@ -703,10 +651,6 @@ export function PartnerDetailsView({
     const dateFilteredClinicalAppointments = useMemo(
         () => filterByDate(partnerClinicalAppointments, (a) => a.appointmentDate || a.createdAt),
         [filterByDate, partnerClinicalAppointments]
-    )
-    const dateFilteredTravelSales = useMemo(
-        () => filterByDate(supplierTravelSales, (s) => s.updatedAt || s.saleDate || s.createdAt),
-        [filterByDate, supplierTravelSales]
     )
     const dateFilteredLoans = useMemo(() => filterByDate(partnerLoans), [filterByDate, partnerLoans])
     const agentLoanBalances = useMemo(() => {
@@ -1146,7 +1090,6 @@ export function PartnerDetailsView({
         () => [
             ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
             ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
-            ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
             ...standaloneDateFilteredLoans.map((loan) => normalizeLoan(
                 loan,
                 defaultCurrency,
@@ -1157,7 +1100,7 @@ export function PartnerDetailsView({
             ...merchantShipments,
             ...dateFilteredPayments.map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t))
         ],
-        [dateFilteredCustomerOrders, defaultCurrency, standaloneDateFilteredLoans, dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, merchantShipments, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t]
+        [dateFilteredCustomerOrders, defaultCurrency, standaloneDateFilteredLoans, dateFilteredSupplierOrders, dateFilteredPayments, merchantShipments, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t]
     )
     const sortedTransactions = useMemo(
         () => [...relatedTransactions].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
@@ -1222,7 +1165,6 @@ export function PartnerDetailsView({
     const providedByPartner = useMemo(() => {
         const rows: RelatedTransaction[] = [
             ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
-            ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
             ...dateFilteredClinicalAppointments.map((a) => normalizeClinicalAppointment(a, defaultCurrency, conversionRates, t)),
             ...merchantShipments,
             ...dateFilteredPayments
@@ -1245,7 +1187,7 @@ export function PartnerDetailsView({
             }
         }
         return rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
-    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredClinicalAppointments, dateFilteredPayments, merchantShipments, standaloneDateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t])
+    }, [dateFilteredSupplierOrders, dateFilteredClinicalAppointments, dateFilteredPayments, merchantShipments, standaloneDateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t])
     const directTransactionsVolume = useMemo(
         () => dateFilteredPayments.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
         [dateFilteredPayments, defaultCurrency, conversionRates]
@@ -1255,11 +1197,9 @@ export function PartnerDetailsView({
         (sum, o) => sum + convertCurrencyAmountWithSnapshot(o.total, o.currency, defaultCurrency, o.exchangeRates), 0
     ) + dateFilteredSupplierOrders.reduce(
         (sum, o) => sum + convertCurrencyAmountWithSnapshot(o.total, o.currency, defaultCurrency, o.exchangeRates), 0
-    ) + dateFilteredTravelSales.reduce(
-        (sum, s) => sum + convertCurrencyAmountWithSnapshot(getTravelSaleCost(s), s.currency, defaultCurrency, s.exchangeRateSnapshot ? [s.exchangeRateSnapshot] as any : undefined), 0
     ) + directTransactionsVolume
     const outstandingValue = (partner?.receivableBalance || 0) + (partner?.payableBalance || 0)
-    const averageOrderItemsCount = dateFilteredCustomerOrders.length + dateFilteredSupplierOrders.length + dateFilteredTravelSales.length + dateFilteredPayments.length
+    const averageOrderItemsCount = dateFilteredCustomerOrders.length + dateFilteredSupplierOrders.length + dateFilteredPayments.length
     const averageOrderValue = averageOrderItemsCount > 0
         ? totalValue / averageOrderItemsCount
         : 0

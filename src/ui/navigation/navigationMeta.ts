@@ -246,11 +246,6 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Review completed sales, returns, and sales records.",
     badge: "History",
   },
-  "/travel-agency": {
-    section: "sell-and-serve",
-    description: "Manage travel-related bookings and service sales.",
-    badge: "Service",
-  },
   "/car-rental": {
     section: "sell-and-serve",
     description: "Manage rental vehicles, availability, customer requests, and rental contracts.",

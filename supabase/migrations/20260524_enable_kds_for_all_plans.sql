@@ -87,7 +87,6 @@ BEGIN
 
   NEW.crm := public.workspace_plan_has_module(NEW.plan, 'customers');
   NEW.ecommerce := public.workspace_plan_has_module(NEW.plan, 'ecommerce');
-  NEW.travel_agency := false;
   NEW.real_estate := false;
   NEW.loans := public.workspace_plan_has_module(NEW.plan, 'loans');
   NEW.net_revenue := public.workspace_plan_has_module(NEW.plan, 'revenue_analytics');

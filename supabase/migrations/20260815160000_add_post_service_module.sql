@@ -30,7 +30,6 @@ AS $function$
     WHEN 'suppliers' THEN public.normalize_workspace_plan(p_plan) IN ('business', 'enterprise')
     WHEN 'orders' THEN public.normalize_workspace_plan(p_plan) IN ('business', 'enterprise')
     WHEN 'ecommerce' THEN public.normalize_workspace_plan(p_plan) IN ('business', 'enterprise')
-    WHEN 'travel_agency' THEN false
     WHEN 'real_estate' THEN false
     WHEN 'currency_exchange' THEN false
     WHEN 'clinical_appointments' THEN false

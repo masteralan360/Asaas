@@ -27,7 +27,6 @@ const crmTables = new Set([
     'sales_orders',
     'purchase_orders',
     'order_installments',
-    'travel_agency_sales'
 ])
 
 const realEstateTables = new Set([

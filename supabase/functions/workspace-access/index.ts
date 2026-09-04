@@ -250,7 +250,6 @@ type WorkspaceMetadataRow = {
 }
 
 type BranchSourceWorkspace = WorkspaceMetadataRow & {
-    travel_agency?: boolean | null
     is_configured?: boolean | null
     default_currency?: string | null
     iqd_display_preference?: string | null
@@ -275,7 +274,6 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'code',
     'plan',
     'data_mode',
-    'travel_agency',
     'is_configured',
     'default_currency',
     'iqd_display_preference',
@@ -949,7 +947,6 @@ async function handleCreateBranch(
         name: branchName,
         plan: sourcePlan.plan,
         data_mode: sourceWorkspace.data_mode ?? 'cloud',
-        travel_agency: sourceWorkspace.travel_agency ?? true,
         is_configured: true,
         default_currency: sourceWorkspace.default_currency ?? 'iqd',
         iqd_display_preference: sourceWorkspace.iqd_display_preference ?? 'IQD',

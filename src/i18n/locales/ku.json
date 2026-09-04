@@ -414,10 +414,6 @@
         "description": "پێداچوونەوەی فرۆشتنە تەواوبووەکان و کۆنترۆڵکردنی تۆمارەکان.",
         "badge": "مێژوو"
       },
-      "/travel-agency": {
-        "description": "بەڕێوەبردنی حیجزەکانی گەشتوگوزار و فرۆشتنی خزمەتگوزارییەکان.",
-        "badge": "خزمەتگوزاری"
-      },
       "/products": {
         "description": "بەڕێوەبردنی کەتالۆگی کاڵاکان و ڕێساکانی کۆگا و نرخەکان.",
         "badge": "کەتالۆگ"
@@ -2280,7 +2276,6 @@
         "realEstate": "خانووبەرە",
         "currencyExchange": "گۆڕینی دراو",
         "currencyExchangeFeeRules": "یاساکانی بەرهەم و نسبە",
-        "travelAgency": "دەستگای گەشتیاری",
         "clinicalAppointments": "بینینەکانی کلینیک",
         "clinicalPatients": "نەخۆشەکان",
         "installments": "قیستەکان",
@@ -2379,8 +2374,6 @@
       "currencyExchangeManagePricesDescription": "دەستکاریکردنی نرخی کڕین و فرۆشتنی دەستی بۆ جوتە دراوەکان.",
       "currencyExchangeReverse": "پێچەوانەکردنەوەی مامەڵەکان",
       "currencyExchangeReverseDescription": "ڕێگە دەدات بە پێچەوانەکردنەوەی مامەڵەکانی گۆڕین، گەڕاندنەوەی باڵانسی خزانەکان بۆ دۆخی پێشوو.",
-      "travelAgencyAccess": "دەستگای گەشتیاری",
-      "travelAgencyAccessDescription": "دەستگەیشتن بە حجزەکانی دەستگای گەشتیاری، فرۆشتن و پارەدان.",
       "clinicalAppointmentsAccess": "بینینەکانی کلینیک",
       "clinicalAppointmentsAccessDescription": "دەستگەیشتن بە بەشی بینینەکانی کلینیک.",
       "clinicalPatientsAccess": "نەخۆشەکان",
@@ -3352,7 +3345,6 @@
         "purchaseOrder": "داواکاری کڕین",
         "orderReport": "ڕاپۆرتی داواکاری",
         "ecommerce": "ئێ-کۆمەرس",
-        "travelAgency": "ئاژانسی گەشت",
         "realEstate": "خانووبەرە",
         "appointments": "چاوپێکەوتنەکان",
         "agents": "بریکارەکان",
@@ -8233,11 +8225,7 @@
     "currencyAndAmountDescription": "مەودای بەروار لە سەرەوە بەکاربهێنە، پاشان ئەم هەژمارە بەپێی دراو و بڕ پاڵێوە.",
     "applyMovementFilters": "جێبەجێکردنی فلتەرەکان ({{count}})",
     "unknownMovement": "جووڵەی تۆمارکراو",
-    "sourceModules": {
-      "travelAgency": "ئاژانسی گەشت"
-    },
     "transactionTypes": {
-      "travelSale": "فرۆشتنی گەشت",
       "orderReturn": "گەڕاندنەوەی داواکاری"
     },
     "movementStatusLabel": "دۆخ",

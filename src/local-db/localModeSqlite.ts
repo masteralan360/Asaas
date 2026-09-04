@@ -86,7 +86,6 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "sales_orders",
   "purchase_orders",
   "order_installments",
-  "travel_agency_sales",
   "real_estate_transactions",
   "real_estate_installments",
   "real_estate_payments",
@@ -262,6 +261,130 @@ async function ensureCurrentWorkspaceColumn(connection: SqliteConnection) {
   `);
 }
 
+async function purgeRetiredModuleEntities(connection: SqliteConnection) {
+  const rows = await connection.select<StoredEntityRow[]>(`
+    SELECT entity_type, entity_id, workspace_id, current_workspace, payload, updated_at
+    FROM local_entities
+    WHERE entity_type IN (
+      'workspaces',
+      'workspace_permissions',
+      'payment_transactions',
+      'payment_account_movements',
+      'payment_account_balances'
+    )
+  `);
+  const timestamp = new Date().toISOString();
+  const parsePayload = (row: StoredEntityRow) => {
+    try {
+      const parsed = JSON.parse(row.payload);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const updatePayload = async (row: StoredEntityRow, payload: Record<string, unknown>) => {
+    await connection.execute(
+      `
+        UPDATE local_entities
+        SET payload = $1, updated_at = $2
+        WHERE entity_type = $3 AND entity_id = $4
+      `,
+      [JSON.stringify(payload), timestamp, row.entity_type, row.entity_id],
+    );
+  };
+
+  const workspaceRows = rows.filter((row) => row.entity_type === 'workspaces');
+  for (const row of workspaceRows) {
+    const payload = parsePayload(row);
+    if (!payload || !('travel_agency' in payload)) continue;
+    const { travel_agency: _retiredModuleFlag, ...updatedPayload } = payload;
+    await updatePayload(row, updatedPayload);
+  }
+
+  const permissionRows = rows.filter((row) => row.entity_type === 'workspace_permissions');
+  for (const row of permissionRows) {
+    const payload = parsePayload(row);
+    if (!payload || (
+      payload.module !== 'travelAgency'
+      && (typeof payload.key !== 'string' || !payload.key.startsWith('travelAgency.'))
+    )) {
+      continue;
+    }
+    await connection.execute(
+      'DELETE FROM local_entities WHERE entity_type = $1 AND entity_id = $2',
+      [row.entity_type, row.entity_id],
+    );
+  }
+
+  const paymentRows = rows.filter((row) => row.entity_type === 'payment_transactions');
+  const retiredPaymentIds = new Set(
+    paymentRows.flatMap((row) => {
+      const payload = parsePayload(row);
+      return payload?.sourceModule === 'travel_agency'
+        || payload?.sourceType === 'travel_agency_sale'
+        || payload?.source_module === 'travel_agency'
+        || payload?.source_type === 'travel_agency_sale'
+        ? [row.entity_id]
+        : [];
+    }),
+  );
+
+  const movementRows = rows.filter((row) => row.entity_type === 'payment_account_movements');
+  const retiredMovements = movementRows.flatMap((row) => {
+    const payload = parsePayload(row);
+    return payload && typeof payload.paymentTransactionId === 'string' && retiredPaymentIds.has(payload.paymentTransactionId)
+      ? [{ row, payload }]
+      : [];
+  });
+  const balanceDeltas = new Map<string, number>();
+  for (const { payload } of retiredMovements) {
+    if (payload.isDeleted) continue;
+    if (typeof payload.workspaceId !== 'string' || typeof payload.accountId !== 'string' || typeof payload.currency !== 'string') {
+      continue;
+    }
+    const delta = Number(payload.deltaAmount);
+    if (!Number.isFinite(delta)) continue;
+    const key = `${payload.workspaceId}:${payload.accountId}:${payload.currency}`;
+    balanceDeltas.set(key, (balanceDeltas.get(key) ?? 0) + delta);
+  }
+
+  const balanceRows = rows.filter((row) => row.entity_type === 'payment_account_balances');
+  for (const row of balanceRows) {
+    const payload = parsePayload(row);
+    if (!payload || typeof payload.workspaceId !== 'string' || typeof payload.accountId !== 'string' || typeof payload.currency !== 'string') {
+      continue;
+    }
+    const delta = balanceDeltas.get(`${payload.workspaceId}:${payload.accountId}:${payload.currency}`);
+    if (!delta) continue;
+    const amount = Number(payload.balanceAmount);
+    await updatePayload(row, {
+      ...payload,
+      balanceAmount: (Number.isFinite(amount) ? amount : 0) - delta,
+      updatedAt: timestamp,
+      version: (Number(payload.version) || 0) + 1,
+    });
+  }
+
+  for (const { row } of retiredMovements) {
+    await connection.execute(
+      'DELETE FROM local_entities WHERE entity_type = $1 AND entity_id = $2',
+      [row.entity_type, row.entity_id],
+    );
+  }
+  for (const paymentId of retiredPaymentIds) {
+    await connection.execute(
+      'DELETE FROM local_entities WHERE entity_type = $1 AND entity_id = $2',
+      ['payment_transactions', paymentId],
+    );
+  }
+  await connection.execute(
+    'DELETE FROM local_entities WHERE entity_type = $1',
+    ['travel_agency_sales'],
+  );
+}
+
 async function ensureCashierShiftActiveClaimsTable(
   connection: SqliteConnection,
 ) {
@@ -435,6 +558,7 @@ async function ensureConnection() {
       }
 
       await ensureCashierShiftActiveClaimsTable(connection);
+      await purgeRetiredModuleEntities(connection);
       return connection;
     })().catch((error) => {
       sqlitePromise = null;

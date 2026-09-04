@@ -11,7 +11,6 @@ import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintField
 export type PartnerDetailsPrintTransactionSource =
     | 'sales_order'
     | 'purchase_order'
-    | 'travel_sale'
     | 'loan'
     | 'simple_loan'
     | 'direct_transaction'
@@ -189,8 +188,6 @@ function resolveSourceLabel(
             return t('orders.tabs.sales', { defaultValue: 'Sales Order' })
         case 'purchase_order':
             return t('orders.tabs.purchase', { defaultValue: 'Purchase Order' })
-        case 'travel_sale':
-            return t('travelAgency.title', { defaultValue: 'Travel Sale' })
         case 'simple_loan':
             return t('loans.simpleTab', { defaultValue: 'Loans' })
         case 'direct_transaction':

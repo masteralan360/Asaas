@@ -48,11 +48,9 @@ import {
     upsertDividendStatus,
     useSales,
     useSalesOrders,
-    useTravelAgencySales,
     useExchangeTransactions,
     usePaymentTransactions,
     toUISale,
-    toUISaleFromTravelAgency,
     toUISaleFromExchangeTransaction,
     toUISaleFromRealEstateCommissionTransaction,
     type PaymentAccount
@@ -515,7 +513,6 @@ export function Budget() {
     const dividendStatuses = useDividendStatuses(workspaceId)
     const rawSales = useSales(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
-    const rawTravelSales = useTravelAgencySales(workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(workspaceId, {
         direction: 'incoming',
@@ -533,15 +530,9 @@ export function Budget() {
             .map(toUISaleFromRealEstateCommissionTransaction)
         return [...baseSales, ...exchangeSales, ...realEstateCommissionSales]
     }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions])
-    const travelSales = useMemo(
-        () => (rawTravelSales || [])
-            .filter(sale => sale.isPaid && !sale.isDeleted)
-            .map(toUISaleFromTravelAgency),
-        [rawTravelSales]
-    )
     const revenueRecords = useMemo(
-        () => buildRevenueAnalysisRecords(sales, salesOrders, travelSales),
-        [sales, salesOrders, travelSales]
+        () => buildRevenueAnalysisRecords(sales, salesOrders),
+        [sales, salesOrders]
     )
 
     const rates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])

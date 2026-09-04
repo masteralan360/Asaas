@@ -14,7 +14,7 @@ import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type CurrencyCode, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type CurrencyCode, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -159,9 +159,6 @@ function getExternalSaleDetailsPath(sale: Sale) {
     if (sale.origin === 'sales_order') {
         return `/orders/${sale.id}`
     }
-    if (sale.origin === 'travel_agency') {
-        return `/travel-agency/${sale.id}/view`
-    }
     if (sale.origin === 'exchange') {
         return '/currency-exchange'
     }
@@ -290,7 +287,6 @@ export function Sales() {
     const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
-    const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const deliveryShipments = useDeliveryShipments(user?.workspaceId)
     const deliveryMerchantProfiles = useDeliveryMerchantProfiles(user?.workspaceId)
     const deliveryBusinessPartners = useBusinessPartners(user?.workspaceId)
@@ -343,9 +339,6 @@ export function Sales() {
         const orders = applySalesOrderReturnQuantities(rawOrders || [], salesOrderReturnItems)
             .filter(order => !order.isDeleted && order.status === 'completed')
             .map(toUISaleFromOrder)
-        const travelSales = (rawTravelSales || [])
-            .filter(sale => !sale.isDeleted && sale.isPaid)
-            .map(toUISaleFromTravelAgency)
         const exchangeSales = (rawExchangeTransactions || [])
             .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
             .map(toUISaleFromExchangeTransaction)
@@ -387,10 +380,10 @@ export function Sales() {
                 serviceName: t('carRental.reporting.serviceName'),
                 serviceCategory: t('carRental.reporting.serviceCategory'),
             }))
-        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
-    }, [rawSales, rawOrders, salesOrderReturnItems, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
+        return [...sales, ...orders, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
+    }, [rawSales, rawOrders, salesOrderReturnItems, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
 
-    const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
+    const isLoading = rawSales === undefined || rawOrders === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
     const prevDateBoundsRef = useRef(dateBounds)
 
@@ -735,11 +728,6 @@ export function Sales() {
     const getEffectiveTotal = (sale: Sale) => {
         // If the sale itself is marked returned
         if (sale.is_returned) return 0
-
-        // For travel agency sales, we use the total_amount directly as it's pre-calculated from group_revenue or sum of tourists
-        if (sale.origin === 'travel_agency') {
-            return sale.total_amount
-        }
 
         // If items are present, calculate sum of remaining (non-returned) value
         if (sale.items && sale.items.length > 0) {

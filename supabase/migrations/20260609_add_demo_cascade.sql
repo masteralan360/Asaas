@@ -31,7 +31,6 @@ DECLARE
     'public.category_discounts',
     'crm.sales_orders',
     'crm.purchase_orders',
-    'crm.travel_agency_sales',
     'crm.business_partner_merge_candidates',
     'crm.customers',
     'crm.suppliers',

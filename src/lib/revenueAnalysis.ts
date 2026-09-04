@@ -20,7 +20,7 @@ export interface RevenueAnalysisItem {
 export interface RevenueAnalysisRecord {
     key: string
     id: string
-    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental'
+    source: 'sale' | 'sales_order' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental'
     sourceRecordId?: string | null
     referenceCode: string
     date: string
@@ -67,7 +67,6 @@ function getOrderRevenueDate(order: SalesOrder) {
 }
 
 function getSaleRevenueSource(sale: Sale) {
-    if (sale.origin === 'travel_agency') return 'travel_agency'
     if (sale.origin === 'exchange') return 'exchange'
     if (sale.origin === 'real_estate') return 'real_estate'
     if (sale.origin === 'activities') return 'activities'
@@ -216,15 +215,13 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder, options: Revenu
 export function buildRevenueAnalysisRecords(
     sales: Sale[],
     salesOrders: SalesOrder[],
-    travelAgencySales: Sale[] = [],
     options: RevenueCategoryLookup = {}
 ): RevenueAnalysisRecord[] {
     return [
         ...sales.map((sale) => toRevenueRecordFromSale(sale, options)),
         ...salesOrders
             .filter((order) => !order.isDeleted && order.status === 'completed')
-            .map((order) => toRevenueRecordFromSalesOrder(order, options)),
-        ...travelAgencySales.map((sale) => toRevenueRecordFromSale(sale, options))
+            .map((order) => toRevenueRecordFromSalesOrder(order, options))
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 

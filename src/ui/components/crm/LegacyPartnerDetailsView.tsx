@@ -5,17 +5,14 @@ import { Link, useLocation } from 'wouter'
 
 import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
-import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     useCustomer,
     useCustomerSalesOrders,
     useSupplier,
     useSupplierPurchaseOrders,
-    useSupplierTravelAgencySales,
     type PurchaseOrder,
-    type SalesOrder,
-    type TravelAgencySale
+    type SalesOrder
 } from '@/local-db'
 import {
     Button,
@@ -70,25 +67,8 @@ function getOrderSummary(items: Array<{ productName: string }>) {
     return `${firstItems.join(', ')} +${items.length - 2}`
 }
 
-function getTravelSaleSummary(sale: TravelAgencySale) {
-    if (sale.travelPackages.length > 0) {
-        return sale.travelPackages.join(', ')
-    }
-
-    return sale.touristCount === 1 ? '1 traveller' : `${sale.touristCount} travellers`
-}
-
 function toPartnerCurrency(order: RelatedProductOrder, currency: SalesOrder['currency']) {
     return convertCurrencyAmountWithSnapshot(order.total, order.currency, currency, order.exchangeRates)
-}
-
-function toPartnerCurrencyFromTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']) {
-    return convertCurrencyAmountWithSnapshot(
-        getTravelSaleCost(sale),
-        sale.currency,
-        currency,
-        sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
-    )
 }
 
 function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
@@ -135,28 +115,6 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
     }
 }
 
-function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']): RelatedTransaction {
-    return {
-        id: sale.id,
-        reference: sale.saleNumber,
-        displayDate: sale.saleDate,
-        sortDate: sale.updatedAt || sale.saleDate || sale.createdAt,
-        activityDate: sale.paidAt || sale.updatedAt || sale.saleDate || sale.createdAt,
-        status: sale.status,
-        statusLabel: getTravelStatusLabel(sale.status),
-        isPaid: sale.isPaid,
-        summary: getTravelSaleSummary(sale),
-        total: getTravelSaleCost(sale),
-        currency: sale.currency,
-        totalInPartnerCurrency: toPartnerCurrencyFromTravelSale(sale, currency),
-        units: 0,
-        viewHref: `/travel-agency/${sale.id}/view`,
-        isActive: sale.status !== 'draft',
-        isCompleted: sale.status === 'completed',
-        isOutstanding: !sale.isPaid && sale.status === 'completed'
-    }
-}
-
 function paymentBadgeClass(isPaid: boolean) {
     return isPaid
         ? 'border-emerald-200 bg-emerald-500/10 text-emerald-700'
@@ -179,7 +137,6 @@ export function LegacyPartnerDetailsView({
     const supplier = useSupplier(kind === 'supplier' ? partnerId : undefined)
     const customerOrders = useCustomerSalesOrders(kind === 'customer' ? partnerId : undefined, kind === 'customer' ? workspaceId : undefined)
     const supplierOrders = useSupplierPurchaseOrders(kind === 'supplier' ? partnerId : undefined, kind === 'supplier' ? workspaceId : undefined)
-    const supplierTravelSales = useSupplierTravelAgencySales(kind === 'supplier' ? partnerId : undefined, kind === 'supplier' ? workspaceId : undefined)
     const partner = kind === 'customer' ? customer : supplier
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => readViewMode(kind))
 
@@ -237,11 +194,10 @@ export function LegacyPartnerDetailsView({
             isCustomer
                 ? customerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t))
                 : [
-                    ...supplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
-                    ...supplierTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency))
+                    ...supplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t))
                 ]
         ),
-        [customerOrders, defaultCurrency, isCustomer, supplierOrders, supplierTravelSales, t]
+        [customerOrders, defaultCurrency, isCustomer, supplierOrders, t]
     )
     const activeTransactions = useMemo(
         () => relatedTransactions.filter((transaction) => transaction.isActive),

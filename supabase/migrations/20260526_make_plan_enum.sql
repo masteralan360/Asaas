@@ -50,7 +50,6 @@ BEGIN
   NEW.instant_pos := COALESCE(NEW.instant_pos, true);
   NEW.members := true;
 
-  NEW.travel_agency := false;
   NEW.real_estate := false;
 
   IF NOT public.workspace_plan_allows_currency(NEW.plan::text, NEW.default_currency::text) THEN

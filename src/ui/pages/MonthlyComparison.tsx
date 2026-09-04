@@ -41,12 +41,10 @@ import { convertToStoreBase as convertToStoreBaseUtil } from '@/lib/currency'
 import {
     useSales,
     useSalesOrders,
-    useTravelAgencySales,
     useExchangeTransactions,
     usePaymentTransactions,
     toUISale,
     toUISaleFromOrder,
-    toUISaleFromTravelAgency,
     toUISaleFromExchangeTransaction,
     toUISaleFromRealEstateCommissionTransaction,
     useBudgetAllocations,
@@ -1654,7 +1652,6 @@ export function MonthlyComparison() {
 
     const rawSales = useSales(workspaceId)
     const rawOrders = useSalesOrders(workspaceId)
-    const rawTravelSales = useTravelAgencySales(workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(workspaceId)
     const realEstateCommissionTransactions = usePaymentTransactions(workspaceId, {
         direction: 'incoming',
@@ -1679,17 +1676,14 @@ export function MonthlyComparison() {
         const orderSales = (rawOrders || [])
             .filter(order => !order.isDeleted && order.status === 'completed')
             .map(toUISaleFromOrder)
-        const travelSales = (rawTravelSales || [])
-            .filter(sale => sale.isPaid && !sale.isDeleted)
-            .map(toUISaleFromTravelAgency)
         const exchangeSales = (rawExchangeTransactions || [])
             .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
             .map(toUISaleFromExchangeTransaction)
         const realEstateCommissionSales = (realEstateCommissionTransactions || [])
             .filter(transaction => transaction.amount > 0)
             .map(toUISaleFromRealEstateCommissionTransaction)
-        return [...baseSales, ...orderSales, ...travelSales, ...exchangeSales, ...realEstateCommissionSales]
-    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions])
+        return [...baseSales, ...orderSales, ...exchangeSales, ...realEstateCommissionSales]
+    }, [rawSales, rawOrders, rawExchangeTransactions, realEstateCommissionTransactions])
 
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),

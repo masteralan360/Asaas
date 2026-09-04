@@ -291,24 +291,6 @@ const Orders = lazy(() =>
 const Ecommerce = lazy(() =>
   import("@/ui/pages/Ecommerce").then((m) => ({ default: m.Ecommerce })),
 );
-const TravelAgency = lazy(() =>
-  import("@/ui/pages/TravelAgency").then((m) => ({ default: m.TravelAgency })),
-);
-const TravelAgencySaleCreate = lazy(() =>
-  import("@/ui/pages/TravelAgencySaleForm").then((m) => ({
-    default: m.TravelAgencySaleCreate,
-  })),
-);
-const TravelAgencySaleEdit = lazy(() =>
-  import("@/ui/pages/TravelAgencySaleForm").then((m) => ({
-    default: m.TravelAgencySaleEdit,
-  })),
-);
-const TravelAgencySaleView = lazy(() =>
-  import("@/ui/pages/TravelAgencySaleForm").then((m) => ({
-    default: m.TravelAgencySaleView,
-  })),
-);
 const RealEstate = lazy(() =>
   import("@/ui/pages/RealEstate").then((m) => ({ default: m.RealEstate })),
 );
@@ -1831,50 +1813,6 @@ function App() {
                         >
                           <Layout>
                             <Ecommerce />
-                          </Layout>
-                        </ProtectedRoute>
-                      </Route>
-                      <Route path="/travel-agency">
-                        <ProtectedRoute
-                          allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="travel_agency"
-                          requiredPermission="travelAgency.access"
-                        >
-                          <Layout>
-                            <TravelAgency />
-                          </Layout>
-                        </ProtectedRoute>
-                      </Route>
-                      <Route path="/travel-agency/new">
-                        <ProtectedRoute
-                          allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="travel_agency"
-                          requiredPermission="travelAgency.access"
-                        >
-                          <Layout>
-                            <TravelAgencySaleCreate />
-                          </Layout>
-                        </ProtectedRoute>
-                      </Route>
-                      <Route path="/travel-agency/:saleId/view">
-                        <ProtectedRoute
-                          allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="travel_agency"
-                          requiredPermission="travelAgency.access"
-                        >
-                          <Layout>
-                            <TravelAgencySaleView />
-                          </Layout>
-                        </ProtectedRoute>
-                      </Route>
-                      <Route path="/travel-agency/:saleId">
-                        <ProtectedRoute
-                          allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="travel_agency"
-                          requiredPermission="travelAgency.access"
-                        >
-                          <Layout>
-                            <TravelAgencySaleEdit />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

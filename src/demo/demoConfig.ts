@@ -133,7 +133,6 @@ export const ENTERPRISE_MODULES: PlanModuleKey[] = [
   'suppliers',
   'orders',
   'ecommerce',
-  'travel_agency',
   'real_estate',
   'currency_exchange',
   'clinical_appointments',

@@ -6,7 +6,6 @@ ALTER TABLE public.workspaces
   ADD COLUMN IF NOT EXISTS instant_pos boolean DEFAULT true,
   ADD COLUMN IF NOT EXISTS sales_history boolean DEFAULT true,
   ADD COLUMN IF NOT EXISTS crm boolean DEFAULT false,
-  ADD COLUMN IF NOT EXISTS travel_agency boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS loans boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS net_revenue boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS budget boolean DEFAULT false,
@@ -263,7 +262,6 @@ BEGIN
 
   NEW.crm := public.workspace_plan_has_module(NEW.plan, 'customers');
   NEW.ecommerce := public.workspace_plan_has_module(NEW.plan, 'ecommerce');
-  NEW.travel_agency := false;
   NEW.real_estate := false;
   NEW.loans := public.workspace_plan_has_module(NEW.plan, 'loans');
   NEW.net_revenue := public.workspace_plan_has_module(NEW.plan, 'revenue_analytics');

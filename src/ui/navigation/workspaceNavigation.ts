@@ -24,7 +24,6 @@ import {
   PackageCheck,
   Pen,
   Percent,
-  Plane,
   Receipt,
   Settings,
   Store,
@@ -252,15 +251,6 @@ export function buildWorkspaceNavigation({
           name: t("nav.ecommerce", { defaultValue: "E-Commerce" }),
           href: "/ecommerce",
           icon: Store,
-        },
-      ]
-      : []),
-    ...(isCoreRole && hasFeature("travel_agency") && canAccessPermission("travelAgency.access")
-      ? [
-        {
-          name: t("nav.travelAgency", { defaultValue: "Travel Agency" }),
-          href: "/travel-agency",
-          icon: Plane,
         },
       ]
       : []),

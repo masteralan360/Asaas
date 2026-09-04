@@ -88,7 +88,6 @@ import type {
   SalesOrder,
   PurchaseOrder,
   OrderInstallment,
-  TravelAgencySale,
   RealEstateTransaction,
   RealEstateInstallment,
   RealEstatePayment,
@@ -468,7 +467,6 @@ export class AtlasDatabase extends Dexie {
   sales_orders!: EntityTable<SalesOrder, 'id'>
   purchase_orders!: EntityTable<PurchaseOrder, 'id'>
   order_installments!: EntityTable<OrderInstallment, 'id'>
-  travel_agency_sales!: EntityTable<TravelAgencySale, 'id'>
   real_estate_transactions!: EntityTable<RealEstateTransaction, 'id'>
   real_estate_installments!: EntityTable<RealEstateInstallment, 'id'>
   real_estate_payments!: EntityTable<RealEstatePayment, 'id'>
@@ -850,8 +848,6 @@ export class AtlasDatabase extends Dexie {
         'id, orderNumber, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
       purchase_orders:
         'id, orderNumber, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
-      travel_agency_sales:
-        'id, saleNumber, workspaceId, saleDate, supplierId, isPaid, updatedAt, isDeleted, syncStatus, [workspaceId+saleDate], [workspaceId+isPaid]',
       app_settings: 'key'
     })
 
@@ -900,8 +896,6 @@ export class AtlasDatabase extends Dexie {
           'id, orderNumber, businessPartnerId, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
         purchase_orders:
           'id, orderNumber, businessPartnerId, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
-        travel_agency_sales:
-          'id, saleNumber, workspaceId, saleDate, businessPartnerId, supplierId, isPaid, updatedAt, isDeleted, syncStatus, [workspaceId+saleDate], [workspaceId+isPaid]',
         app_settings: 'key'
       })
       .upgrade(async (tx) => {
@@ -1011,19 +1005,6 @@ export class AtlasDatabase extends Dexie {
         }
         if (purchaseOrders.length > 0) {
           await tx.table('purchase_orders').bulkPut(purchaseOrders)
-        }
-
-        const travelSales = await tx
-          .table('travel_agency_sales')
-          .toArray()
-          .catch(() => [])
-        for (const sale of travelSales as Array<Record<string, unknown>>) {
-          if (!sale.businessPartnerId && typeof sale.supplierId === 'string') {
-            sale.businessPartnerId = supplierPartnerIdByFacetId.get(sale.supplierId) || null
-          }
-        }
-        if (travelSales.length > 0) {
-          await tx.table('travel_agency_sales').bulkPut(travelSales)
         }
 
         const loans = await tx.table('loans').toArray()
@@ -1152,8 +1133,6 @@ export class AtlasDatabase extends Dexie {
           'id, orderNumber, businessPartnerId, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
         purchase_orders:
           'id, orderNumber, businessPartnerId, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
-        travel_agency_sales:
-          'id, saleNumber, workspaceId, saleDate, businessPartnerId, supplierId, isPaid, updatedAt, isDeleted, syncStatus, [workspaceId+saleDate], [workspaceId+isPaid]',
         app_settings: 'key'
       })
       .upgrade(async (tx) => {
@@ -1221,8 +1200,6 @@ export class AtlasDatabase extends Dexie {
           'id, orderNumber, businessPartnerId, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
         purchase_orders:
           'id, orderNumber, businessPartnerId, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
-        travel_agency_sales:
-          'id, saleNumber, workspaceId, saleDate, businessPartnerId, supplierId, isPaid, updatedAt, isDeleted, syncStatus, [workspaceId+saleDate], [workspaceId+isPaid]',
         app_settings: 'key'
       })
       .upgrade(async (tx) => {
@@ -3193,6 +3170,115 @@ export class AtlasDatabase extends Dexie {
       module_locker_audit: 'id, workspaceId, action, occurredAt, [workspaceId+occurredAt]'
     })
 
+    this.version(114)
+      .stores({
+        travel_agency_sales: null
+      })
+      .upgrade(async (tx) => {
+        const paymentTransactions = (await tx.table('payment_transactions').toArray()) as PaymentTransaction[]
+        const retiredPayments = paymentTransactions.filter((payment) =>
+          (payment.sourceModule as string) === 'travel_agency'
+          || (payment.sourceType as string) === 'travel_agency_sale'
+        )
+        const retiredPaymentIds = new Set(retiredPayments.map((payment) => payment.id))
+
+        const workspaces = (await tx.table('workspaces').toArray()) as Array<Record<string, unknown>>
+        const workspacesToUpdate = workspaces.flatMap((workspace) => {
+          if (!('travel_agency' in workspace)) return []
+          const { travel_agency: _retiredModuleFlag, ...updatedWorkspace } = workspace
+          return [updatedWorkspace]
+        })
+        const workspacePermissions = (await tx.table('workspace_permissions').toArray()) as WorkspacePermission[]
+        const retiredPermissions = workspacePermissions.filter((permission) =>
+          permission.module === 'travelAgency' || permission.key.startsWith('travelAgency.')
+        )
+        const retiredPermissionIds = new Set(retiredPermissions.map((permission) => permission.id))
+
+        const offlineMutations = (await tx.table('offline_mutations').toArray()) as Array<Record<string, unknown>>
+        const syncQueue = (await tx.table('syncQueue').toArray()) as Array<Record<string, unknown>>
+
+        const isRetiredPayload = (payload: unknown) => {
+          if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
+          const value = payload as Record<string, unknown>
+          return value.sourceModule === 'travel_agency'
+            || value.source_module === 'travel_agency'
+            || value.sourceType === 'travel_agency_sale'
+            || value.source_type === 'travel_agency_sale'
+        }
+        const isRetiredQueueRow = (row: Record<string, unknown>, field: 'payload' | 'data') =>
+          row.entityType === 'travel_agency_sales'
+          || (row.entityType === 'payment_transactions' && isRetiredPayload(row[field]))
+        const stripRetiredWorkspaceFlag = (row: Record<string, unknown>, field: 'payload' | 'data') => {
+          if (row.entityType !== 'workspaces') return null
+          const value = row[field]
+          if (!value || typeof value !== 'object' || Array.isArray(value) || !('travel_agency' in value)) return null
+          const { travel_agency: _retiredModuleFlag, ...updatedPayload } = value as Record<string, unknown>
+          return { ...row, [field]: updatedPayload }
+        }
+
+        const paymentAccountMovements = (await tx.table('payment_account_movements').toArray()) as PaymentAccountMovement[]
+        const retiredMovements = paymentAccountMovements.filter((movement) =>
+          retiredPaymentIds.has(movement.paymentTransactionId)
+        )
+        const balanceDeltas = new Map<string, number>()
+        for (const movement of retiredMovements) {
+          if (movement.isDeleted) continue
+          const key = `${movement.workspaceId}:${movement.accountId}:${movement.currency}`
+          balanceDeltas.set(key, (balanceDeltas.get(key) ?? 0) + movement.deltaAmount)
+        }
+
+        const paymentAccountBalances = (await tx.table('payment_account_balances').toArray()) as PaymentAccountBalance[]
+        const balancesToUpdate = paymentAccountBalances.flatMap((balance) => {
+          const key = `${balance.workspaceId}:${balance.accountId}:${balance.currency}`
+          const delta = balanceDeltas.get(key)
+          if (!delta) return []
+          return [{
+            ...balance,
+            balanceAmount: balance.balanceAmount - delta,
+            updatedAt: new Date().toISOString(),
+            version: balance.version + 1
+          }]
+        })
+
+        if (workspacesToUpdate.length) await tx.table('workspaces').bulkPut(workspacesToUpdate)
+        if (retiredPermissions.length) await tx.table('workspace_permissions').bulkDelete(retiredPermissions.map((permission) => permission.id))
+        if (balancesToUpdate.length) {
+          await tx.table('payment_account_balances').bulkPut(balancesToUpdate)
+        }
+        if (retiredMovements.length) {
+          await tx.table('payment_account_movements').bulkDelete(retiredMovements.map((movement) => movement.id))
+        }
+        if (retiredPayments.length) {
+          await tx.table('payment_transactions').bulkDelete(retiredPayments.map((payment) => payment.id))
+        }
+
+        const retiredMovementIds = new Set(retiredMovements.map((movement) => movement.id))
+        const retiredBalanceIds = new Set(balancesToUpdate.map((balance) => balance.id))
+        const removeOfflineMutationIds = offlineMutations
+          .filter((row) => isRetiredQueueRow(row, 'payload')
+            || (row.entityType === 'workspace_permissions' && retiredPermissionIds.has(String(row.entityId)))
+            || (row.entityType === 'payment_account_movements' && retiredMovementIds.has(String(row.entityId)))
+            || (row.entityType === 'payment_account_balances' && retiredBalanceIds.has(String(row.entityId))))
+          .map((row) => String(row.id))
+        const removeSyncQueueIds = syncQueue
+          .filter((row) => isRetiredQueueRow(row, 'data')
+            || (row.entityType === 'workspace_permissions' && retiredPermissionIds.has(String(row.entityId)))
+            || (row.entityType === 'payment_account_movements' && retiredMovementIds.has(String(row.entityId)))
+            || (row.entityType === 'payment_account_balances' && retiredBalanceIds.has(String(row.entityId))))
+          .map((row) => String(row.id))
+        const offlineMutationsToUpdate = offlineMutations
+          .map((row) => stripRetiredWorkspaceFlag(row, 'payload'))
+          .filter((row): row is Record<string, unknown> => row !== null)
+        const syncQueueToUpdate = syncQueue
+          .map((row) => stripRetiredWorkspaceFlag(row, 'data'))
+          .filter((row): row is Record<string, unknown> => row !== null)
+
+        if (removeOfflineMutationIds.length) await tx.table('offline_mutations').bulkDelete(removeOfflineMutationIds)
+        if (removeSyncQueueIds.length) await tx.table('syncQueue').bulkDelete(removeSyncQueueIds)
+        if (offlineMutationsToUpdate.length) await tx.table('offline_mutations').bulkPut(offlineMutationsToUpdate)
+        if (syncQueueToUpdate.length) await tx.table('syncQueue').bulkPut(syncQueueToUpdate)
+      })
+
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()
   }
@@ -3358,7 +3444,6 @@ export class AtlasDatabase extends Dexie {
       'sales_orders',
       'purchase_orders',
       'order_installments',
-      'travel_agency_sales',
       'real_estate_transactions',
       'real_estate_installments',
       'real_estate_payments',
@@ -3501,7 +3586,6 @@ export async function clearDatabase(): Promise<void> {
       db.categories,
       db.invoices,
       db.invoice_versions,
-      db.travel_agency_sales,
       db.real_estate_transactions,
       db.real_estate_installments,
       db.real_estate_payments,
@@ -3570,7 +3654,6 @@ export async function clearDatabase(): Promise<void> {
       await db.categories.clear()
       await db.invoices.clear()
       await db.invoice_versions.clear()
-      await db.travel_agency_sales.clear()
       await db.real_estate_transactions.clear()
       await db.real_estate_installments.clear()
       await db.real_estate_payments.clear()

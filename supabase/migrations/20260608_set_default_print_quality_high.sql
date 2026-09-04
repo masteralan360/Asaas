@@ -49,7 +49,6 @@ BEGIN
   NEW.instant_pos := COALESCE(NEW.instant_pos, true);
 
   IF TG_OP = 'INSERT' OR NEW.plan::text IS DISTINCT FROM OLD.plan::text THEN
-    NEW.travel_agency := public.workspace_module_allowed(NEW.id, NEW.plan::text, 'travel_agency');
     NEW.real_estate := public.workspace_module_allowed(NEW.id, NEW.plan::text, 'real_estate');
     NEW.allow_whatsapp := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'whatsappIntegration');
     NEW.upload_limit_mb := CASE

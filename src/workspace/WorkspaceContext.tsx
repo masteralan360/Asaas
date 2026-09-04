@@ -71,7 +71,6 @@ export interface WorkspaceFeatures {
     post_service: boolean
     car_rental: boolean
     ecommerce: boolean
-    travel_agency: boolean
     real_estate: boolean
     activities: boolean
     currency_exchange: boolean
@@ -176,7 +175,6 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'post_service',
     'car_rental',
     'ecommerce',
-    'travel_agency',
     'real_estate',
     'activities',
     'currency_exchange',
@@ -252,7 +250,6 @@ const defaultFeatures: WorkspaceFeatures = {
     coordination: null,
     max_discount_percent: 100,
     allow_whatsapp: false,
-    travel_agency: false,
     real_estate: false,
     activities: false,
     currency_exchange: false,
@@ -280,7 +277,6 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'name',
     'plan',
     'data_mode',
-    'travel_agency',
     'real_estate',
     'is_configured',
     'default_currency',
@@ -375,7 +371,6 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
     return mergeWorkspaceFeatures({
         plan: normalizeWorkspacePlan(localWorkspace.plan),
         data_mode: localWorkspace.data_mode ?? 'cloud',
-        travel_agency: localWorkspace.travel_agency ?? true,
         real_estate: localWorkspace.real_estate ?? true,
         activities: localWorkspace.activities ?? false,
         currency_exchange: localWorkspace.currency_exchange ?? false,
@@ -545,7 +540,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             crm: nextFeatures.crm,
             orders: nextFeatures.orders,
             ecommerce: nextFeatures.ecommerce,
-            travel_agency: nextFeatures.travel_agency,
             real_estate: nextFeatures.real_estate,
             activities: nextFeatures.activities,
             currency_exchange: nextFeatures.currency_exchange,
@@ -760,7 +754,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const fetchedFeatures = mergeWorkspaceFeatures({
                 plan: normalizeWorkspacePlan(workspaceRow.plan),
                 data_mode: workspaceRow.data_mode ?? currentFeatures.data_mode,
-                travel_agency: workspaceRow.travel_agency ?? currentFeatures.travel_agency,
                 real_estate: workspaceRow.real_estate ?? currentFeatures.real_estate,
                 activities: currentFeatures.activities,
                 currency_exchange: currentFeatures.currency_exchange,
@@ -995,7 +988,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             ...currentFeatures,
                             plan: normalizeWorkspacePlan(data.plan ?? currentFeatures.plan),
                             data_mode: data.data_mode ?? currentFeatures.data_mode,
-                            travel_agency: data.travel_agency ?? currentFeatures.travel_agency,
                             real_estate: data.real_estate ?? currentFeatures.real_estate,
                             currency_exchange: currentFeatures.currency_exchange,
                             agents: currentFeatures.agents,
@@ -1169,9 +1161,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 && features.data_mode !== 'demo'
                 && planCapabilities.modules.includes('ecommerce')
         }
-        if (feature === 'travel_agency') {
-            return features[feature]
-        }
         if (feature === 'allow_whatsapp') {
             return features.allow_whatsapp
                 && planCapabilities.capabilities.includes('whatsappIntegration')
@@ -1330,7 +1319,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 crm: newFeatures.crm,
                 orders: newFeatures.orders,
                 ecommerce: newFeatures.ecommerce,
-                travel_agency: newFeatures.travel_agency,
                 real_estate: newFeatures.real_estate,
                 currency_exchange: newFeatures.currency_exchange,
                 agents: newFeatures.agents,

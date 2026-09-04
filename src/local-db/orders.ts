@@ -3,7 +3,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { v5 as uuidv5 } from 'uuid'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { getTravelSaleCost } from '@/lib/travelAgency'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { createOrderAdjustment, normalizeOrderAdjustments, type OrderAdjustmentDraft } from '@/lib/orderAdjustments'
@@ -77,8 +76,7 @@ import type {
     SalesOrderStatus,
     StockBatch,
     StockBatchAllocation,
-    Supplier,
-    TravelAgencySale
+    Supplier
 } from './models'
 import { appendPaymentTransaction, synchronizeOrderPaymentReferences } from './payments'
 import { mirrorPaymentAccountTransactionLocally } from './paymentAccounts'
@@ -475,49 +473,28 @@ async function recalculateCustomerSummary(workspaceId: string, customerId: strin
     return updated
 }
 
-function convertTravelSupplierCostForSupplier(sale: TravelAgencySale, supplierCurrency: CurrencyCode) {
-    return convertCurrencyAmountWithSnapshot(
-        getTravelSaleCost(sale),
-        sale.currency,
-        supplierCurrency,
-        sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
-    )
-}
-
 export async function recalculateSupplierSummary(workspaceId: string, supplierId: string) {
     const supplier = await db.suppliers.get(supplierId)
     if (!supplier || supplier.isDeleted) {
         return supplier
     }
 
-    const [orders, travelSales] = await Promise.all([
-        db.purchase_orders
-            .where('supplierId')
-            .equals(supplierId)
-            .and((item) => !item.isDeleted)
-            .toArray(),
-        db.travel_agency_sales
-            .where('supplierId')
-            .equals(supplierId)
-            .and((item) => !item.isDeleted)
-            .toArray()
-    ])
+    const orders = await db.purchase_orders
+        .where('supplierId')
+        .equals(supplierId)
+        .and((item) => !item.isDeleted)
+        .toArray()
 
     const activeOrders = orders.filter((order) => order.status !== 'cancelled')
-    const activeTravelSales = travelSales.filter((sale) => sale.status !== 'draft')
     const purchaseOrderSpent = activeOrders
         .filter((order) => order.status === 'received' || order.status === 'completed')
         .reduce(
             (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, supplier.defaultCurrency, order.exchangeRates),
             0
         )
-    const travelSalesSpent = activeTravelSales.reduce(
-        (sum, sale) => sum + convertTravelSupplierCostForSupplier(sale, supplier.defaultCurrency),
-        0
-    )
-    const totalPurchases = activeOrders.length + activeTravelSales.length
+    const totalPurchases = activeOrders.length
     const totalSpent = roundAmount(
-        purchaseOrderSpent + travelSalesSpent,
+        purchaseOrderSpent,
         supplier.defaultCurrency
     )
 

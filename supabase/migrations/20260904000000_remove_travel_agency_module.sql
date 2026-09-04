@@ -1,5 +1,52 @@
--- Fix 1: Remove print_quality references from apply_workspace_plan_access
--- print_quality column was dropped in 20260617_remove_print_quality.sql
+-- Retire the Travel Agency module and purge every persisted record it owned.
+-- Payment-account movements are removed first because they retain a restrictive
+-- foreign key to their underlying payment transaction.
+WITH retired_movements AS (
+  SELECT
+    movement.workspace_id,
+    movement.account_id,
+    movement.currency,
+    SUM(movement.delta_amount) AS delta_amount
+  FROM payment_accounts.account_movements AS movement
+  JOIN public.payment_transactions AS payment
+    ON payment.id = movement.payment_transaction_id
+  WHERE payment.source_module = 'travel_agency'
+     OR payment.source_type = 'travel_agency_sale'
+  GROUP BY movement.workspace_id, movement.account_id, movement.currency
+)
+UPDATE payment_accounts.account_balances AS balance
+SET
+  balance_amount = balance.balance_amount - retired_movements.delta_amount,
+  updated_at = now(),
+  version = balance.version + 1
+FROM retired_movements
+WHERE balance.workspace_id = retired_movements.workspace_id
+  AND balance.account_id = retired_movements.account_id
+  AND balance.currency = retired_movements.currency;
+
+DELETE FROM payment_accounts.account_movements AS movement
+USING public.payment_transactions AS payment
+WHERE movement.payment_transaction_id = payment.id
+  AND (
+    payment.source_module = 'travel_agency'
+    OR payment.source_type = 'travel_agency_sale'
+  );
+
+DELETE FROM public.payment_transactions
+WHERE source_module = 'travel_agency'
+   OR source_type = 'travel_agency_sale';
+
+DELETE FROM public.workspace_permissions
+WHERE module = 'travelAgency'
+   OR key LIKE 'travelAgency.%';
+
+DELETE FROM public.workspace_access_overrides
+WHERE type = 'module'
+  AND key = 'travel_agency';
+
+DELETE FROM public.workspace_usage_record_sources
+WHERE schema_name = 'crm'
+  AND table_name = 'travel_agency_sales';
 
 CREATE OR REPLACE FUNCTION public.apply_workspace_plan_access()
 RETURNS trigger
@@ -27,7 +74,8 @@ BEGIN
 
     SELECT count(*) INTO v_branch_count
     FROM public.workspace_branches
-    WHERE source_workspace_id = NEW.id;
+    WHERE source_workspace_id = NEW.id
+      AND archived_at IS NULL;
 
     IF v_branch_count > public.workspace_max_branches(NEW.id, NEW.plan) THEN
       RAISE EXCEPTION 'Workspace branch count exceeds the % plan limit', NEW.plan
@@ -47,8 +95,6 @@ BEGIN
     END IF;
   END IF;
 
-  NEW.instant_pos := COALESCE(NEW.instant_pos, true);
-
   IF TG_OP = 'INSERT' OR NEW.plan::text IS DISTINCT FROM OLD.plan::text THEN
     NEW.real_estate := public.workspace_module_allowed(NEW.id, NEW.plan::text, 'real_estate');
     NEW.allow_whatsapp := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'whatsappIntegration');
@@ -67,72 +113,19 @@ BEGIN
     NEW.default_currency := 'iqd';
   END IF;
 
-  NEW.kds_enabled := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'kds')
-    AND COALESCE(NEW.instant_pos, true)
-    AND COALESCE(NEW.kds_enabled, true);
-
   IF NOT public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'marketplaceStorefronts') THEN
     NEW.visibility := 'private';
     NEW.store_slug := NULL;
     NEW.store_description := NULL;
+    DELETE FROM public.workspace_storefronts
+    WHERE workspace_id = NEW.id;
   END IF;
 
   RETURN NEW;
 END;
 $function$;
 
--- Fix 2: Allow branch switches without enforcing workspace member limits
--- This lets users freely switch between a source workspace and its branches
--- regardless of how many members are in the target workspace
+ALTER TABLE public.workspaces
+  DROP COLUMN IF EXISTS travel_agency;
 
-CREATE OR REPLACE FUNCTION public.enforce_workspace_member_plan_limit()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $function$
-DECLARE
-  v_plan text;
-  v_member_count integer;
-BEGIN
-  IF NEW.workspace_id IS NULL THEN
-    RETURN NEW;
-  END IF;
-
-  IF TG_OP = 'UPDATE' AND NEW.workspace_id IS NOT DISTINCT FROM OLD.workspace_id THEN
-    RETURN NEW;
-  END IF;
-
-  -- Allow branch switches without checking member limits
-  IF TG_OP = 'UPDATE' AND OLD.workspace_id IS NOT NULL THEN
-    IF EXISTS (
-      SELECT 1 FROM public.workspace_branches
-      WHERE (source_workspace_id = OLD.workspace_id AND branch_workspace_id = NEW.workspace_id)
-         OR (source_workspace_id = NEW.workspace_id AND branch_workspace_id = OLD.workspace_id)
-    ) THEN
-      RETURN NEW;
-    END IF;
-  END IF;
-
-  SELECT plan INTO v_plan
-  FROM public.workspaces
-  WHERE id = NEW.workspace_id
-    AND deleted_at IS NULL;
-
-  IF v_plan IS NULL THEN
-    RETURN NEW;
-  END IF;
-
-  SELECT count(*) INTO v_member_count
-  FROM public.profiles
-  WHERE workspace_id = NEW.workspace_id
-    AND id IS DISTINCT FROM NEW.id;
-
-  IF v_member_count >= public.workspace_max_members(NEW.workspace_id, v_plan) THEN
-    RAISE EXCEPTION 'Workspace member limit reached for current plan'
-      USING ERRCODE = '42501';
-  END IF;
-
-  RETURN NEW;
-END;
-$function$;
+DROP TABLE IF EXISTS crm.travel_agency_sales CASCADE;

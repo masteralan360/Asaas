@@ -412,10 +412,6 @@
         "description": "مراجعة المبيعات المكتملة والمرتجعات وسجلات البيع.",
         "badge": "السجل"
       },
-      "/travel-agency": {
-        "description": "إدارة حجوزات السفر ومبيعات الخدمات.",
-        "badge": "الخدمة"
-      },
       "/products": {
         "description": "صيانة كتالوج المنتجات وقواعد المخزون والتسعير.",
         "badge": "الكتالوج"
@@ -2265,7 +2261,6 @@
         "realEstate": "العقارات",
         "currencyExchange": "صرافة العملات",
         "currencyExchangeFeeRules": "قواعد الرسوم والنسب",
-        "travelAgency": "وكالة السفر",
         "clinicalAppointments": "مواعيد العيادة",
         "clinicalPatients": "المرضى",
         "installments": "الأقساط",
@@ -2364,8 +2359,6 @@
       "currencyExchangeManagePricesDescription": "تعديل أسعار الشراء والبيع اليدوية لأزواج العملات.",
       "currencyExchangeReverse": "عكس المعاملات",
       "currencyExchangeReverseDescription": "السماح بعكس معاملات الصرف واستعادة أرصدة الخزنة لحالتها السابقة.",
-      "travelAgencyAccess": "وكالة السفر",
-      "travelAgencyAccessDescription": "الوصول إلى حجوزات وكالة السفر والمبيعات والمدفوعات.",
       "clinicalAppointmentsAccess": "مواعيد العيادة",
       "clinicalAppointmentsAccessDescription": "الوصول إلى وحدة مواعيد العيادة.",
       "clinicalPatientsAccess": "المرضى",
@@ -3356,7 +3349,6 @@
         "purchaseOrder": "طلب شراء",
         "orderReport": "تقرير الطلب",
         "ecommerce": "التجارة الإلكترونية",
-        "travelAgency": "وكالة السفر",
         "realEstate": "العقارات",
         "appointments": "المواعيد",
         "agents": "الوكلاء",
@@ -8182,11 +8174,7 @@
     "currencyAndAmountDescription": "استخدم نطاق التاريخ في الصفحة، ثم صَفِّ هذا الحساب حسب العملة والمبلغ.",
     "applyMovementFilters": "تطبيق الفلاتر ({{count}})",
     "unknownMovement": "حركة مُسجّلة",
-    "sourceModules": {
-      "travelAgency": "وكالة السفر"
-    },
     "transactionTypes": {
-      "travelSale": "بيع سفر",
       "orderReturn": "مرتجع طلب"
     },
     "movementStatusLabel": "الحالة",

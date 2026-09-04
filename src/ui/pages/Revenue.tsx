@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract } from '@/local-db'
+import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -310,8 +310,6 @@ function revenueOriginLabel(origin: string | null | undefined, sourceChannel: st
         case 'ecommerce':
         case 'e_commerce':
             return t('revenue.filters.origins.ecommerce', { defaultValue: 'E-Commerce' })
-        case 'travel_agency':
-            return t('revenue.filters.origins.travelAgency', { defaultValue: 'Travel Agency' })
         case 'real_estate':
             return t('revenue.filters.origins.realEstate', { defaultValue: 'Real Estate' })
         case 'activities':
@@ -590,7 +588,6 @@ export function Revenue() {
     const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawSalesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const salesOrderReturnItems = useSalesOrderReturnItemsForWorkspace(user?.workspaceId)
-    const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const deliveryShipments = useDeliveryShipments(user?.workspaceId)
     const deliveryMerchantProfiles = useDeliveryMerchantProfiles(user?.workspaceId)
     const deliveryBusinessPartners = useBusinessPartners(user?.workspaceId)
@@ -682,12 +679,6 @@ export function Revenue() {
             }))
         return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
     }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
-    const travelSales = useMemo<Sale[]>(() =>
-        (rawTravelSales || [])
-            .filter(s => s.isPaid && !s.isDeleted)
-            .map(toUISaleFromTravelAgency),
-        [rawTravelSales]
-    )
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
     const [isMetricModalOpen, setIsMetricModalOpen] = useState(false)
@@ -744,8 +735,8 @@ export function Revenue() {
     }, [categoryNameById, products])
 
     const revenueRecords = useMemo(
-        () => buildRevenueAnalysisRecords(allSales, salesOrders, travelSales, { productCategoryByProductId }),
-        [allSales, salesOrders, travelSales, productCategoryByProductId]
+        () => buildRevenueAnalysisRecords(allSales, salesOrders, { productCategoryByProductId }),
+        [allSales, salesOrders, productCategoryByProductId]
     )
     const revenueFilterOptions = useMemo(() => {
         const origins = new Map<string, string>()
@@ -948,7 +939,7 @@ export function Revenue() {
         const saleStats: {
             key: string,
             id: string,
-            source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental',
+            source: 'sale' | 'sales_order' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental',
             sourceRecordId?: string | null,
             referenceCode: string,
             date: string,
@@ -1977,12 +1968,10 @@ export function Revenue() {
                                         const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                         const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                         const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
+                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
 
                                         const handleRecordClick = () => {
-                                            if (sale.source === 'travel_agency') {
-                                                setLocation(`/travel-agency/${sale.id}/view`)
-                                            } else if (sale.source === 'sales_order') {
+                                            if (sale.source === 'sales_order') {
                                                 setLocation(`/orders/${sale.id}`)
                                             } else if (sale.source === 'exchange') {
                                                 setLocation('/currency-exchange')
@@ -2135,12 +2124,10 @@ export function Revenue() {
                                             const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                             const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                             const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
+                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
 
                                             const handleRecordClick = () => {
-                                                if (sale.source === 'travel_agency') {
-                                                    setLocation(`/travel-agency/${sale.id}/view`)
-                                                } else if (sale.source === 'sales_order') {
+                                                if (sale.source === 'sales_order') {
                                                     setLocation(`/orders/${sale.id}`)
                                                 } else if (sale.source === 'exchange') {
                                                     setLocation('/currency-exchange')

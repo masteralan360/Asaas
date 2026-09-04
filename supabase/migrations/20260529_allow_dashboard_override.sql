@@ -1,4 +1,4 @@
--- Allow upload_limit_mb, travel_agency, real_estate, allow_whatsapp to be
+-- Allow upload_limit_mb, real_estate, allow_whatsapp to be
 -- edited directly in Supabase Dashboard despite the plan. They are only
 -- reset to plan defaults when the plan column changes (or on INSERT).
 
@@ -12,7 +12,6 @@ BEGIN
   NEW.instant_pos := COALESCE(NEW.instant_pos, true);
 
   IF TG_OP = 'INSERT' OR NEW.plan::text IS DISTINCT FROM OLD.plan::text THEN
-    NEW.travel_agency := false;
     NEW.real_estate := false;
     NEW.allow_whatsapp := public.workspace_plan_has_capability(NEW.plan::text, 'whatsappIntegration');
     NEW.upload_limit_mb := CASE public.normalize_workspace_plan(NEW.plan::text)

@@ -70,7 +70,6 @@ const legacyGenericDialogBaseline = {
   'src/ui/components/SalesNoteModal.tsx': 1,
   'src/ui/components/small-dialog.tsx': 1,
   'src/ui/components/SubscriptionExpiryWarningModal.tsx': 1,
-  'src/ui/components/travel/TouristMrzScanDialog.tsx': 1,
   'src/ui/components/UsbBackupWarningModal.tsx': 1,
   'src/ui/components/workspace/BranchManager.tsx': 1,
   'src/ui/components/WorkspaceExtraDaysDialog.tsx': 1,
@@ -105,8 +104,6 @@ const legacyGenericDialogBaseline = {
   'src/ui/pages/Settings.tsx': 9,
   'src/ui/pages/Storages.tsx': 2,
   'src/ui/pages/TeamPerformance.tsx': 1,
-  'src/ui/pages/TravelAgency.tsx': 1,
-  'src/ui/pages/TravelAgencySaleForm.tsx': 2,
   'src/ui/pages/UnitsPage.tsx': 1,
 }
 

@@ -1254,65 +1254,6 @@ export interface MarketplaceOrder extends BaseEntity {
   salesOrderId?: string | null
 }
 
-export type TravelAgencyTravelMethod = 'bus' | 'plane' | 'train' | 'car' | 'ship' | 'hotel' | 'other'
-export type TravelAgencyTripType = 'one_way' | 'round_trip'
-export type TravelAgencyPaymentMethod = 'cash' | 'fib' | 'qicard' | 'hawala' | 'fastpay'
-export type TravelAgencyReceiver = 'office' | 'erbil'
-export type TravelAgencySaleStatus = 'completed' | 'draft'
-
-export interface TravelAgencyTravelPlan {
-  method: TravelAgencyTravelMethod
-  departure?: string
-  arrival?: string
-  tripType?: TravelAgencyTripType
-  details?: string
-}
-
-export interface TravelAgencyTourist {
-  id: string
-  fullName: string
-  surname: string
-  dateOfBirth?: string
-  travelPlans: TravelAgencyTravelPlan[]
-  revenue: number
-  notes?: string
-}
-
-export interface TravelAgencySale extends BaseEntity {
-  saleNumber: string
-  saleDate: string
-  status: TravelAgencySaleStatus
-  touristCount: number
-  tourists: TravelAgencyTourist[]
-  groupTravelPlans: TravelAgencyTravelPlan[]
-  groupName?: string | null
-  groupRevenue: number
-  businessPartnerId?: string | null
-  supplierId?: string | null
-  supplierName?: string | null
-  supplierCost: number
-  currency: CurrencyCode
-  travelPackages: string[]
-  paymentMethod: TravelAgencyPaymentMethod
-  paidAmount: number
-  receiver: TravelAgencyReceiver
-  notes?: string
-  isPaid: boolean
-  paidAt?: string | null
-  isLocked?: boolean
-  // Financial snapshot — locked at save time
-  snapshotRevenue?: number | null
-  snapshotCost?: number | null
-  snapshotProfit?: number | null
-  // Exchange rate snapshot
-  exchangeRateSnapshot?: {
-    pair: string
-    rate: number
-    source: string
-    timestamp: string
-  } | null
-}
-
 export type RealEstateTransactionType = 'sell' | 'buy' | 'rent' | 'lease' | 'exchange'
 
 export type RealEstatePropertyType =
@@ -1755,7 +1696,6 @@ export type InvoiceOrigin =
   | 'purchase_order'
   | 'order_report'
   | 'business_partner'
-  | 'travel_agency'
   | 'clinical_appointment'
   | 'activities'
   | 'post_service'
@@ -2034,13 +1974,11 @@ export type PaymentTransactionSourceModule =
   | 'currency_exchange'
   | 'post_service'
   | 'car_rental'
-  | 'travel_agency'
   | 'payments'
   | 'payment_accounts'
 export type PaymentTransactionSourceType =
   | 'sale_exchange'
   | 'pos_sale'
-  | 'travel_agency_sale'
   | 'loan_origination'
   | 'loan_payment'
   | 'simple_loan'
@@ -2423,7 +2361,6 @@ export interface SyncQueueItem {
     | 'sales_orders'
     | 'purchase_orders'
     | 'order_installments'
-    | 'travel_agency_sales'
     | 'real_estate_transactions'
     | 'real_estate_installments'
     | 'real_estate_payments'
@@ -2458,7 +2395,6 @@ export interface Workspace extends BaseEntity {
   sales_history?: boolean
   crm?: boolean
   orders?: boolean
-  travel_agency?: boolean
   real_estate?: boolean
   activities?: boolean
   currency_exchange?: boolean
@@ -2597,7 +2533,6 @@ export interface OfflineMutation {
     | 'sales_orders'
     | 'purchase_orders'
     | 'order_installments'
-    | 'travel_agency_sales'
     | 'real_estate_transactions'
     | 'real_estate_installments'
     | 'real_estate_payments'

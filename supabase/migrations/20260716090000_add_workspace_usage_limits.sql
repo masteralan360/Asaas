@@ -467,7 +467,6 @@ VALUES
   ('crm', 'agents', 'Agent records', true),
   ('crm', 'sales_orders', 'Sales order parent records', true),
   ('crm', 'purchase_orders', 'Purchase order parent records', true),
-  ('crm', 'travel_agency_sales', 'Travel agency sale records', true),
   ('clinics', 'clinical_patients', 'Clinical patient records', true),
   ('clinics', 'clinical_appointments', 'Clinical appointment records', true),
   ('real_estate', 'real_estate_transactions', 'Real estate transaction parent records', true),

@@ -26,7 +26,6 @@ AS $function$
     WHEN 'suppliers' THEN public.normalize_workspace_plan(p_plan) IN ('business', 'enterprise')
     WHEN 'orders' THEN public.normalize_workspace_plan(p_plan) IN ('business', 'enterprise')
     WHEN 'ecommerce' THEN public.normalize_workspace_plan(p_plan) IN ('business', 'enterprise')
-    WHEN 'travel_agency' THEN false
     WHEN 'real_estate' THEN false
     WHEN 'currency_exchange' THEN false
     WHEN 'clinical_appointments' THEN false
@@ -127,7 +126,6 @@ BEGIN
   END IF;
 
   IF TG_OP = 'INSERT' OR NEW.plan::text IS DISTINCT FROM OLD.plan::text THEN
-    NEW.travel_agency := public.workspace_module_allowed(NEW.id, NEW.plan::text, 'travel_agency');
     NEW.real_estate := public.workspace_module_allowed(NEW.id, NEW.plan::text, 'real_estate');
     NEW.allow_whatsapp := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'whatsappIntegration');
     NEW.upload_limit_mb := CASE

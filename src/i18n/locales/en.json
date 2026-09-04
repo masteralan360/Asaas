@@ -419,10 +419,6 @@
         "description": "Review completed sales, returns, and sales records.",
         "badge": "History"
       },
-      "/travel-agency": {
-        "description": "Manage travel-related bookings and service sales.",
-        "badge": "Service"
-      },
       "/products": {
         "description": "Maintain product catalog, stock rules, and pricing.",
         "badge": "Catalog"
@@ -3568,7 +3564,6 @@
         "realEstate": "Real Estate",
         "currencyExchange": "Currency Exchange",
         "currencyExchangeFeeRules": "Fee & Commission Rules",
-        "travelAgency": "Travel Agency",
         "clinicalAppointments": "Clinical Appointments",
         "clinicalPatients": "Patients",
         "installments": "Installments",
@@ -3667,8 +3662,6 @@
       "currencyExchangeManagePricesDescription": "Edit manual buy and sell prices for currency exchange pairs.",
       "currencyExchangeReverse": "Reverse Transactions",
       "currencyExchangeReverseDescription": "Allows reversing exchange transactions, restoring safe balances to their prior state.",
-      "travelAgencyAccess": "Travel Agency",
-      "travelAgencyAccessDescription": "Access travel agency bookings, sales, and payments.",
       "clinicalAppointmentsAccess": "Clinical Appointments",
       "clinicalAppointmentsAccessDescription": "Access clinical appointments module.",
       "clinicalPatientsAccess": "Patients",
@@ -4679,7 +4672,6 @@
         "purchaseOrder": "Purchase Order",
         "orderReport": "Order Report",
         "ecommerce": "E-Commerce",
-        "travelAgency": "Travel Agency",
         "realEstate": "Real Estate",
         "appointments": "Appointments",
         "agents": "Agents",
@@ -5658,10 +5650,8 @@
       "installments": "Upcoming & Overdue Installments",
       "installmentsDesc": "Sorted with overdue installments first, then by due date.",
       "commissionTrend": "Commission Trend",
-      "commissionTrendDesc": "Completed travel-agency revenue, supplier cost, and commission over the active range.",
       "partnerExposureTable": "Partner Exposure Table",
-      "topSuppliers": "Top Travel Suppliers",
-      "topGroups": "Top Groups"
+      "topSuppliers": "Top Suppliers"
     },
     "columns": {
       "member": "Member",
@@ -8434,11 +8424,7 @@
     "currencyAndAmountDescription": "Use the page date range above, then refine this account by currency and amount.",
     "applyMovementFilters": "Apply Filters ({{count}})",
     "unknownMovement": "Recorded movement",
-    "sourceModules": {
-      "travelAgency": "Travel Agency"
-    },
     "transactionTypes": {
-      "travelSale": "Travel Sale",
       "orderReturn": "Order Return"
     },
     "movementStatusLabel": "Status",

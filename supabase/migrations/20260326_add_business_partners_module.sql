@@ -91,9 +91,6 @@ ALTER TABLE crm.sales_orders
 ALTER TABLE crm.purchase_orders
   ADD COLUMN IF NOT EXISTS business_partner_id uuid NULL;
 
-ALTER TABLE crm.travel_agency_sales
-  ADD COLUMN IF NOT EXISTS business_partner_id uuid NULL;
-
 CREATE INDEX IF NOT EXISTS idx_crm_customers_business_partner
   ON crm.customers (business_partner_id);
 
@@ -105,9 +102,6 @@ CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_business_partner
 
 CREATE INDEX IF NOT EXISTS idx_crm_purchase_orders_business_partner
   ON crm.purchase_orders (business_partner_id);
-
-CREATE INDEX IF NOT EXISTS idx_crm_travel_agency_sales_business_partner
-  ON crm.travel_agency_sales (business_partner_id);
 
 WITH inserted_customers AS (
   INSERT INTO crm.business_partners (
@@ -227,13 +221,6 @@ SET business_partner_id = s.business_partner_id
 FROM crm.suppliers s
 WHERE po.business_partner_id IS NULL
   AND po.supplier_id = s.id
-  AND s.business_partner_id IS NOT NULL;
-
-UPDATE crm.travel_agency_sales tas
-SET business_partner_id = s.business_partner_id
-FROM crm.suppliers s
-WHERE tas.business_partner_id IS NULL
-  AND tas.supplier_id = s.id
   AND s.business_partner_id IS NOT NULL;
 
 ALTER TABLE public.loans

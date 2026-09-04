@@ -74,7 +74,6 @@ export const MONTHLY_USAGE_JOB_TITLES = [
     'Supermarket Manager',
     'Supplier',
     'Tailor',
-    'Travel Agency Manager',
     'Veterinarian',
     'Warehouse Manager',
     'Wholesaler',
