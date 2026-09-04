@@ -314,6 +314,10 @@ export function WorkspaceUsageModal({
             }
         ].sort((left, right) => left.gb - right.gb)
         : []
+    const paygGraphMaximumIqd = Math.max(
+        1,
+        ...(paygSummary?.pricingCheckpoints.map((checkpoint) => checkpoint.amountIqd) ?? [0]),
+    )
     const interpolationSegment = paygSummary?.pricingCheckpoints.length
         ? getPaygInterpolationSegment(paygGraphUsageGb, paygSummary.pricingCheckpoints)
         : null
@@ -381,8 +385,8 @@ export function WorkspaceUsageModal({
                                 />
                                 <UsageStatCard
                                     icon={<Gauge className="h-4 w-4" />}
-                                    label={t('workspaceUsage.payg.pricingVersion')}
-                                    value={`v${paygSummary.pricingVersion ?? '—'}`}
+                                    label={t('workspaceUsage.payg.pricingProfile')}
+                                    value={paygSummary.pricingProfileName ?? t('workspaceUsage.payg.pricingProfileFallback', { version: paygSummary.pricingVersion ?? '—' })}
                                     detail={t('workspaceUsage.payg.pricingFrozen')}
                                     toneClassName="bg-violet-500/10 text-violet-700 dark:text-violet-300"
                                 />
@@ -408,7 +412,7 @@ export function WorkspaceUsageModal({
                                         <ComposedChart data={paygGraphData} margin={{ top: 12, right: 12, bottom: 4, left: 4 }}>
                                             <CartesianGrid strokeDasharray="4 4" stroke="hsl(var(--border))" opacity={0.6} />
                                             <XAxis dataKey="gb" type="number" domain={[0, 100]} unit=" GB" tick={{ fontSize: 10 }} />
-                                            <YAxis domain={[0, 40000]} tickFormatter={(value) => paygAmountFormatter.format(Number(value))} tick={{ fontSize: 10 }} width={72} />
+                                            <YAxis domain={[0, paygGraphMaximumIqd]} tickFormatter={(value) => paygAmountFormatter.format(Number(value))} tick={{ fontSize: 10 }} width={72} />
                                             <RechartsTooltip
                                                 contentStyle={{
                                                     backgroundColor: 'hsl(var(--card))',
@@ -445,7 +449,7 @@ export function WorkspaceUsageModal({
                                 <div className="mt-3 space-y-2">
                                     {paygSummary.history.length ? paygSummary.history.slice(0, 8).map((cycle) => (
                                         <div key={cycle.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-border/50 bg-muted/15 p-3 text-xs sm:grid-cols-[1fr_auto_auto]">
-                                            <div><div className="font-semibold">{formatTimestamp(cycle.periodStartedAt, locale)}</div><div className="mt-0.5 text-muted-foreground">v{cycle.pricingVersion}</div></div>
+                                            <div><div className="font-semibold">{formatTimestamp(cycle.periodStartedAt, locale)}</div><div className="mt-0.5 text-muted-foreground">{cycle.pricingProfileName ?? t('workspaceUsage.payg.pricingProfileFallback', { version: cycle.pricingVersion })}</div></div>
                                             <div className="text-end font-semibold tabular-nums">{new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Number(cycle.chargedUsageGb))} GB<br />{paygAmountFormatter.format(Number(cycle.amountIqd))} IQD</div>
                                             <div className="col-span-2 rounded-full bg-muted px-2 py-1 text-center font-semibold sm:col-span-1">{t(`workspaceUsage.payg.statuses.${cycle.status}`)}</div>
                                         </div>

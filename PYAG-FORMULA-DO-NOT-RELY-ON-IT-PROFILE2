@@ -1,0 +1,29 @@
+Flat-rate PAYG:
+- The first 1 GB is free.
+- Each additional GB costs 1,000 IQD.
+- Fractional GB is charged proportionally.
+- There is no monthly minimum charge.
+- GB represents total monthly usage, including the free 1 GB.
+
+GB → IQD:
+- Valid GB range: 0–100, including fractional values.
+- For 0 ≤ GB ≤ 1:
+    IQD = 0
+- For 1 < GB ≤ 100:
+    IQD = round((GB - 1) * 1000)
+- Round only the final amount to the nearest whole IQD.
+- 11 GB → 10,000 IQD.
+- 100 GB → 99,000 IQD.
+
+IQD → GB:
+- Valid IQD range: whole integers from 0–99,000.
+- This is the inverse of the continuous, pre-rounding curve—not
+  the inverse of rounded GB→IQD results.
+- 0 IQD → 1 GB, because the free 0–1 GB flat segment resolves
+  to its highest GB.
+- For 0 < IQD ≤ 99,000:
+    GB = 1 + IQD / 1000
+- 10,000 IQD → 11 GB.
+- 99,000 IQD → 100 GB.
+- Display reverse results to up to 6 decimal places, removing
+  unnecessary trailing zeros.

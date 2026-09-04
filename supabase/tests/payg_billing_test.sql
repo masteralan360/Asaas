@@ -26,9 +26,9 @@ SELECT is(billing.calculate_payg_amount(
 ), 40000::numeric, 'the protected 100 GB checkpoint is exact');
 
 SELECT throws_ok(
-  $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":0},{"gb":15,"amount_iqd":9999},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
-  '23514', 'protected_payg_pricing_checkpoints_required',
-  'protected checkpoints cannot be edited'
+  $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":1},{"gb":15,"amount_iqd":9999},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
+  '23514', 'required_payg_pricing_checkpoints_missing',
+  'the free 1 GB checkpoint cannot be edited'
 );
 SELECT throws_ok(
   $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":0},{"gb":15,"amount_iqd":10000},{"gb":20,"amount_iqd":9000},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
@@ -122,7 +122,7 @@ SELECT lives_ok(
 );
 SELECT results_eq(
   $$SELECT charged_usage_bytes, amount_iqd, status FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001'$$,
-  $$VALUES (3000000000::bigint, 1429::numeric, 'awaiting_payment'::text)$$,
+  $$VALUES (3000000000::bigint, 2000::numeric, 'awaiting_payment'::text)$$,
   'cycle closure freezes exact usage, rounded amount, and awaiting-payment state'
 );
 
@@ -140,7 +140,7 @@ RESET ROLE;
 SELECT is((SELECT count(*) FROM billing.payment_transactions WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001' AND status = 'pending'), 1::bigint, 'family concurrency guard permits one pending payment');
 SELECT results_eq(
   $$SELECT amount, billed_usage_bytes, billed_usage_gb, payment_type FROM billing.payment_transactions WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001'$$,
-  $$VALUES (1429::numeric, 3000000000::bigint, 3::numeric, 'payg'::text)$$,
+  $$VALUES (2000::numeric, 3000000000::bigint, 3::numeric, 'payg'::text)$$,
   'the pending transaction is an immutable exact cycle snapshot'
 );
 
@@ -227,6 +227,42 @@ SELECT is(
   'the next clean cycle uses the newly published pricing version'
 );
 
+SELECT lives_ok(
+  $$SELECT public.admin_create_payg_profile(
+    'Immediate PAYG test profile',
+    '[{"gb":1,"amount_iqd":0},{"gb":2,"amount_iqd":2000},{"gb":100,"amount_iqd":100000}]'::jsonb,
+    'PAYG pricing publisher'
+  )$$,
+  'a named PAYG profile can be created without changing existing profiles'
+);
+UPDATE public.workspace_usage SET data_transfer_bytes = 3000000000
+WHERE workspace_id = '93000000-0000-0000-0000-000000000001';
+SELECT lives_ok(
+  format(
+    'SELECT public.admin_upsert_workspace_payment_configuration_v3(%L::uuid, %L, true, false, true, %L, %L, %L, NULL, %L, %L::uuid, %L)',
+    '93000000-0000-0000-0000-000000000001',
+    '0', '0', (SELECT renewal_due_at::text FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001' AND status = 'open'),
+    'PAYG test administrator', 'monthly',
+    (SELECT id FROM billing.payg_profiles WHERE name = 'Immediate PAYG test profile'), 'immediate'
+  ),
+  'an open PAYG cycle can be repriced immediately'
+);
+SELECT is(
+  (SELECT data_transfer_bytes FROM public.workspace_usage WHERE workspace_id = '93000000-0000-0000-0000-000000000001'),
+  3000000000::bigint,
+  'immediate repricing retains the metered usage'
+);
+SELECT is(
+  (SELECT pricing_profile_name FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001' AND status = 'open'),
+  'Immediate PAYG test profile',
+  'the open cycle snapshots the immediately selected profile'
+);
+SELECT is(
+  (SELECT billing.calculate_payg_amount_from_checkpoints(pricing_snapshot, 3000000000) FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001' AND status = 'open'),
+  3000::numeric,
+  'the retained metered usage is recalculated with the immediate profile'
+);
+
 -- A PAYG-to-monthly change with accrued usage is staged through settlement.
 SELECT public.admin_upsert_workspace_payment_configuration_v2(
   '93000000-0000-0000-0000-000000000005', '0', true, false, true,
@@ -268,6 +304,102 @@ SELECT results_eq(
 SELECT is((SELECT count(*) FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000005' AND status = 'open'), 0::bigint, 'a staged switch does not start another PAYG cycle');
 SELECT is((SELECT data_transfer_bytes FROM public.workspace_usage WHERE workspace_id = '93000000-0000-0000-0000-000000000005'), 0::bigint, 'settlement leaves the audited native counter clean');
 
+-- Immediate termination finalizes at the current meter and then stages the
+-- no-PAYG state through the established payment settlement flow.
+SELECT lives_ok(
+  $$SELECT public.admin_upsert_workspace_payment_configuration_v3(
+    '93000000-0000-0000-0000-000000000006', '0', true, false, true,
+    '0', (now() + interval '1 month')::text, 'PAYG test administrator',
+    NULL, 'monthly', NULL, 'next_cycle'
+  )$$,
+  'a workspace can be prepared for immediate PAYG termination'
+);
+SELECT is(
+  public.apply_workspace_charged_usage(
+    '93000000-0000-0000-0000-000000000006', 3000000000, 'tauri', 'payg-termination-test', gen_random_uuid()
+  ),
+  3000000000::bigint,
+  'the final PAYG meter records exact charged usage before termination'
+);
+SELECT lives_ok(
+  $$SELECT public.admin_terminate_workspace_payg(
+    '93000000-0000-0000-0000-000000000006', 'PAYG test administrator'
+  )$$,
+  'an administrator can terminate an open PAYG cycle immediately'
+);
+SELECT results_eq(
+  $$SELECT charged_usage_bytes, amount_iqd, status
+    FROM billing.payg_cycles
+    WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000006'$$,
+  $$VALUES (3000000000::bigint, 2000::numeric, 'awaiting_payment'::text)$$,
+  'immediate termination freezes the Standard PAYG amount and exact metered bytes'
+);
+SELECT results_eq(
+  $$SELECT payg_enabled, pending_billing_mode, pending_payment_enabled
+    FROM billing.workspace_payment_configurations
+    WHERE workspace_id = '93000000-0000-0000-0000-000000000006'$$,
+  $$VALUES (true, 'monthly'::text, false)$$,
+  'chargeable termination keeps payment access while staging PAYG off'
+);
+SELECT is(
+  public.apply_workspace_charged_usage(
+    '93000000-0000-0000-0000-000000000006', 1000000000, 'tauri', 'payg-termination-test', gen_random_uuid()
+  ),
+  0::bigint,
+  'a terminated awaiting-payment cycle accepts no additional PAYG usage'
+);
+SELECT is(
+  (SELECT count(*) FROM billing.payment_transactions
+    WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000006'),
+  0::bigint,
+  'termination creates an unpaid obligation but never fabricates a payment transaction'
+);
+UPDATE public.profiles SET workspace_id = '93000000-0000-0000-0000-000000000006'
+WHERE id = '94000000-0000-0000-0000-000000000001';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"94000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT lives_ok(
+  $$SELECT public.submit_workspace_payg_payment('fib', 'PAYG TEST ADMIN')$$,
+  'the final termination charge remains payable through the regular PAYG payment flow'
+);
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+SELECT lives_ok(
+  format(
+    'SELECT public.admin_review_workspace_payment_transaction_v2(%L::uuid, %L, %L, %L, %L)',
+    (SELECT id FROM billing.payment_transactions WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000006' AND status = 'pending'),
+    'approved', 'Verified', 'PAYG reviewer', 'PAYG-TERMINATION'
+  ),
+  'the ordinary approval flow settles an immediate termination payment'
+);
+SELECT results_eq(
+  $$SELECT payg_enabled, is_payment_enabled, usage_enabled
+    FROM billing.workspace_payment_configurations
+    WHERE workspace_id = '93000000-0000-0000-0000-000000000006'$$,
+  $$VALUES (false, false, false)$$,
+  'settling an immediate termination disables PAYG without enabling another billing mode'
+);
+SELECT is(
+  (SELECT count(*) FROM billing.payg_cycles
+    WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000006' AND status = 'open'),
+  0::bigint,
+  'settling immediate termination does not start another PAYG cycle'
+);
+SELECT results_eq(
+  $$SELECT payment_type, amount, status
+    FROM billing.payment_transactions
+    WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000006'$$,
+  $$VALUES ('payg'::text, 2000::numeric, 'approved'::text)$$,
+  'the actual final payment remains an immutable approved PAYG transaction'
+);
+SELECT throws_ok(
+  $$SELECT public.admin_terminate_workspace_payg(
+    '93000000-0000-0000-0000-000000000006', 'PAYG test administrator'
+  )$$,
+  '23514', 'payg_is_not_enabled',
+  'a completed termination cannot be repeated'
+);
+
 SELECT lives_ok(
   $$SELECT public.admin_upsert_workspace_payment_configuration_v2(
     '93000000-0000-0000-0000-000000000003', '0', true, false, true,
@@ -287,6 +419,27 @@ SELECT lives_ok(
 );
 SELECT is((SELECT count(*) FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000003' AND status = 'no_payment_required'), 1::bigint, 'zero-IQD cycles retain no-payment-required audit history');
 SELECT is((SELECT count(*) FROM billing.payment_transactions WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000003'), 0::bigint, 'zero-IQD cycles do not create payment submissions');
+SELECT lives_ok(
+  $$SELECT public.admin_terminate_workspace_payg(
+    '93000000-0000-0000-0000-000000000003', 'PAYG test administrator'
+  )$$,
+  'a free open PAYG cycle can terminate immediately without waiting for a future renewal'
+);
+SELECT is(
+  (SELECT status FROM billing.payg_cycles
+    WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000003'
+    ORDER BY closed_at DESC NULLS LAST
+    LIMIT 1),
+  'no_payment_required',
+  'free immediate termination creates a settled immutable cycle'
+);
+SELECT results_eq(
+  $$SELECT payg_enabled, is_payment_enabled, usage_enabled
+    FROM billing.workspace_payment_configurations
+    WHERE workspace_id = '93000000-0000-0000-0000-000000000003'$$,
+  $$VALUES (false, false, false)$$,
+  'a free immediate termination disables PAYG at once'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

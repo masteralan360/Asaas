@@ -110,6 +110,8 @@ export interface WorkspacePaygCycleHistory {
     amountIqd: string
     status: WorkspacePaygCycleStatus
     pricingVersion: number
+    pricingProfileId: string | null
+    pricingProfileName: string | null
     paymentTransactionId: string | null
 }
 
@@ -129,6 +131,8 @@ export interface WorkspacePaygSummary {
     currency: typeof WORKSPACE_PAYMENT_CURRENCY
     pricingVersionId: string | null
     pricingVersion: number | null
+    pricingProfileId: string | null
+    pricingProfileName: string | null
     pricingCheckpoints: WorkspacePaygCheckpoint[]
     pendingBillingMode: 'monthly' | 'prepaid_usage' | null
     lastUpdatedAt: string | null
@@ -481,6 +485,8 @@ export function normalizeWorkspacePaygSummary(value: unknown): WorkspacePaygSumm
                 amountIqd: getDecimalText(cycle.amount_iqd),
                 status,
                 pricingVersion: getSafeInteger(cycle.pricing_version),
+                pricingProfileId: getNullableText(cycle.pricing_profile_id),
+                pricingProfileName: getNullableText(cycle.pricing_profile_name),
                 paymentTransactionId: getNullableText(cycle.payment_transaction_id)
             }]
         })
@@ -506,6 +512,8 @@ export function normalizeWorkspacePaygSummary(value: unknown): WorkspacePaygSumm
         pricingVersion: unwrapped.pricing_version === null || unwrapped.pricing_version === undefined
             ? null
             : getSafeInteger(unwrapped.pricing_version),
+        pricingProfileId: getNullableText(unwrapped.pricing_profile_id),
+        pricingProfileName: getNullableText(unwrapped.pricing_profile_name),
         pricingCheckpoints: checkpoints,
         pendingBillingMode: unwrapped.pending_billing_mode === 'monthly' || unwrapped.pending_billing_mode === 'prepaid_usage'
             ? unwrapped.pending_billing_mode

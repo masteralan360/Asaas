@@ -15,6 +15,10 @@ import {
     type PaygPricingCheckpoint,
 } from '@/lib/paygPricing'
 import {
+    getPaygPricingProfiles,
+    type PaygPricingProfile,
+} from '@/lib/paygProfiles'
+import {
     calculatePaygPreviewAmount,
     calculatePaygPreviewGb,
     formatPaygCalculatorInput,
@@ -24,8 +28,6 @@ import {
     PAYG_MOBILE_GRAPH,
 } from './paygGraphPageModel'
 
-const DISPLAYED_PRICING_VERSION = 1
-const DISPLAYED_PUBLISHED_AT = new Date('2026-09-01T03:24:00.000Z')
 const MOBILE_GRAPH_MEDIA_QUERY = '(max-width: 639px)'
 
 function useMobileGraphLayout() {
@@ -191,10 +193,13 @@ function PricingGraph({ checkpoints }: { checkpoints: PaygPricingCheckpoint[] })
         ? 'fill-muted-foreground text-[9px]'
         : 'fill-muted-foreground text-[4.5px]'
     const sorted = [...checkpoints].sort((first, second) => first.gb - second.gb)
+    const maximumAmountIqd = Math.max(1, ...sorted.map((point) => point.amountIqd))
+    const graphMaximumIqd = Math.ceil(maximumAmountIqd / 10_000) * 10_000
+    const yAxisValues = Array.from({ length: 6 }, (_, index) => Math.round(graphMaximumIqd * index / 5))
     const coordinates = sorted.map((point) => ({
         ...point,
         x: left + point.gb / 100 * (right - left),
-        y: bottom - point.amountIqd / 40_000 * (bottom - top),
+        y: bottom - point.amountIqd / graphMaximumIqd * (bottom - top),
     }))
     const activeGb = hoveredGb ?? focusedGb
     const activeCheckpoint = coordinates.find((point) => point.gb === activeGb)
@@ -207,7 +212,7 @@ function PricingGraph({ checkpoints }: { checkpoints: PaygPricingCheckpoint[] })
             gb: activeGb!,
             amountIqd: activeAmount,
             x: left + activeGb! / 100 * (right - left),
-            y: bottom - activeAmount / 40_000 * (bottom - top),
+            y: bottom - activeAmount / graphMaximumIqd * (bottom - top),
         }
     const line = coordinates.map(({ x, y }) => `${x},${y}`).join(' ')
     const area = coordinates.length
@@ -260,8 +265,8 @@ function PricingGraph({ checkpoints }: { checkpoints: PaygPricingCheckpoint[] })
                     }}
                     onPointerCancel={finishTouchInteraction}
                 >
-                    {[0, 5_000, 10_000, 15_000, 20_000, 25_000, 30_000, 35_000, 40_000].map((amount) => {
-                        const y = bottom - amount / 40_000 * (bottom - top)
+                    {yAxisValues.map((amount) => {
+                        const y = bottom - amount / graphMaximumIqd * (bottom - top)
                         return (
                             <g key={amount} aria-hidden="true">
                                 <line
@@ -278,7 +283,7 @@ function PricingGraph({ checkpoints }: { checkpoints: PaygPricingCheckpoint[] })
                                     textAnchor="end"
                                     className={axisLabelClass}
                                 >
-                                    {amount / 1000}k
+                                    {amount === 0 ? '0' : `${amount / 1000}k`}
                                 </text>
                             </g>
                         )
@@ -474,12 +479,45 @@ function PaygPricingPreview({ checkpoints }: { checkpoints: PaygPricingCheckpoin
 export function PaygGraphPage() {
     const { t, i18n } = useTranslation()
     useFavicon()
-    const checkpoints = DEFAULT_PAYG_PRICING_CHECKPOINTS
+    const [profiles, setProfiles] = useState<PaygPricingProfile[]>([])
+    const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
+
+    useEffect(() => {
+        let active = true
+        void getPaygPricingProfiles()
+            .then((loadedProfiles) => {
+                if (!active) return
+                setProfiles(loadedProfiles)
+                setSelectedProfileId((current) => current
+                    ?? loadedProfiles.find((profile) => profile.isDefault)?.id
+                    ?? loadedProfiles[0]?.id
+                    ?? null)
+            })
+            .catch(() => {
+                if (active) setProfiles([])
+            })
+        return () => {
+            active = false
+        }
+    }, [])
+
+    const fallbackProfile: PaygPricingProfile = {
+        id: 'standard-payg-fallback',
+        name: t('paygGraphPage.standardProfile'),
+        checkpoints: DEFAULT_PAYG_PRICING_CHECKPOINTS,
+        isDefault: true,
+        createdAt: null,
+    }
+    const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId)
+        ?? profiles.find((profile) => profile.isDefault)
+        ?? profiles[0]
+        ?? fallbackProfile
+    const checkpoints = selectedProfile.checkpoints
     const publishedAt = new Intl.DateTimeFormat(i18n.language, {
         dateStyle: 'medium',
         timeStyle: 'short',
         timeZone: 'Asia/Baghdad',
-    }).format(DISPLAYED_PUBLISHED_AT)
+    }).format(selectedProfile.createdAt ? new Date(selectedProfile.createdAt) : new Date())
 
     return (
         <main className="h-dvh min-h-0 overflow-y-auto overscroll-contain bg-background p-2 sm:p-3">
@@ -494,13 +532,27 @@ export function PaygGraphPage() {
                             {t('paygGraphPage.scheduleDescription')}
                         </p>
                     </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="payg-profile-selector">
+                            {t('paygGraphPage.profileSelector')}
+                        </label>
+                        <select
+                            id="payg-profile-selector"
+                            value={selectedProfile.id}
+                            onChange={(event) => setSelectedProfileId(event.target.value)}
+                            className="h-9 min-w-48 rounded-lg border bg-background px-3 text-sm font-medium"
+                            aria-label={t('paygGraphPage.profileSelector')}
+                        >
+                            {(profiles.length ? profiles : [fallbackProfile]).map((profile) => (
+                                <option key={profile.id} value={profile.id}>{profile.name}</option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5 text-[11px]">
                         <div className="font-semibold">
-                            {t('paygGraphPage.pricingVersion', {
-                                version: DISPLAYED_PRICING_VERSION,
-                            })}
+                            {selectedProfile.name}
                         </div>
-                        <div className="text-muted-foreground">{publishedAt}</div>
+                        <div className="text-muted-foreground">{selectedProfile.createdAt ? publishedAt : t('paygGraphPage.standardProfileFallback')}</div>
                     </div>
                 </div>
                 <div className="p-3 sm:p-4">

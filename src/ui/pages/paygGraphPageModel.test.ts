@@ -14,10 +14,10 @@ describe('public PAYG graph column hover', () => {
     it.each([
         [0, 0],
         [1, 0],
-        [3, 1_429],
-        [15, 10_000],
-        [55, 24_118],
-        [100, 40_000],
+        [3, 2_000],
+        [15, 14_000],
+        [55, 54_000],
+        [100, 99_000],
     ])('calculates %s GB as %s IQD at every height in its graph column', (gb, amount) => {
         const x = PAYG_GRAPH.left
             + gb / 100 * (PAYG_GRAPH.right - PAYG_GRAPH.left)
@@ -48,7 +48,7 @@ describe('mobile PAYG graph column hover', () => {
         const usage = getPaygGraphHoverGb(x, PAYG_MOBILE_GRAPH.top, PAYG_MOBILE_GRAPH)
 
         expect(usage).toBe(gb)
-        expect(calculatePaygPreviewAmount(usage!, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBe(24_118)
+        expect(calculatePaygPreviewAmount(usage!, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBe(54_000)
     })
 })
 
@@ -56,28 +56,28 @@ describe('public PAYG calculator', () => {
     it.each([
         [0, 0],
         [1, 0],
-        [3, 1_429],
-        [3.002, 1_430],
-        [15, 10_000],
-        [100, 40_000],
+        [3, 2_000],
+        [3.002, 2_002],
+        [15, 14_000],
+        [100, 99_000],
     ])('converts %s GB to %s IQD using billing rounding', (gb, amount) => {
         expect(calculatePaygPreviewAmount(gb, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBe(amount)
     })
 
     it.each([
         [0, 1],
-        [5_000, 8],
-        [10_000, 15],
-        [15_000, 29.166666666666664],
-        [40_000, 100],
+        [5_000, 6],
+        [10_000, 11],
+        [15_000, 16],
+        [99_000, 100],
     ])('converts %s IQD to %s GB on the continuous curve', (amount, gb) => {
         expect(calculatePaygPreviewGb(amount, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBeCloseTo(gb, 8)
     })
 
-    it('rejects values outside the PAYG range and fractional IQD', () => {
+    it('caps usage above 100 GB and rejects fractional or above-profile IQD', () => {
         expect(calculatePaygPreviewAmount(-0.01, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBeNull()
-        expect(calculatePaygPreviewAmount(100.000001, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBeNull()
-        expect(calculatePaygPreviewGb(40_001, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBeNull()
+        expect(calculatePaygPreviewAmount(100.000001, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBe(99_000)
+        expect(calculatePaygPreviewGb(99_001, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBeNull()
         expect(calculatePaygPreviewGb(1.5, DEFAULT_PAYG_PRICING_CHECKPOINTS)).toBeNull()
     })
 

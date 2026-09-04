@@ -9,14 +9,17 @@ export interface PaygPricingCheckpoint {
 
 export const DEFAULT_PAYG_PRICING_CHECKPOINTS: PaygPricingCheckpoint[] = [
     { gb: 1, amountIqd: 0, protected: true },
-    { gb: 15, amountIqd: 10_000, protected: true },
-    { gb: 100, amountIqd: 40_000, protected: true }
+    { gb: 2, amountIqd: 1_000, protected: false },
+    { gb: 10, amountIqd: 9_000, protected: false },
+    { gb: 11, amountIqd: 10_000, protected: false },
+    { gb: 50, amountIqd: 49_000, protected: false },
+    { gb: 100, amountIqd: 99_000, protected: true }
 ]
 
 export function validatePaygPricingCheckpoints(
     checkpoints: PaygPricingCheckpoint[]
 ): string | null {
-    if (checkpoints.length < 3) return 'atLeastThreeCheckpoints'
+    if (checkpoints.length < 2) return 'atLeastTwoCheckpoints'
 
     const sorted = [...checkpoints].sort((left, right) => left.gb - right.gb)
     if (sorted.some(({ gb, amountIqd }) => (
@@ -34,9 +37,8 @@ export function validatePaygPricingCheckpoints(
     const protectedValues = new Map(sorted.map(({ gb, amountIqd }) => [gb, amountIqd]))
     if (
         protectedValues.get(1) !== 0
-        || protectedValues.get(15) !== 10_000
-        || protectedValues.get(100) !== 40_000
-    ) return 'protectedCheckpointsRequired'
+        || !protectedValues.has(100)
+    ) return 'requiredCheckpointsRequired'
 
     return null
 }
@@ -45,8 +47,8 @@ export function calculatePaygAmountFromGb(
     usageGb: number,
     checkpoints: PaygPricingCheckpoint[] = DEFAULT_PAYG_PRICING_CHECKPOINTS
 ): number {
-    if (!Number.isFinite(usageGb) || usageGb < 0 || usageGb > PAYG_MAX_GB) {
-        throw new RangeError('PAYG usage must be between 0 GB and 100 GB')
+    if (!Number.isFinite(usageGb) || usageGb < 0) {
+        throw new RangeError('PAYG usage must be a non-negative number of GB')
     }
     if (validatePaygPricingCheckpoints(checkpoints)) {
         throw new RangeError('PAYG pricing schedule is invalid')
@@ -54,13 +56,14 @@ export function calculatePaygAmountFromGb(
     if (usageGb <= 1) return 0
 
     const sorted = [...checkpoints].sort((left, right) => left.gb - right.gb)
-    const upperIndex = sorted.findIndex(({ gb }) => gb >= usageGb)
+    const cappedUsageGb = Math.min(usageGb, PAYG_MAX_GB)
+    const upperIndex = sorted.findIndex(({ gb }) => gb >= cappedUsageGb)
     const upper = sorted[upperIndex]
     const lower = sorted[Math.max(0, upperIndex - 1)]
     if (lower.gb === upper.gb) return Math.round(lower.amountIqd)
 
     const interpolated = lower.amountIqd
-        + ((usageGb - lower.gb) * (upper.amountIqd - lower.amountIqd))
+        + ((cappedUsageGb - lower.gb) * (upper.amountIqd - lower.amountIqd))
         / (upper.gb - lower.gb)
     return Math.round(interpolated)
 }

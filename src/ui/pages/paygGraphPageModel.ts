@@ -5,7 +5,6 @@ import {
     validatePaygPricingCheckpoints,
 } from '@/lib/paygPricing'
 
-export const PAYG_MAX_IQD = 40_000
 export interface PaygGraphBounds {
     width: number
     height: number
@@ -64,7 +63,6 @@ export function calculatePaygPreviewAmount(
     if (
         !Number.isFinite(gb)
         || gb < 0
-        || gb > PAYG_MAX_GB
         || validatePaygPricingCheckpoints(checkpoints)
     ) return null
 
@@ -79,11 +77,12 @@ export function calculatePaygPreviewGb(
     if (
         !Number.isInteger(amount)
         || amount < 0
-        || amount > PAYG_MAX_IQD
         || validatePaygPricingCheckpoints(checkpoints)
     ) return null
 
     const sorted = [...checkpoints].sort((left, right) => left.gb - right.gb)
+    const maximumAmount = sorted.at(-1)?.amountIqd ?? 0
+    if (amount > maximumAmount) return null
     const upperIndex = sorted.findIndex((point) => point.amountIqd > amount)
     if (upperIndex === -1) return PAYG_MAX_GB
 

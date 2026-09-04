@@ -115,6 +115,14 @@ type UpsertWorkspacePaymentConfigurationRequest = {
     usageStartDate?: string | null
     renewalDueAt?: string | null
     billingInterval?: 'monthly'
+    paygProfileId?: string | null
+    paygProfileChangeTiming?: 'next_cycle' | 'immediate'
+}
+
+type TerminateWorkspacePaygRequest = {
+    action: 'terminateWorkspacePayg'
+    passkey?: string
+    workspaceId?: string
 }
 
 type ActivateWorkspacePrepaidTermRequest = {
@@ -137,6 +145,18 @@ type GetPaygPricingScheduleRequest = {
 type PublishPaygPricingScheduleRequest = {
     action: 'publishPaygPricingSchedule'
     passkey?: string
+    checkpoints?: Array<{ gb?: number; amountIqd?: number }>
+}
+
+type ListPaygProfilesRequest = {
+    action: 'listPaygProfiles'
+    passkey?: string
+}
+
+type CreatePaygProfileRequest = {
+    action: 'createPaygProfile'
+    passkey?: string
+    name?: string
     checkpoints?: Array<{ gb?: number; amountIqd?: number }>
 }
 
@@ -173,9 +193,12 @@ type AdminConsoleRequest =
     | SendWorkspaceAdminMessageRequest
     | ListWorkspacePaymentConfigurationsRequest
     | UpsertWorkspacePaymentConfigurationRequest
+    | TerminateWorkspacePaygRequest
     | ActivateWorkspacePrepaidTermRequest
     | GetPaygPricingScheduleRequest
     | PublishPaygPricingScheduleRequest
+    | ListPaygProfilesRequest
+    | CreatePaygProfileRequest
     | ListWorkspacePaymentTransactionsRequest
     | ReviewWorkspacePaymentTransactionRequest
 
@@ -1171,6 +1194,13 @@ async function upsertWorkspacePaymentConfiguration(
     if (body.paygEnabled && body.usageEnabled) {
         return errorResponse('PAYG and prepaid usage are exclusive')
     }
+    const paygProfileId = body.paygProfileId?.trim() ?? ''
+    if (body.paygEnabled && (!paygProfileId || !UUID_PATTERN.test(paygProfileId))) {
+        return errorResponse('A valid PAYG profile is required')
+    }
+    if (body.paygProfileChangeTiming && body.paygProfileChangeTiming !== 'next_cycle' && body.paygProfileChangeTiming !== 'immediate') {
+        return errorResponse('PAYG profile timing must be next_cycle or immediate')
+    }
     if ((body.paygEnabled || body.usageEnabled) && !body.renewalDueAt) {
         return errorResponse('Renewal due is required for PAYG and prepaid usage')
     }
@@ -1201,6 +1231,8 @@ async function upsertWorkspacePaymentConfiguration(
         p_is_payment_enabled: body.isPaymentEnabled,
         p_usage_enabled: body.usageEnabled,
         p_payg_enabled: body.paygEnabled,
+        p_payg_profile_id: body.paygEnabled ? paygProfileId : null,
+        p_payg_profile_change_timing: body.paygProfileChangeTiming ?? 'next_cycle',
         p_gb_per_payment: gbPerPayment.value,
         p_usage_start_date: body.usageStartDate ?? null,
         p_renewal_due_at: body.renewalDueAt ?? null
@@ -1215,7 +1247,9 @@ async function upsertWorkspacePaymentConfiguration(
         p_gb_per_payment: gbPerPayment.value,
         p_renewal_due_at: body.renewalDueAt || null,
         p_actor: 'admin-console-passkey',
-        p_usage_start_date: body.usageStartDate || null
+        p_usage_start_date: body.usageStartDate || null,
+        p_payg_profile_id: body.paygEnabled ? paygProfileId : null,
+        p_payg_profile_change_timing: body.paygProfileChangeTiming ?? 'next_cycle'
     }
 
     rpcParams.p_billing_interval = body.billingInterval ?? 'monthly'
@@ -1225,6 +1259,31 @@ async function upsertWorkspacePaymentConfiguration(
     if (error) {
         console.error('RPC error:', JSON.stringify({ message: error.message, code: error.code, details: error.details, hint: error.hint }))
         return errorResponse(error.message || 'Unknown RPC error', 400, {
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        })
+    }
+
+    return jsonResponse(data)
+}
+
+async function terminateWorkspacePayg(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: TerminateWorkspacePaygRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!UUID_PATTERN.test(workspaceId)) {
+        return errorResponse('A valid workspace is required')
+    }
+
+    const { data, error } = await adminClient.rpc('admin_terminate_workspace_payg', {
+        p_workspace_id: workspaceId,
+        p_actor: 'admin-console-passkey'
+    })
+
+    if (error) {
+        return errorResponse(error.message || 'Failed to terminate PAYG', 400, {
             code: error.code,
             details: error.details,
             hint: error.hint
@@ -1319,6 +1378,32 @@ async function publishPaygPricingSchedule(
     const { data, error } = await adminClient.rpc('admin_publish_payg_pricing_schedule', {
         p_checkpoints: checkpoints,
         p_actor: 'admin-console-passkey'
+    })
+    if (error) return errorResponse(error.message, 400)
+    return jsonResponse(data)
+}
+
+async function listPaygProfiles(adminClient: ReturnType<typeof createAdminClient>) {
+    const { data, error } = await adminClient.rpc('admin_list_payg_profiles')
+    if (error) return errorResponse(error.message, 500)
+    return jsonResponse(data)
+}
+
+async function createPaygProfile(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: CreatePaygProfileRequest,
+) {
+    const name = body.name?.trim() ?? ''
+    if (!name) return errorResponse('A PAYG profile name is required')
+    if (!Array.isArray(body.checkpoints)) return errorResponse('Pricing checkpoints are required')
+    const checkpoints = body.checkpoints.map((checkpoint) => ({
+        gb: checkpoint.gb,
+        amount_iqd: checkpoint.amountIqd,
+    }))
+    const { data, error } = await adminClient.rpc('admin_create_payg_profile', {
+        p_name: name,
+        p_checkpoints: checkpoints,
+        p_actor: 'admin-console-passkey',
     })
     if (error) return errorResponse(error.message, 400)
     return jsonResponse(data)
@@ -1478,6 +1563,10 @@ Deno.serve(async (req) => {
             return await upsertWorkspacePaymentConfiguration(adminClient, body)
         }
 
+        if (body.action === 'terminateWorkspacePayg') {
+            return await terminateWorkspacePayg(adminClient, body)
+        }
+
         if (body.action === 'activateWorkspacePrepaidTerm') {
             return await activateWorkspacePrepaidTerm(adminClient, body)
         }
@@ -1488,6 +1577,14 @@ Deno.serve(async (req) => {
 
         if (body.action === 'publishPaygPricingSchedule') {
             return await publishPaygPricingSchedule(adminClient, body)
+        }
+
+        if (body.action === 'listPaygProfiles') {
+            return await listPaygProfiles(adminClient)
+        }
+
+        if (body.action === 'createPaygProfile') {
+            return await createPaygProfile(adminClient, body)
         }
 
         if (body.action === 'listWorkspacePaymentTransactions') {
