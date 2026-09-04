@@ -186,8 +186,9 @@ def upload_assets():
         except Exception as e:
             print(f"Error reading local latest.json: {e}")
 
-    # Fill in missing Windows updater entries with their matching installer type.
-    # A legacy generic entry remains MSI-first for compatibility with existing releases.
+    # Retain both installer types so existing installations update in place:
+    # MSI remains available for legacy/system-wide installations, while NSIS
+    # remains the current-user, no-UAC path.
     windows_msi = None
     windows_nsis = None
     for f_path in all_files:
@@ -212,14 +213,17 @@ def upload_assets():
             "url": f"{base_download_url}atlas-updates/{filename}"
         }
 
-    if windows_msi and "windows-x86_64" not in data["platforms"]:
-        data["platforms"]["windows-x86_64"] = windows_update_details(windows_msi)
-
     if windows_msi and "windows-x86_64-msi" not in data["platforms"]:
         data["platforms"]["windows-x86_64-msi"] = windows_update_details(windows_msi)
 
     if windows_nsis and "windows-x86_64-nsis" not in data["platforms"]:
         data["platforms"]["windows-x86_64-nsis"] = windows_update_details(windows_nsis)
+
+    # Older builds that do not send their installer type use the generic key.
+    # Keep it MSI-first so those installs continue to update in place instead of
+    # silently creating a second per-user NSIS installation.
+    if windows_msi and "windows-x86_64" not in data["platforms"]:
+        data["platforms"]["windows-x86_64"] = windows_update_details(windows_msi)
 
     if windows_msi or windows_nsis:
         mapped_installers = []
@@ -228,12 +232,6 @@ def upload_assets():
         if windows_nsis:
             mapped_installers.append(os.path.basename(windows_nsis))
         print(f"Mapped Windows updater platforms to: {', '.join(mapped_installers)}")
-
-    # Older Tauri CLI versions may not create a type-specific updater entry.
-    # Keep the previous fallback so a single-installer release still has a valid feed.
-    windows_bin = windows_msi or windows_nsis
-    if windows_bin and "windows-x86_64" not in data["platforms"]:
-        data["platforms"]["windows-x86_64"] = windows_update_details(windows_bin)
 
     # Dynamically Map Android
     android_apk = None
