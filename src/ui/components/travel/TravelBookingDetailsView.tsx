@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Ban, CheckCircle2, CircleDollarSign, CreditCard, FilePenLine, ReceiptText, RotateCcw, Trash2, UsersRound } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle2, CircleDollarSign, CreditCard, FilePenLine, Printer, ReceiptText, RotateCcw, Trash2, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '@/auth'
 import { STATUS_ADVANCE_HOLD_DURATION_MS } from '@/lib/pressAndHold'
+import type { TemplatePreview } from '@/lib/printPreviewEditorStore'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { generateTemplatePdf } from '@/services/pdfGenerator'
+import { printPdfBlob } from '@/services/pdfPrintService'
 import {
     bookTravelBooking,
     cancelTravelBooking,
@@ -31,6 +34,7 @@ import {
     CardHeader,
     CardTitle,
     DeleteConfirmationModal,
+    PrintPreviewModal,
     Table,
     TableBody,
     TableCell,
@@ -41,6 +45,7 @@ import {
 } from '@/ui/components'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { RecordTravelBookingPaymentDialog } from './RecordTravelBookingPaymentDialog'
+import { TravelBookingPrintTemplate } from './TravelBookingPrintTemplate'
 
 interface TravelBookingDetailsViewProps {
     booking: TravelBooking
@@ -59,14 +64,15 @@ function statusClass(status: TravelBooking['status']) {
 }
 
 export function TravelBookingDetailsView({ booking, passengers, payments, onBack, onEdit }: TravelBookingDetailsViewProps) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { features } = useWorkspace()
+    const { features, workspaceName } = useWorkspace()
     const [isProcessing, setIsProcessing] = useState(false)
     const [isPaymentOpen, setIsPaymentOpen] = useState(false)
     const [isDeleteOpen, setIsDeleteOpen] = useState(false)
     const [isCancelOpen, setIsCancelOpen] = useState(false)
+    const [isPrintOpen, setIsPrintOpen] = useState(false)
     const [showAdvanceHoldTip, setShowAdvanceHoldTip] = useState(false)
     const advanceHoldMissCountRef = useRef(0)
     const advanceHoldTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -88,6 +94,29 @@ export function TravelBookingDetailsView({ booking, passengers, payments, onBack
     }, [payments])
     const canEdit = (booking.status === 'draft' || booking.status === 'booked') && activePayments.length === 0
     const canRecordPayment = booking.status === 'booked' || booking.status === 'partially_paid'
+    const bookingPrintPreview = useMemo<TemplatePreview>(() => ({
+        fields: [],
+        page: { widthMm: 210, heightMm: 297 },
+        createElement: (_data, _effectiveId, printLangOverride) => {
+            const baseLanguage = features.print_lang !== 'auto' ? features.print_lang : i18n.language
+            return <TravelBookingPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLangOverride || baseLanguage}
+                booking={booking}
+                passengers={passengers}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+            />
+        },
+        buildPdf: async (element, printLangOverride) => {
+            const baseLanguage = features.print_lang !== 'auto' ? features.print_lang : i18n.language
+            return generateTemplatePdf({
+                element,
+                format: 'a4',
+                printLang: printLangOverride || baseLanguage
+            })
+        }
+    }), [booking, features.iqd_display_preference, features.logo_url, features.print_lang, i18n.language, passengers, workspaceName])
 
     const runAction = async (action: () => Promise<void>, successMessage: string) => {
         if (isProcessing) return
@@ -143,6 +172,9 @@ export function TravelBookingDetailsView({ booking, passengers, payments, onBack
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={() => setIsPrintOpen(true)} disabled={isProcessing}>
+                        <Printer className="mr-2 h-4 w-4" />{t('common.print')}
+                    </Button>
                     {canEdit ? <Button type="button" variant="outline" onClick={onEdit} disabled={isProcessing}><FilePenLine className="mr-2 h-4 w-4" />{t('travelTransportation.editBooking')}</Button> : null}
                     {booking.status === 'draft' ? <div className="relative">
                         <PressAndHoldButton
@@ -268,6 +300,34 @@ export function TravelBookingDetailsView({ booking, passengers, payments, onBack
                     </Card>
                 </div>
             </div>
+
+            <PrintPreviewModal
+                isOpen={isPrintOpen}
+                onClose={() => setIsPrintOpen(false)}
+                onConfirm={() => setIsPrintOpen(false)}
+                title={t('travelTransportation.print.title')}
+                module="travelTransportation"
+                features={features}
+                workspaceName={workspaceName}
+                originId={booking.id}
+                showSaveButton={false}
+                pdfBuilder={async ({ effectiveId, printLangOverride }) => bookingPrintPreview.buildPdf(
+                    bookingPrintPreview.createElement({}, effectiveId, printLangOverride),
+                    printLangOverride
+                )}
+                printTemplate={({ effectiveId }) => bookingPrintPreview.createElement({}, effectiveId)}
+                templatePreview={bookingPrintPreview}
+                printSelectionOptions={[{
+                    format: 'a4',
+                    label: t('travelTransportation.print.a4'),
+                    description: t('travelTransportation.print.a4Description')
+                }]}
+                onPreviewPrint={async (blob) => {
+                    await printPdfBlob(blob, { title: t('travelTransportation.print.title') })
+                    setIsPrintOpen(false)
+                }}
+                previewPrintActionLabel={t('common.print')}
+            />
 
             <RecordTravelBookingPaymentDialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen} booking={booking} />
             <DeleteConfirmationModal

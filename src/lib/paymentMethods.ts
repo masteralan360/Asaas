@@ -57,8 +57,6 @@ export function getPaymentMethodLabel(method: PaymentMethodOption, t: TFunction)
             return t('directTransactions.paymentMethod.loanAdjustment', { defaultValue: 'Loan Adjustment' })
         case 'ecommerce':
             return t('directTransactions.paymentMethod.ecommerce', { defaultValue: 'E-Commerce' })
-        case 'hawala':
-            return t('directTransactions.paymentMethod.hawala', { defaultValue: 'Hawala' })
         case 'credit':
             return t('activities.paymentMethods.credit', { defaultValue: 'Credit' })
         case 'unknown':

@@ -57,6 +57,7 @@ describe('Travel & Transportation calculations and payment projections', () => {
                 convertedAmount: 3.25,
                 exchangeRate: 1,
                 exchangeRateSource: 'native',
+                exchangeRateTimestamp: '2026-09-04T10:00:00.000Z',
                 exchangeRates: []
             }]
         )

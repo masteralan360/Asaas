@@ -1735,6 +1735,7 @@ export type InvoiceOrigin =
   | 'activities'
   | 'post_service'
   | 'car_rental'
+  | 'travel_transportation'
   | 'upload'
 
 export interface Invoice extends BaseEntity {
@@ -2401,6 +2402,8 @@ export interface SyncQueueItem {
     | 'real_estate_transactions'
     | 'real_estate_installments'
     | 'real_estate_payments'
+    | 'travel_bookings'
+    | 'travel_passengers'
     | 'exchange_pair_prices'
     | 'exchange_transactions'
     | 'exchange_fee_rules'
@@ -2573,6 +2576,8 @@ export interface OfflineMutation {
     | 'real_estate_transactions'
     | 'real_estate_installments'
     | 'real_estate_payments'
+    | 'travel_bookings'
+    | 'travel_passengers'
     | 'exchange_pair_prices'
     | 'exchange_transactions'
     | 'exchange_fee_rules'

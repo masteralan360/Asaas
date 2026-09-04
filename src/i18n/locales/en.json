@@ -7709,6 +7709,18 @@
     "bookingBooked": "Booking booked.",
     "bookingCancelled": "Booking cancelled.",
     "bookingDeleted": "Draft booking deleted.",
+    "print": {
+      "title": "Travel Booking",
+      "printedAt": "Printed",
+      "passengerList": "Passenger List",
+      "continued": "continued",
+      "number": "No.",
+      "noPassengers": "No passengers.",
+      "totalSummary": "Total Summary",
+      "adjustments": "Booking Adjustments",
+      "a4": "Print A4",
+      "a4Description": "Passenger table with a booking total summary."
+    },
     "errors": {
       "travelDateRequired": "Select a travel date.",
       "passengerRequired": "Add at least one complete passenger.",

@@ -7513,6 +7513,18 @@
     "bookingBooked": "حجز پەسندکرا.",
     "bookingCancelled": "حجز هەڵوەشایەوە.",
     "bookingDeleted": "حجزی ڕەشنووس سڕایەوە.",
+    "print": {
+      "title": "حجزی گەشت",
+      "printedAt": "چاپکرا لە",
+      "passengerList": "لیستی گەشتیاران",
+      "continued": "بەردەوام",
+      "number": "ژ.",
+      "noPassengers": "هیچ گەشتیارێک نییە.",
+      "totalSummary": "پوختەی کۆی گشتی",
+      "adjustments": "ڕاستکردنەوەکانی حجز",
+      "a4": "چاپی A4",
+      "a4Description": "خشتەی گەشتیاران لەگەڵ پوختەی کۆی حجز."
+    },
     "errors": {
       "travelDateRequired": "بەرواری گەشت هەڵبژێرە.",
       "passengerRequired": "لانیکەم یەک گەشتیاری تەواو زیاد بکە.",

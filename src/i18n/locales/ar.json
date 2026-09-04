@@ -7440,6 +7440,18 @@
     "bookingBooked": "تم تأكيد الحجز.",
     "bookingCancelled": "تم إلغاء الحجز.",
     "bookingDeleted": "تم حذف الحجز المسودة.",
+    "print": {
+      "title": "حجز سفر",
+      "printedAt": "طُبع في",
+      "passengerList": "قائمة المسافرين",
+      "continued": "متابعة",
+      "number": "م",
+      "noPassengers": "لا يوجد مسافرون.",
+      "totalSummary": "ملخص الإجمالي",
+      "adjustments": "تعديلات الحجز",
+      "a4": "طباعة A4",
+      "a4Description": "جدول للمسافرين مع ملخص إجمالي الحجز."
+    },
     "errors": { "travelDateRequired": "اختر تاريخ السفر.", "passengerRequired": "أضف مسافراً واحداً مكتملاً على الأقل.", "paymentFailed": "تعذر تسجيل دفعة الربح.", "saveFailed": "تعذر حفظ الحجز.", "actionFailed": "تعذر إكمال إجراء الحجز." },
     "permissions": { "access": "الوصول إلى السفر والنقل", "accessDescription": "الوصول إلى حجوزات ومدفوعات السفر والنقل." }
   },

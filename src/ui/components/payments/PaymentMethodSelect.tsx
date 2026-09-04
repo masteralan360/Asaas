@@ -1,6 +1,6 @@
 import { useMemo, type PointerEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Banknote, CalendarClock, CircleHelp, CreditCard, HandCoins, Landmark, Send, SlidersHorizontal } from 'lucide-react'
+import { Banknote, CalendarClock, CircleHelp, CreditCard, HandCoins, Landmark, SlidersHorizontal } from 'lucide-react'
 
 import { DIGITAL_WALLET_PAYMENT_METHODS, usePaymentAccounts, type PaymentAccount } from '@/local-db'
 
@@ -77,8 +77,6 @@ function PaymentMethodVisual({ method }: { method: PaymentMethodOption }) {
                     ? CalendarClock
                     : method === 'loan_adjustment'
                         ? SlidersHorizontal
-                        : method === 'hawala'
-                            ? Send
                         : method === 'credit'
                             ? CreditCard
                             : CircleHelp
