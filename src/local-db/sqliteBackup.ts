@@ -3,6 +3,7 @@ import { shouldMirrorToSqlite, isStrictLocalWorkspaceMode } from '@/workspace/wo
 import { r2Service } from '@/services/r2Service'
 import { runPwaDailyBackupIfNeeded } from './pwaBackup'
 import { getPwaDbInstance } from './pwaSqlite'
+import { checkpointLocalModeSqliteForBackup } from './localModeSqlite'
 
 const DB_FILENAME = 'atlas-local-mode.db'
 const BACKUP_DIR = 'db-backup'
@@ -10,6 +11,10 @@ const MAX_BACKUP_DAYS = 7
 const BACKUP_DONE_KEY = 'atlas_db_backup_date'
 const R2_BACKUP_INTERVAL_MS = 5 * 60 * 60 * 1000
 const R2_BACKUP_TIME_KEY = 'atlas_db_r2_backup_time'
+
+export type UpdateSafetyBackupResult =
+    | { created: false }
+    | { created: true; path: string }
 
 function getTodayDateString() {
     const now = new Date()
@@ -123,6 +128,42 @@ export async function runDailyBackupIfNeeded(workspaceId?: string | null) {
     } catch (err) {
         console.error('[DBBackup] Failed to create daily backup:', err)
     }
+}
+
+/**
+ * Make a verified recovery copy immediately before a desktop update starts.
+ * Local Mode data is the source of truth, so a failed backup deliberately
+ * prevents installation instead of risking an avoidable data-loss scenario.
+ */
+export async function createUpdateSafetyBackupIfNeeded(
+    workspaceId?: string | null,
+): Promise<UpdateSafetyBackupResult> {
+    if (!workspaceId || !isTauri() || !shouldMirrorToSqlite(workspaceId)) {
+        return { created: false }
+    }
+
+    const { exists, mkdir, copyFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+    const dbExists = await exists(DB_FILENAME, { baseDir: BaseDirectory.AppData })
+    if (!dbExists) {
+        return { created: false }
+    }
+
+    await checkpointLocalModeSqliteForBackup()
+    await mkdir(BACKUP_DIR, { baseDir: BaseDirectory.AppData, recursive: true })
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const backupPath = `${BACKUP_DIR}/atlas-local-mode-before-update-${timestamp}.db`
+    await copyFile(DB_FILENAME, backupPath, {
+        fromPathBaseDir: BaseDirectory.AppData,
+        toPathBaseDir: BaseDirectory.AppData,
+    })
+
+    if (!(await exists(backupPath, { baseDir: BaseDirectory.AppData }))) {
+        throw new Error('Local-mode SQLite backup verification failed.')
+    }
+
+    console.log(`[DBBackup] Update safety backup created: ${backupPath}`)
+    return { created: true, path: backupPath }
 }
 
 function isR2BackupDue(): boolean {

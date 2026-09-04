@@ -45,6 +45,8 @@ import {
   areApplicationUpdatesDisabled,
   UPDATE_PREFERENCE_CHANGED_EVENT,
 } from "@/lib/updatePreference";
+import { createUpdateSafetyBackupIfNeeded } from "@/local-db/sqliteBackup";
+import { checkForTauriUpdate } from "@/lib/tauriUpdater";
 
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__;
@@ -497,7 +499,7 @@ function formatEstimatedTime(seconds: number | null): string | null {
 
 function UpdateHandler() {
   const { setPendingUpdate, isLoading: isWorkspaceLoading } = useWorkspace();
-  const { isLoading: isAuthLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const { t } = useTranslation();
   const [updatesDisabled, setUpdatesDisabled] = useState(() =>
     areApplicationUpdatesDisabled(),
@@ -580,7 +582,7 @@ function UpdateHandler() {
       let bytesPerSecond = 0;
 
       try {
-        await update.downloadAndInstall((event) => {
+        await update.download((event) => {
           switch (event.event) {
             case "Started":
               totalBytes = event.data.contentLength;
@@ -625,6 +627,9 @@ function UpdateHandler() {
           }
         });
 
+        await createUpdateSafetyBackupIfNeeded(user?.workspaceId);
+        await update.install();
+
         localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
         sessionStorage.removeItem(DEFERRED_UPDATE_SESSION_KEY);
         setPendingUpdate(null);
@@ -644,7 +649,7 @@ function UpdateHandler() {
         }));
       }
     },
-    [setPendingUpdate, t, updatesDisabled],
+    [setPendingUpdate, t, updatesDisabled, user?.workspaceId],
   );
 
   const checkForUpdates = useCallback(
@@ -815,9 +820,8 @@ function UpdateHandler() {
           return;
         }
 
-        const { check } = await import("@tauri-apps/plugin-updater");
         console.log("[Tauri] Checking for updates...");
-        const update = await check();
+        const update = await checkForTauriUpdate();
 
         // Update timestamps
         localStorage.setItem("last_auto_update_check", now.toString());

@@ -17,7 +17,8 @@ import { isAndroidPwa, isMobile, isDesktop, isTauri, isTauriAndroid } from '@/li
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
-import { check } from '@tauri-apps/plugin-updater';
+import { checkForTauriUpdate } from '@/lib/tauriUpdater'
+import { createUpdateSafetyBackupIfNeeded } from '@/local-db/sqliteBackup'
 import { platformService } from '@/services/platformService'
 import { r2Service } from '@/services/r2Service'
 import { Image as ImageIcon } from 'lucide-react'
@@ -783,14 +784,14 @@ export function Settings() {
                 return
             }
 
-            const update = await check();
+            const update = await checkForTauriUpdate();
             if (update) {
                 setUpdateStatus({ status: 'available', version: update.version });
 
                 let downloaded = 0;
                 let contentLength = 0;
 
-                await update.downloadAndInstall((event) => {
+                await update.download((event) => {
                     switch (event.event) {
                         case 'Started':
                             contentLength = event.data.contentLength || 0;
@@ -808,6 +809,8 @@ export function Settings() {
                     }
                 });
 
+                await createUpdateSafetyBackupIfNeeded(user?.workspaceId)
+                await update.install()
                 setUpdateStatus({ status: 'downloaded' });
             } else {
                 setUpdateStatus({ status: 'not-available' });

@@ -213,16 +213,22 @@ def upload_assets():
             "url": f"{base_download_url}atlas-updates/{filename}"
         }
 
-    if windows_msi and "windows-x86_64-msi" not in data["platforms"]:
+    if windows_msi:
         data["platforms"]["windows-x86_64-msi"] = windows_update_details(windows_msi)
 
-    if windows_nsis and "windows-x86_64-nsis" not in data["platforms"]:
+    if windows_nsis:
         data["platforms"]["windows-x86_64-nsis"] = windows_update_details(windows_nsis)
 
     # Older builds that do not send their installer type use the generic key.
-    # Keep it MSI-first so those installs continue to update in place instead of
-    # silently creating a second per-user NSIS installation.
-    if windows_msi and "windows-x86_64" not in data["platforms"]:
+    # Point them to NSIS for the one-time WiX/MSI-to-NSIS migration. The
+    # generated NSIS installer detects the old MSI and removes it before
+    # installing the current-user app. New builds explicitly request one of
+    # the installer-specific keys above, so MSI remains a compatibility path.
+    if windows_nsis:
+        data["platforms"]["windows-x86_64"] = windows_update_details(windows_nsis)
+    elif windows_msi:
+        # Do not publish a broken generic target if an NSIS artifact failed to
+        # build; legacy clients can still receive the compatibility MSI.
         data["platforms"]["windows-x86_64"] = windows_update_details(windows_msi)
 
     if windows_msi or windows_nsis:

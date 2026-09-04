@@ -17,6 +17,7 @@ import {
 
 import { AtlasDatabase } from "./database";
 import {
+  checkpointLocalModeSqliteForBackup,
   hydrateLocalModeCacheFromSqlite,
   setLocalModeSqliteConnectionForTests,
   type SqliteConnection,
@@ -68,7 +69,9 @@ class RecordingSqliteConnection implements SqliteConnection {
   rows = new Map<string, string>();
   activeCashierShiftClaims = new Map<string, string>();
   events: string[] = [];
+  selectQueries: string[] = [];
   failEntityType: string | null = null;
+  checkpointBusy = false;
   commitGate: Promise<void> | null = null;
 
   async execute(query: string, bindValues: unknown[] = []) {
@@ -99,6 +102,10 @@ class RecordingSqliteConnection implements SqliteConnection {
   }
 
   async select<T>(query?: string, bindValues: unknown[] = []): Promise<T> {
+    this.selectQueries.push(query ?? "");
+    if (query?.includes("PRAGMA wal_checkpoint(TRUNCATE)")) {
+      return [{ busy: this.checkpointBusy ? 1 : 0 }] as T;
+    }
     if (query?.includes("FROM cashier_shift_active_claims")) {
       const occurrenceId = this.activeCashierShiftClaims.get(
         `${String(bindValues[0])}:${String(bindValues[1])}`,
@@ -224,6 +231,20 @@ describe("local-mode SQLite authority", () => {
     expect(sqlite.events).toEqual(["begin", "commit"]);
     expect(settled).toBe(true);
     expect(sqlite.rows.has("categories:category-1")).toBe(true);
+  });
+
+  it("checkpoints Local Mode SQLite before an update safety backup", async () => {
+    await checkpointLocalModeSqliteForBackup();
+
+    expect(sqlite.selectQueries).toContain("PRAGMA wal_checkpoint(TRUNCATE)");
+  });
+
+  it("refuses an update safety backup when SQLite cannot checkpoint", async () => {
+    sqlite.checkpointBusy = true;
+
+    await expect(checkpointLocalModeSqliteForBackup()).rejects.toThrow(
+      "Local-mode SQLite is busy",
+    );
   });
 
   it("claims one active cashier occurrence atomically in Local-mode SQLite", async () => {

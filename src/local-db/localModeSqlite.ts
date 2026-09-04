@@ -686,6 +686,31 @@ export function runLocalModeSqliteTransaction<T>(
   });
 }
 
+/**
+ * Flush the SQLite write-ahead log before a file-level recovery backup.
+ *
+ * This runs behind all queued Local Mode mutations and closes the connection
+ * afterwards so an updater can copy a stable database file without retaining
+ * a stale WAL lock.
+ */
+export function checkpointLocalModeSqliteForBackup(): Promise<void> {
+  return runLocalModeSqliteWrite(async () => {
+    const connection = await ensureConnection();
+    if (!connection) {
+      throw new Error("Local-mode SQLite is unavailable; the backup was not created.");
+    }
+
+    const checkpoint = await connection.select<Array<{ busy?: number }>>(
+      "PRAGMA wal_checkpoint(TRUNCATE)",
+    );
+    if (checkpoint.some((row) => Number(row.busy ?? 0) !== 0)) {
+      throw new Error("Local-mode SQLite is busy; the backup was not created.");
+    }
+
+    await resetSqliteConnection();
+  });
+}
+
 function enqueueWrite(task: () => Promise<void>) {
   return runLocalModeSqliteWrite(task).catch((error) => {
       console.error("[LocalModeSQLite] Write failed:", error);
