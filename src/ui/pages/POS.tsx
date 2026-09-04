@@ -148,6 +148,7 @@ import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useUnitRegistry, getDynamicUnitAdjustmentLabel, type UnitRegistry } from '@/ui/components/unitRegistry'
 import { hasEffectiveSalesAgentCommissionPermission } from '@/permissions/salesAgentCommissionPermissions'
+import { OLD_SALES_AGENT_CONFIGURATION } from '@/ui/components/commissions/oldSalesAgentConfiguration'
 import { getOrderLineFreeBonusQuantity } from '@/lib/orderLineItems'
 import { FreeBonusUnitSelect } from '@/ui/components/orders/FreeBonusUnitSelect'
 import {
@@ -438,7 +439,8 @@ export function POS() {
     // A Quick Order is still a Sales Order, so it requires the existing Orders
     // module in addition to the opt-in Quick Order capability.
     const quickOrderEnabled = hasCapability('quickOrder') && hasFeature('orders')
-    const canAssignQuickOrderCommissions = hasFeature('sales_agent_commissions')
+    const canAssignQuickOrderCommissions = OLD_SALES_AGENT_CONFIGURATION.showSalesAgentBeneficiaries
+        && hasFeature('sales_agent_commissions')
         && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.assignOrders')
     const priceBookCatalog = usePriceBookCatalogState(user?.workspaceId, {
         enabled: priceBooksEnabled && !!selectedStorageId && !isActivitiesStorage && !isServicesStorage && !isLocalMode
@@ -510,6 +512,10 @@ export function POS() {
     const categories = useCategories(user?.workspaceId)
     const [skuInput, setSkuInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    // State updates do not take effect until React re-renders. Keep a synchronous
+    // lock as well so two rapid clicks (or keyboard and pointer activation) cannot
+    // start separate checkout transactions in that interval.
+    const checkoutSubmissionInProgress = useRef(false)
     const [isPreprinting, setIsPreprinting] = useState(false)
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false)
     const [isPosAdjustOpen, setIsPosAdjustOpen] = useState(false)
@@ -2463,6 +2469,14 @@ export function POS() {
     }
 
     const handleCheckout = async (loanRegistrationData?: LoanRegistrationData) => {
+        if (checkoutSubmissionInProgress.current || isLoading) return
+
+        checkoutSubmissionInProgress.current = true
+        // Lock the visible checkout controls before any validation or network work
+        // begins, preventing a second click from creating a duplicate sale.
+        setIsLoading(true)
+
+        try {
         if (cart.length === 0 || !user) return
 
         if (paymentType === 'order') {
@@ -3174,12 +3188,22 @@ export function POS() {
         } finally {
             setIsLoading(false)
         }
+        } finally {
+            checkoutSubmissionInProgress.current = false
+            setIsLoading(false)
+        }
     }
 
     const handleQuickOrderSubmit = async (
         checkout: QuickOrderCheckoutData,
         options?: QuickOrderSubmissionOptions
     ) => {
+        if (checkoutSubmissionInProgress.current || isLoading) return
+
+        checkoutSubmissionInProgress.current = true
+        setIsLoading(true)
+
+        try {
         if (cart.length === 0 || !user) {
             throw new Error(t('pos.emptyCart', { defaultValue: 'Your cart is empty.' }))
         }
@@ -3350,6 +3374,10 @@ export function POS() {
             if (!orderCompleted) {
                 setQuickOrderProgressStage(null)
             }
+        }
+        } finally {
+            checkoutSubmissionInProgress.current = false
+            setIsLoading(false)
         }
     }
 

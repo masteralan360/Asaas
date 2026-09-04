@@ -141,7 +141,6 @@ export {
     LOAN_ADJUSTMENT_PAYMENT_METHOD,
     ORDER_FINANCING_PAYMENT_METHODS,
     STANDARD_PAYMENT_METHODS,
-    TRAVEL_PAYMENT_METHODS,
     getPaymentMethodLabel
 } from '@/lib/paymentMethods'
 export type { PaymentMethodOption } from '@/lib/paymentMethods'

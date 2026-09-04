@@ -110,7 +110,6 @@ const INDUSTRIES = [
     ['manufacturing', 'Manufacturing'],
     ['services', 'Professional services'],
     ['realEstate', 'Real estate'],
-    ['travel', 'Travel and tourism'],
     ['education', 'Education'],
     ['technology', 'Technology'],
     ['other', 'Other']

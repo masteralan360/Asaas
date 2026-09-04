@@ -4194,7 +4194,6 @@
       "Office Supplies": "پێداویستی ئۆفیس",
       "Software": "سۆفتوێر",
       "Hardware": "هاردوێر",
-      "Travel": "گەشت",
       "Meals": "ژەمەکان",
       "Legal": "یاسایی",
       "Insurance": "دڵنیایی",
@@ -4267,7 +4266,7 @@
   },
   "finance": {
     "title": "Finance Analytics Hub",
-    "subtitle": "A read-only hub for finance analysis across revenue, accounting, loans, partners, and travel activity.",
+    "subtitle": "A read-only hub for finance analysis across revenue, accounting, loans, and partners.",
     "tabs": {
       "overview": "Overview",
       "sales": "Sales",
@@ -6482,7 +6481,6 @@
       "manufacturing": "بەرهەمهێنان",
       "services": "خزمەتگوزاری پیشەیی",
       "realEstate": "خانووبەرە",
-      "travel": "گەشت و گوزار",
       "education": "پەروەردە",
       "technology": "تەکنەلۆژیا",
       "other": "هی تر"

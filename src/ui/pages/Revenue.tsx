@@ -813,7 +813,7 @@ export function Revenue() {
         return dateScopedSales.filter((sale) => visibleSaleIds.has(sale.id))
     }, [dateScopedSales, filteredRevenueRecords])
 
-    const isLoading = rawSales === undefined || rawSalesOrders === undefined || rawTravelSales === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
+    const isLoading = rawSales === undefined || rawSalesOrders === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
     const prevDateBoundsRef = useRef(dateBounds)
 

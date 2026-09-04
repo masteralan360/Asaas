@@ -4197,7 +4197,6 @@
       "Office Supplies": "مستلزمات مكتبية",
       "Software": "برمجيات",
       "Hardware": "أجهزة",
-      "Travel": "سفر",
       "Meals": "وجبات",
       "Legal": "قانوني",
       "Insurance": "تأمين",
@@ -4270,7 +4269,7 @@
   },
   "finance": {
     "title": "Finance Analytics Hub",
-    "subtitle": "A read-only hub for finance analysis across revenue, accounting, loans, partners, and travel activity.",
+    "subtitle": "A read-only hub for finance analysis across revenue, accounting, loans, and partners.",
     "tabs": {
       "overview": "Overview",
       "sales": "Sales",
@@ -6466,7 +6465,6 @@
       "manufacturing": "التصنيع",
       "services": "الخدمات المهنية",
       "realEstate": "العقارات",
-      "travel": "السفر والسياحة",
       "education": "التعليم",
       "technology": "التقنية",
       "other": "أخرى"

@@ -5532,7 +5532,6 @@
       "Office Supplies": "Office Supplies",
       "Software": "Software",
       "Hardware": "Hardware",
-      "Travel": "Travel",
       "Meals": "Meals",
       "Legal": "Legal",
       "Insurance": "Insurance",
@@ -5563,7 +5562,7 @@
   },
   "finance": {
     "title": "Finance Analytics Hub",
-    "subtitle": "A read-only hub for finance analysis across revenue, accounting, loans, partners, and travel activity.",
+    "subtitle": "A read-only hub for finance analysis across revenue, accounting, loans, and partners.",
     "tabs": {
       "overview": "Overview",
       "sales": "Sales",
@@ -5606,7 +5605,6 @@
       "monthNetProfit": "Month Net Profit",
       "surplusAfterDistribution": "Surplus After Distribution",
       "overdueExposure": "Overdue Exposure",
-      "travelCommission": "Travel Commission",
       "receivables": "Receivables",
       "payables": "Payables",
       "loanExposure": "Loan Exposure",
@@ -5696,9 +5694,7 @@
       "loanPartners": "No linked loan exposure is available.",
       "loanBook": "No loan rows are available.",
       "installments": "No installment rows are available.",
-      "partnerExposure": "No partner exposure rows are available.",
-      "travelSuppliers": "No travel supplier totals are available.",
-      "travelGroups": "No travel group totals are available."
+      "partnerExposure": "No partner exposure rows are available."
     }
   },
   "currencyExchange": {
@@ -6716,7 +6712,6 @@
       "manufacturing": "Manufacturing",
       "services": "Professional services",
       "realEstate": "Real estate",
-      "travel": "Travel and tourism",
       "education": "Education",
       "technology": "Technology",
       "other": "Other"

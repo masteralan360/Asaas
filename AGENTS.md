@@ -63,6 +63,8 @@ Use the base `Dialog*` primitives only when a compact confirmation, alert, or de
 
 The dialog's `confirmation` or `Proceed` button MUST be `disabled/grayed` out if there is a `requirement field or selector` which is invalid or empty.
 
+Every save, confirm, or proceed action MUST show a grayed-out loading state and disable its trigger immediately while processing, preventing duplicate submissions from repeated clicks.
+
 For fields that primarily contain numeric values or monetary amounts, display values using appropriate number formatting and thousands separators (for example, `100000` → `100,000`). Apply this consistently in both editable inputs and read-only displays where applicable, also have `0` as a placeholder for empty values and deleting an amount in the field must not make it 0 but rather an unvalid-to-proceed empty field with the `0` placeholder.
 
 Any field that requires date or date/time selection MUST use the app-provided date picker component at `src/ui/components/ui/date-time-picker.tsx`. Do not use native browser or operating-system date/time inputs or pickers (such as `<input type="date">` or `<input type="datetime-local">`). This keeps date selection behavior and presentation consistent across the application.
@@ -76,8 +78,6 @@ Any field or control that allows users to select a currency MUST use the app-pro
 Any field or cntrol that allows users to select a payment method MUST use the app-provided `PaymentMethodSelector` component at `src/ui/components/PaymentMethodSelector.tsx`. Do not create custom payment method dropdowns, selectors, or native alternatives IF the use is not module specific (for e.g. if a module needs a specific payment method selector, it can create new payment method inside app's provided one and wire it to that specific module). Reuse this component consistently wherever payment method selection is required.
 
 While the modal is proceeding/processing it must NOT allow the user to close the modal by the overlay or X button. This is to prevent the user from closing the modal while the data is being saved and thus potentially corrupting the data.
-
-Every save, confirm, or proceed action MUST show a grayed-out loading state and disable its trigger immediately while processing, preventing duplicate submissions from repeated clicks.
 
 When a workflow explicitly uses `MultipleModalLayout`, only its last active panel may own the primary confirmation/submit action. Earlier panels may collect and validate data, but must not offer a competing confirmation action; closing a linked panel must return to the preceding step without losing its input.
 

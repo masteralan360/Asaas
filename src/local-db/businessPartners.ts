@@ -1050,10 +1050,9 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
         return partner
     }
 
-    const [salesOrders, purchaseOrders, travelSales, loans, deliveryBalances, directAccountEffects] = await Promise.all([
+    const [salesOrders, purchaseOrders, loans, deliveryBalances, directAccountEffects] = await Promise.all([
         getPartnerSalesOrders(partner),
         getPartnerPurchaseOrders(partner),
-        getPartnerTravelSales(partner),
         getPartnerLoans(partner),
         getDeliveryOutstandingBalances(workspaceId, partner),
         getPartnerDirectAccountEffects(workspaceId, partner)
@@ -1061,7 +1060,6 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
 
     const activeSalesOrders = salesOrders.filter((order) => order.status !== 'cancelled')
     const activePurchaseOrders = purchaseOrders.filter((order) => order.status !== 'cancelled')
-    const activeTravelSales = travelSales.filter((sale) => sale.status === 'completed')
     const activeLentLoans = loans.filter((loan) =>
         loan.balanceAmount > 0
         && loan.status !== 'completed'
@@ -1113,17 +1111,8 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
             (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, partner.defaultCurrency, order.exchangeRates),
             0
         )
-    const travelSaleValue = activeTravelSales.reduce(
-        (sum, sale) => sum + convertCurrencyAmountWithSnapshot(
-            getTravelSaleCost(sale),
-            sale.currency,
-            partner.defaultCurrency,
-            sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
-        ),
-        0
-    )
-    const totalPurchaseOrders = activePurchaseOrders.length + activeTravelSales.length
-    const totalPurchaseValue = roundAmount(purchaseOrderValue + travelSaleValue, partner.defaultCurrency)
+    const totalPurchaseOrders = activePurchaseOrders.length
+    const totalPurchaseValue = roundAmount(purchaseOrderValue, partner.defaultCurrency)
     const basePayableBalance = roundAmount(
         activePurchaseOrders
             .filter((order) =>
@@ -1140,17 +1129,6 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
                 ),
                 0
             )
-            + activeTravelSales
-                .filter((sale) => !sale.isPaid)
-                .reduce(
-                    (sum, sale) => sum + convertCurrencyAmountWithSnapshot(
-                        getTravelSaleCost(sale),
-                        sale.currency,
-                        partner.defaultCurrency,
-                        sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
-                    ),
-                    0
-                )
             + activeBorrowedLoans.reduce(
                 (sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency),
                 0
@@ -1220,12 +1198,8 @@ export async function recalculateAllBusinessPartnerSummaries(workspaceId: string
 }
 
 async function countSupplierHistory(partner: BusinessPartner) {
-    const [purchaseOrders, travelSales] = await Promise.all([
-        getPartnerPurchaseOrders(partner),
-        getPartnerTravelSales(partner)
-    ])
-
-    return purchaseOrders.length + travelSales.length
+    const purchaseOrders = await getPartnerPurchaseOrders(partner)
+    return purchaseOrders.length
 }
 
 async function countCustomerHistory(partner: BusinessPartner) {
@@ -1248,7 +1222,7 @@ async function assertRoleRemovalAllowed(partner: BusinessPartner, nextRole: Busi
     if (roleIncludesSupplier(partner.role) && !roleIncludesSupplier(nextRole)) {
         const supplierHistory = await countSupplierHistory(partner)
         if (supplierHistory > 0) {
-            throw new Error('Cannot remove supplier role while purchase or travel transactions exist')
+            throw new Error('Cannot remove supplier role while purchase transactions exist')
         }
     }
 }
@@ -1750,14 +1724,13 @@ export async function deleteBusinessPartner(id: string) {
         return
     }
 
-    const [salesOrders, purchaseOrders, travelSales, loans] = await Promise.all([
+    const [salesOrders, purchaseOrders, loans] = await Promise.all([
         getPartnerSalesOrders(partner),
         getPartnerPurchaseOrders(partner),
-        getPartnerTravelSales(partner),
         getPartnerLoans(partner)
     ])
 
-    if (salesOrders.length > 0 || purchaseOrders.length > 0 || travelSales.length > 0 || loans.length > 0) {
+    if (salesOrders.length > 0 || purchaseOrders.length > 0 || loans.length > 0) {
         throw new Error('Business partner with transaction history cannot be deleted')
     }
 

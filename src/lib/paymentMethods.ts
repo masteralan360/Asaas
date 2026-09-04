@@ -22,14 +22,6 @@ export const LOAN_ADJUSTMENT_PAYMENT_METHOD = 'loan_adjustment' as const
 
 export const ECOMMERCE_PAYMENT_METHOD = 'ecommerce' as const
 
-export const TRAVEL_PAYMENT_METHODS = [
-    'cash',
-    'fib',
-    'qicard',
-    'hawala',
-    'fastpay'
-] as const
-
 export const ACTIVITY_PAYMENT_METHODS = [
     ...STANDARD_PAYMENT_METHODS,
     'credit',
@@ -41,7 +33,6 @@ export type PaymentMethodOption =
     | (typeof ORDER_FINANCING_PAYMENT_METHODS)[number]
     | typeof LOAN_ADJUSTMENT_PAYMENT_METHOD
     | typeof ECOMMERCE_PAYMENT_METHOD
-    | (typeof TRAVEL_PAYMENT_METHODS)[number]
     | (typeof ACTIVITY_PAYMENT_METHODS)[number]
 
 export function getPaymentMethodLabel(method: PaymentMethodOption, t: TFunction): string {
