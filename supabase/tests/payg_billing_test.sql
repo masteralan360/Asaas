@@ -11,27 +11,27 @@ SELECT is(billing.calculate_payg_amount(
 SELECT is(billing.calculate_payg_amount(
   (SELECT id FROM billing.payg_pricing_versions WHERE retired_at IS NULL),
   3000000000
-), 3333::numeric, 'three exact decimal GB linearly interpolate to 3,333 IQD');
+), 1429::numeric, 'three exact decimal GB linearly interpolate to 1,429 IQD');
 SELECT is(billing.calculate_payg_amount(
   (SELECT id FROM billing.payg_pricing_versions WHERE retired_at IS NULL),
-  3000300000
-), 3334::numeric, 'exact bytes are used and only the final IQD amount is rounded');
+  3002000000
+), 1430::numeric, 'exact bytes are used and only the final IQD amount is rounded');
 SELECT is(billing.calculate_payg_amount(
   (SELECT id FROM billing.payg_pricing_versions WHERE retired_at IS NULL),
-  10000000000
-), 15000::numeric, 'the protected 10 GB checkpoint is exact');
+  15000000000
+), 10000::numeric, 'the protected 15 GB checkpoint is exact');
 SELECT is(billing.calculate_payg_amount(
   (SELECT id FROM billing.payg_pricing_versions WHERE retired_at IS NULL),
   100000000000
 ), 40000::numeric, 'the protected 100 GB checkpoint is exact');
 
 SELECT throws_ok(
-  $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":0},{"gb":10,"amount_iqd":14999},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
+  $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":0},{"gb":15,"amount_iqd":9999},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
   '23514', 'protected_payg_pricing_checkpoints_required',
   'protected checkpoints cannot be edited'
 );
 SELECT throws_ok(
-  $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":0},{"gb":10,"amount_iqd":15000},{"gb":20,"amount_iqd":14000},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
+  $$SELECT billing.validate_payg_checkpoints('[{"gb":1,"amount_iqd":0},{"gb":15,"amount_iqd":10000},{"gb":20,"amount_iqd":9000},{"gb":100,"amount_iqd":40000}]'::jsonb)$$,
   '23514', 'invalid_payg_pricing_schedule',
   'pricing totals cannot decrease'
 );
@@ -122,7 +122,7 @@ SELECT lives_ok(
 );
 SELECT results_eq(
   $$SELECT charged_usage_bytes, amount_iqd, status FROM billing.payg_cycles WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001'$$,
-  $$VALUES (3000000000::bigint, 3333::numeric, 'awaiting_payment'::text)$$,
+  $$VALUES (3000000000::bigint, 1429::numeric, 'awaiting_payment'::text)$$,
   'cycle closure freezes exact usage, rounded amount, and awaiting-payment state'
 );
 
@@ -140,7 +140,7 @@ RESET ROLE;
 SELECT is((SELECT count(*) FROM billing.payment_transactions WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001' AND status = 'pending'), 1::bigint, 'family concurrency guard permits one pending payment');
 SELECT results_eq(
   $$SELECT amount, billed_usage_bytes, billed_usage_gb, payment_type FROM billing.payment_transactions WHERE billing_workspace_id = '93000000-0000-0000-0000-000000000001'$$,
-  $$VALUES (3333::numeric, 3000000000::bigint, 3::numeric, 'payg'::text)$$,
+  $$VALUES (1429::numeric, 3000000000::bigint, 3::numeric, 'payg'::text)$$,
   'the pending transaction is an immutable exact cycle snapshot'
 );
 
@@ -197,13 +197,13 @@ SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
 CREATE TEMP TABLE payg_test_version AS
 SELECT id, version_number FROM billing.payg_pricing_versions WHERE retired_at IS NULL;
 SELECT throws_ok(
-  $$UPDATE billing.payg_pricing_versions SET checkpoints = '[{"gb":1,"amount_iqd":0},{"gb":10,"amount_iqd":15000},{"gb":100,"amount_iqd":39999}]'::jsonb WHERE retired_at IS NULL$$,
+  $$UPDATE billing.payg_pricing_versions SET checkpoints = '[{"gb":1,"amount_iqd":0},{"gb":15,"amount_iqd":10000},{"gb":100,"amount_iqd":39999}]'::jsonb WHERE retired_at IS NULL$$,
   '23514', 'payg_pricing_version_is_immutable',
   'a published pricing version cannot be edited in place'
 );
 SELECT lives_ok(
   $$SELECT public.admin_publish_payg_pricing_schedule(
-    '[{"gb":1,"amount_iqd":0},{"gb":5,"amount_iqd":8000},{"gb":10,"amount_iqd":15000},{"gb":100,"amount_iqd":40000}]'::jsonb,
+    '[{"gb":1,"amount_iqd":0},{"gb":5,"amount_iqd":8000},{"gb":15,"amount_iqd":10000},{"gb":100,"amount_iqd":40000}]'::jsonb,
     'PAYG pricing publisher'
   )$$,
   'a valid intermediate checkpoint publishes atomically as a new version'

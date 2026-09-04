@@ -237,7 +237,7 @@ BEGIN
     jsonb_build_object(
       'gb', (checkpoint->>'gb')::numeric,
       'amount_iqd', (checkpoint->>'amount_iqd')::bigint,
-      'protected', ((checkpoint->>'gb')::numeric IN (1, 10, 100))
+      'protected', ((checkpoint->>'gb')::numeric IN (1, 15, 100))
     ) ORDER BY (checkpoint->>'gb')::numeric
   ), count(*)
   INTO v_normalized, v_count
@@ -274,7 +274,7 @@ BEGIN
     WHERE (checkpoint->>'gb')::numeric = 1 AND (checkpoint->>'amount_iqd')::bigint = 0
   ) OR NOT EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_normalized) checkpoint
-    WHERE (checkpoint->>'gb')::numeric = 10 AND (checkpoint->>'amount_iqd')::bigint = 15000
+    WHERE (checkpoint->>'gb')::numeric = 15 AND (checkpoint->>'amount_iqd')::bigint = 10000
   ) OR NOT EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_normalized) checkpoint
     WHERE (checkpoint->>'gb')::numeric = 100 AND (checkpoint->>'amount_iqd')::bigint = 40000
@@ -288,7 +288,7 @@ $function$;
 
 INSERT INTO billing.payg_pricing_versions (checkpoints, published_by_label)
 SELECT billing.validate_payg_checkpoints(
-  '[{"gb":1,"amount_iqd":0},{"gb":10,"amount_iqd":15000},{"gb":100,"amount_iqd":40000}]'::jsonb
+  '[{"gb":1,"amount_iqd":0},{"gb":15,"amount_iqd":10000},{"gb":100,"amount_iqd":40000}]'::jsonb
 ), 'System default'
 WHERE NOT EXISTS (SELECT 1 FROM billing.payg_pricing_versions);
 

@@ -559,7 +559,7 @@ describe('workspace payments', () => {
             pricing_checkpoints: [
                 { gb: 100, amount_iqd: 40000, protected: true },
                 { gb: 1, amount_iqd: 0, protected: true },
-                { gb: 10, amount_iqd: 15000, protected: true }
+                { gb: 15, amount_iqd: 10000, protected: true }
             ],
             last_updated_at: '2026-09-01T01:00:00.000Z',
             history: []
@@ -574,7 +574,7 @@ describe('workspace payments', () => {
             amountIqd: '3334',
             pricingVersion: 4
         })
-        expect(result.pricingCheckpoints.map(({ gb }) => gb)).toEqual([1, 10, 100])
+        expect(result.pricingCheckpoints.map(({ gb }) => gb)).toEqual([1, 15, 100])
     })
 
     it('submits only the provider and normalized account name for a frozen PAYG amount', async () => {

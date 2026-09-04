@@ -9,7 +9,7 @@ export interface PaygPricingCheckpoint {
 
 export const DEFAULT_PAYG_PRICING_CHECKPOINTS: PaygPricingCheckpoint[] = [
     { gb: 1, amountIqd: 0, protected: true },
-    { gb: 10, amountIqd: 15_000, protected: true },
+    { gb: 15, amountIqd: 10_000, protected: true },
     { gb: 100, amountIqd: 40_000, protected: true }
 ]
 
@@ -34,7 +34,7 @@ export function validatePaygPricingCheckpoints(
     const protectedValues = new Map(sorted.map(({ gb, amountIqd }) => [gb, amountIqd]))
     if (
         protectedValues.get(1) !== 0
-        || protectedValues.get(10) !== 15_000
+        || protectedValues.get(15) !== 10_000
         || protectedValues.get(100) !== 40_000
     ) return 'protectedCheckpointsRequired'
 
