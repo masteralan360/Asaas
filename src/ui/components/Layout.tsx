@@ -88,7 +88,10 @@ import {
   CircleCheck,
   ClipboardCheck,
   ShieldCheck,
-  LockKeyhole
+  LockKeyhole,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react'
 import { Button } from './button'
 import {
@@ -123,6 +126,7 @@ import { useTranslation } from 'react-i18next'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile, isDesktop } from '@/lib/platform'
 import { useWebHaptics } from 'web-haptics/react'
+import { useTheme } from './theme-provider'
 
 interface LayoutProps {
   children: ReactNode
@@ -208,6 +212,16 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
 
 // Prefetch a route's chunk on hover (only triggers once per route)
 const prefetchedRoutes = new Set<string>()
+const SIDEBAR_WORKSPACE_LABEL_MAX_LENGTH = 10
+
+function getSidebarWorkspaceLabel(workspaceLabel: string) {
+  const characters = Array.from(workspaceLabel)
+
+  return characters.length > SIDEBAR_WORKSPACE_LABEL_MAX_LENGTH
+    ? `${characters.slice(0, SIDEBAR_WORKSPACE_LABEL_MAX_LENGTH - 1).join('')}…`
+    : workspaceLabel
+}
+
 function prefetchRoute(href: string) {
   if (prefetchedRoutes.has(href)) return
   const prefetcher = routePrefetchMap[href]
@@ -268,6 +282,7 @@ export function Layout({ children }: LayoutProps) {
   )
 
   const { t, i18n } = useTranslation()
+  const { theme, setTheme } = useTheme()
   const { toast } = useToast()
   const moduleLockerActor = useMemo<ModuleLockerActor | undefined>(
     () => (user ? { userId: user.id, name: user.name || user.email || t('settings.moduleLocker.unknownActor') } : undefined),
@@ -319,7 +334,11 @@ export function Layout({ children }: LayoutProps) {
     }
     return false
   })
+  const [isSidebarHeaderCompact, setIsSidebarHeaderCompact] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440))
+  const showSidebarThemeSelector = !isTauri && !isMobile() && viewportWidth >= 1024
+  const fullWorkspaceLabel = currentWorkspaceLabel || workspaceName || 'Atlas'
+  const sidebarWorkspaceLabel = getSidebarWorkspaceLabel(fullWorkspaceLabel)
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
@@ -1013,6 +1032,7 @@ export function Layout({ children }: LayoutProps) {
   // Keep the actual sidebar in its compact rail whenever that happens.
   const isPosTabletLayout = isPosLikeRoute && viewportWidth >= 1024 && (viewportWidth < 1366 || isMobile())
   const isSidebarMini = isMini || isPosTabletLayout
+  const showCompactWorkspaceHeader = isSidebarHeaderCompact && !isSidebarMini && !mobileSidebarOpen
   const isModuleLauncherRoute = location === '/modules'
 
   const openInventoryTransferAutomationTab = (event: { preventDefault: () => void; stopPropagation: () => void }) => {
@@ -1094,8 +1114,9 @@ export function Layout({ children }: LayoutProps) {
             {/* Logo */}
             <div
               className={cn(
-                'flex items-center gap-3 px-6 py-5 border-b border-border transition-all duration-300',
-                isSidebarMini && !mobileSidebarOpen ? 'justify-center px-2 flex-col gap-2' : ''
+                'relative z-10 mx-3 mt-3 flex shrink-0 items-center gap-3 overflow-hidden rounded-2xl border border-border/70 bg-card/85 px-5 py-4 shadow-sm backdrop-blur-md transition-[padding,gap] duration-300 ease-out',
+                isSidebarMini && !mobileSidebarOpen ? 'mx-2 mt-2 flex-col justify-center gap-2 px-2 py-3' : '',
+                showCompactWorkspaceHeader && 'gap-2.5 py-2.5'
               )}
             >
               {features.logo_url ? (
@@ -1106,13 +1127,26 @@ export function Layout({ children }: LayoutProps) {
                       : platformService.convertFileSrc(features.logo_url)
                   }
                   alt="Workspace Logo"
-                  className="w-10 h-10 object-contain rounded-sm"
+                  className={cn(
+                    'h-10 w-10 rounded-sm object-contain transition-[width,height] duration-300 ease-out',
+                    showCompactWorkspaceHeader && 'h-8 w-8'
+                  )}
                   onError={() => setLogoError(true)}
                 />
               ) : !logoError ? (
-                <ThemeAwareLogo className="w-10 h-10 object-contain" />
+                <ThemeAwareLogo
+                  className={cn(
+                    'h-10 w-10 object-contain transition-[width,height] duration-300 ease-out',
+                    showCompactWorkspaceHeader && 'h-8 w-8'
+                  )}
+                />
               ) : (
-                <Boxes className="w-8 h-8 text-primary" />
+                <Boxes
+                  className={cn(
+                    'h-8 w-8 text-primary transition-[width,height] duration-300 ease-out',
+                    showCompactWorkspaceHeader && 'h-7 w-7'
+                  )}
+                />
               )}
 
               {!(isSidebarMini && !mobileSidebarOpen) && (
@@ -1120,18 +1154,26 @@ export function Layout({ children }: LayoutProps) {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-start transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      className={cn(
+                        'flex min-w-0 flex-1 items-center rounded-md px-2 py-1 text-start transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                        showCompactWorkspaceHeader ? 'gap-0' : 'gap-2'
+                      )}
                       title={t('branches.openSwitcher', {
                         defaultValue: 'Open workspace switcher'
                       })}
                     >
                       <div className="min-w-0 flex-1">
-                        <h1 className="truncate text-lg font-bold gradient-text">
-                          {currentWorkspaceLabel || workspaceName || 'Atlas'}
+                        <h1 className="max-w-[10ch] truncate text-lg font-bold gradient-text" title={fullWorkspaceLabel}>
+                          {sidebarWorkspaceLabel}
                         </h1>
-                        <p className="truncate text-xs text-muted-foreground">Workspace</p>
                       </div>
-                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <ChevronDown
+                        className={cn(
+                          'h-4 shrink-0 overflow-hidden text-muted-foreground transition-[width,opacity,transform] duration-300 ease-out',
+                          showCompactWorkspaceHeader ? 'w-0 -translate-x-1 opacity-0' : 'w-4 translate-x-0 opacity-100'
+                        )}
+                        aria-hidden={showCompactWorkspaceHeader}
+                      />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
@@ -1305,7 +1347,13 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 px-2 py-4 space-y-6 overflow-y-auto custom-scrollbar antialiased">
+            <nav
+              className="flex-1 space-y-6 overflow-y-auto px-2 py-4 antialiased custom-scrollbar"
+              onScroll={(event) => {
+                const shouldCompact = event.currentTarget.scrollTop > 12
+                setIsSidebarHeaderCompact((isCompact) => (isCompact === shouldCompact ? isCompact : shouldCompact))
+              }}
+            >
               {navigation.map((group) => (
                 <div key={group.title} className="space-y-1">
                   {!(isSidebarMini && !mobileSidebarOpen) && group.title && (
@@ -1822,9 +1870,8 @@ export function Layout({ children }: LayoutProps) {
 
             <div
               className={cn(
-                'p-4 border-t border-border shrink-0 transition-all duration-300',
-                mobileSidebarOpen ? 'bg-card' : 'bg-background/50 backdrop-blur-md',
-                isSidebarMini && !mobileSidebarOpen && 'flex flex-col items-center gap-4 py-6'
+                'relative z-10 mx-3 mb-3 shrink-0 rounded-2xl border border-border/70 bg-card/85 p-3 shadow-sm backdrop-blur-md transition-all duration-300',
+                isSidebarMini && !mobileSidebarOpen && 'mx-2 mb-2 flex flex-col items-center gap-3 py-4'
               )}
             >
               <div
@@ -2020,23 +2067,93 @@ export function Layout({ children }: LayoutProps) {
                   </>
                 )}
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  allowViewer={true}
-                  onClick={() => {
-                    setIsSignOutModalOpen(true)
-                    triggerHaptic('warning')
-                  }}
-                  className={cn(
-                    'text-muted-foreground hover:text-destructive',
-                    isSidebarMini && !mobileSidebarOpen && 'h-8 w-8 mt-1'
-                  )}
-                  title="Sign Out"
-                >
-                  <LogOut className="w-4 h-4" />
-                </Button>
+                {!showSidebarThemeSelector && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    allowViewer={true}
+                    onClick={() => {
+                      setIsSignOutModalOpen(true)
+                      triggerHaptic('warning')
+                    }}
+                    className={cn(
+                      'h-8 w-8 shrink-0 rounded-xl border border-border/50 bg-muted/80 text-muted-foreground shadow-inner hover:bg-card hover:text-destructive dark:bg-background/70',
+                      isSidebarMini && !mobileSidebarOpen && 'mt-1'
+                    )}
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
+              {showSidebarThemeSelector && (
+                <div className="mt-2 flex items-center gap-2">
+                  <div
+                    className="grid min-w-0 flex-1 grid-cols-3 gap-0.5 rounded-xl border border-border/50 bg-muted/80 p-0.5 shadow-inner dark:bg-background/70"
+                    role="group"
+                    aria-label={t('settings.theme.title')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setTheme('light')}
+                      aria-label={t('settings.theme.light')}
+                      aria-pressed={theme === 'light'}
+                      title={t('settings.theme.light')}
+                      className={cn(
+                        'flex h-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                        theme === 'light'
+                          ? 'bg-card text-primary shadow-sm'
+                          : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
+                      )}
+                    >
+                      <Sun className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTheme('dark')}
+                      aria-label={t('settings.theme.dark')}
+                      aria-pressed={theme === 'dark'}
+                      title={t('settings.theme.dark')}
+                      className={cn(
+                        'flex h-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                        theme === 'dark'
+                          ? 'bg-card text-primary shadow-sm'
+                          : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
+                      )}
+                    >
+                      <Moon className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTheme('system')}
+                      aria-label={t('settings.theme.system')}
+                      aria-pressed={theme === 'system'}
+                      title={t('settings.theme.system')}
+                      className={cn(
+                        'flex h-7 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                        theme === 'system'
+                          ? 'bg-card text-primary shadow-sm'
+                          : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
+                      )}
+                    >
+                      <Monitor className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    allowViewer={true}
+                    onClick={() => {
+                      setIsSignOutModalOpen(true)
+                      triggerHaptic('warning')
+                    }}
+                    className="h-8 w-8 shrink-0 rounded-xl border border-border/50 bg-muted/80 text-muted-foreground shadow-inner hover:bg-card hover:text-destructive dark:bg-background/70"
+                    title="Sign Out"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
               {/* Version Display */}
               {!(isSidebarMini && !mobileSidebarOpen) && version && (
                 <div className="mt-2 text-center">
