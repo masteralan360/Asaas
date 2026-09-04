@@ -115,11 +115,6 @@ const Login = lazy(() =>
 const Register = lazy(() =>
   import("@/ui/pages/Register").then((m) => ({ default: m.Register })),
 );
-const MonthlyUsageCalculator = lazy(() =>
-  import("@/ui/pages/MonthlyUsageCalculator").then((m) => ({
-    default: m.MonthlyUsageCalculator,
-  })),
-);
 const PaygGraphPage = lazy(() =>
   import("@/ui/pages/PaygGraphPage").then((m) => ({
     default: m.PaygGraphPage,
@@ -1421,11 +1416,6 @@ function App() {
                           <Register />
                         </GuestRoute>
                       </Route>
-                      {!isTauri && (
-                        <Route path="/monthly-usage-calculator">
-                          <MonthlyUsageCalculator />
-                        </Route>
-                      )}
                       {!isTauri && (
                         <Route path="/graph">
                           <PaygGraphPage />
