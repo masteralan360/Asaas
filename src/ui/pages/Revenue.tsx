@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { applySalesOrderReturnQuantities, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract } from '@/local-db'
+import { applySalesOrderReturnQuantities, getActiveTravelBookingPayments, useCategories, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, toUISaleFromTravelBookingPayment } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -340,6 +340,8 @@ function revenueOriginLabel(origin: string | null | undefined, sourceChannel: st
             return t('revenue.filters.origins.postService', { defaultValue: 'Post Service' })
         case 'car_rental':
             return t('revenue.filters.origins.carRental')
+        case 'travel_transportation':
+            return t('travelTransportation.title')
         default:
             return humanizeRevenueFilterValue(origin)
     }
@@ -600,6 +602,12 @@ export function Revenue() {
         sourceType: 'real_estate_commission',
         includeReversals: false
     })
+    const travelBookingPayments = usePaymentTransactions(user?.workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'travel_transportation',
+        sourceType: 'travel_booking_payment',
+        includeReversals: true
+    }, { hydrateSourceTables: false })
     const clinicalAppointments = useClinicalAppointments(user?.workspaceId)
     const clinicalAppointmentTransactions = usePaymentTransactions(user?.workspaceId, {
         direction: 'incoming',
@@ -642,6 +650,8 @@ export function Revenue() {
         const realEstateCommissionSales = (realEstateCommissionTransactions || [])
             .filter(transaction => transaction.amount > 0)
             .map(toUISaleFromRealEstateCommissionTransaction)
+        const travelBookingProfitSales = getActiveTravelBookingPayments(travelBookingPayments || [])
+            .map(toUISaleFromTravelBookingPayment)
         const clinicalSales = (clinicalAppointments || [])
             .map(appointment => toUISaleFromPaidClinicalAppointment(appointment, clinicalAppointmentTransactions))
             .filter((sale): sale is NonNullable<typeof sale> => !!sale)
@@ -677,8 +687,8 @@ export function Revenue() {
                 serviceName: t('carRental.reporting.serviceName'),
                 serviceCategory: t('carRental.reporting.serviceCategory'),
             }))
-        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
-    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
+        return [...sales, ...exchangeSales, ...realEstateCommissionSales, ...travelBookingProfitSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions, travelBookingPayments, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, userNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
     const [isMetricModalOpen, setIsMetricModalOpen] = useState(false)
@@ -939,7 +949,7 @@ export function Revenue() {
         const saleStats: {
             key: string,
             id: string,
-            source: 'sale' | 'sales_order' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental',
+            source: 'sale' | 'sales_order' | 'exchange' | 'real_estate' | 'activities' | 'clinical_appointment' | 'post_service' | 'car_rental' | 'travel_transportation',
             sourceRecordId?: string | null,
             referenceCode: string,
             date: string,
@@ -1968,7 +1978,7 @@ export function Revenue() {
                                         const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                         const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                         const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
+                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental' || sale.source === 'travel_transportation'
 
                                         const handleRecordClick = () => {
                                             if (sale.source === 'sales_order') {
@@ -1985,6 +1995,8 @@ export function Revenue() {
                                                 setLocation('/post-service')
                                             } else if (sale.source === 'car_rental') {
                                                 setLocation('/car-rental/contracts')
+                                            } else if (sale.source === 'travel_transportation') {
+                                                setLocation(`/travel-transportation/${sale.sourceRecordId || sale.id}`)
                                             } else if (originalSale) {
                                                 setSelectedSale(originalSale)
                                             }
@@ -2124,7 +2136,7 @@ export function Revenue() {
                                             const isFullyReturned = !!sale.isReturned || sale.returnStatus === 'returned'
                                             const hasAnyReturn = isFullyReturned || !!sale.hasPartialReturn || sale.returnStatus === 'partial'
                                             const totalReturnedQuantity = sale.totalReturnedQuantity || 0
-                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental'
+                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'exchange' || sale.source === 'real_estate' || sale.source === 'activities' || sale.source === 'clinical_appointment' || sale.source === 'post_service' || sale.source === 'car_rental' || sale.source === 'travel_transportation'
 
                                             const handleRecordClick = () => {
                                                 if (sale.source === 'sales_order') {
@@ -2141,6 +2153,8 @@ export function Revenue() {
                                                     setLocation('/post-service')
                                                 } else if (sale.source === 'car_rental') {
                                                     setLocation('/car-rental/contracts')
+                                                } else if (sale.source === 'travel_transportation') {
+                                                    setLocation(`/travel-transportation/${sale.sourceRecordId || sale.id}`)
                                                 } else if (originalSale) {
                                                     setSelectedSale(originalSale)
                                                 }

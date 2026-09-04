@@ -294,6 +294,9 @@ const Ecommerce = lazy(() =>
 const RealEstate = lazy(() =>
   import("@/ui/pages/RealEstate").then((m) => ({ default: m.RealEstate })),
 );
+const TravelTransportation = lazy(() =>
+  import("@/ui/pages/TravelTransportation").then((m) => ({ default: m.TravelTransportation })),
+);
 const Activities = lazy(() =>
   import("@/ui/pages/Activities").then((m) => ({ default: m.Activities })),
 );
@@ -1846,6 +1849,51 @@ function App() {
                         >
                           <Layout>
                             <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+
+                      <Route path="/travel-transportation">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_transportation"
+                          requiredPermission="travelTransportation.access"
+                        >
+                          <Layout>
+                            <TravelTransportation />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-transportation/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_transportation"
+                          requiredPermission="travelTransportation.access"
+                        >
+                          <Layout>
+                            <TravelTransportation />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-transportation/:bookingId/edit">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_transportation"
+                          requiredPermission="travelTransportation.access"
+                        >
+                          <Layout>
+                            <TravelTransportation />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-transportation/:bookingId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_transportation"
+                          requiredPermission="travelTransportation.access"
+                        >
+                          <Layout>
+                            <TravelTransportation />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

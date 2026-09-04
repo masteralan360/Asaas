@@ -84,6 +84,11 @@ const paymentAccountTables = new Set([
     'cashier_shift_pause_periods'
 ])
 
+const travelTransportationTables = new Set([
+    'travel_bookings',
+    'travel_passengers'
+])
+
 // The client-side names remain explicit and descriptive, while three physical
 // table names inside the isolated payment_accounts schema are shorter.
 const paymentAccountRemoteTableNames: Record<string, string> = {
@@ -106,6 +111,7 @@ const deliveryTables = new Set([
 const budgetClient = supabase.schema('budget')
 const crmClient = supabase.schema('crm')
 const realEstateClient = supabase.schema('real_estate')
+const travelTransportationClient = supabase.schema('travel_transportation')
 const activitiesClient = supabase.schema('activities')
 const fxClient = supabase.schema('fx')
 const clinicsClient = supabase.schema('clinics')
@@ -124,6 +130,10 @@ export function isCrmTable(tableName: string): boolean {
 
 export function isRealEstateTable(tableName: string): boolean {
     return realEstateTables.has(tableName)
+}
+
+export function isTravelTransportationTable(tableName: string): boolean {
+    return travelTransportationTables.has(tableName)
 }
 
 export function isFxTable(tableName: string): boolean {
@@ -173,6 +183,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isRealEstateTable(tableName)) {
         return realEstateClient
+    }
+
+    if (isTravelTransportationTable(tableName)) {
+        return travelTransportationClient
     }
 
     if (isActivitiesTable(tableName)) {

@@ -91,6 +91,8 @@ import type {
   RealEstateTransaction,
   RealEstateInstallment,
   RealEstatePayment,
+  TravelBooking,
+  TravelPassenger,
   ActivityCatalogItem,
   ActivityTransaction,
   ActivityTransactionLine,
@@ -470,6 +472,8 @@ export class AtlasDatabase extends Dexie {
   real_estate_transactions!: EntityTable<RealEstateTransaction, 'id'>
   real_estate_installments!: EntityTable<RealEstateInstallment, 'id'>
   real_estate_payments!: EntityTable<RealEstatePayment, 'id'>
+  travel_bookings!: EntityTable<TravelBooking, 'id'>
+  travel_passengers!: EntityTable<TravelPassenger, 'id'>
   activity_catalog!: EntityTable<ActivityCatalogItem, 'id'>
   activity_transactions!: EntityTable<ActivityTransaction, 'id'>
   activity_transaction_lines!: EntityTable<ActivityTransactionLine, 'id'>
@@ -3278,6 +3282,13 @@ export class AtlasDatabase extends Dexie {
         if (offlineMutationsToUpdate.length) await tx.table('offline_mutations').bulkPut(offlineMutationsToUpdate)
         if (syncQueueToUpdate.length) await tx.table('syncQueue').bulkPut(syncQueueToUpdate)
       })
+
+    this.version(115).stores({
+      travel_bookings:
+        'id, workspaceId, bookingNumber, status, currency, travelDate, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+createdAt]',
+      travel_passengers:
+        'id, workspaceId, bookingId, transportationType, createdAt, updatedAt, isDeleted, syncStatus, [bookingId+transportationType], [workspaceId+bookingId]'
+    })
 
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()

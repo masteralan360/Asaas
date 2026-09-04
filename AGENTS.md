@@ -20,6 +20,7 @@ No new module should be accessible without one of these access rules being expli
 ## Payment transactions
 
 Every incoming or outgoing payment MUST be recorded through `payment_transactions` and mirrored in the ledger. Do not update payment balances or ledger entries directly without the corresponding payment transaction.
+Every UI flow that processes a real payment MUST require the user to proceed through a payment dialog, following the existing payment workflow.
 Every UI flow that records a real incoming or outgoing payment, rather than merely creating an unpaid obligation, MUST include the provided `PaymentAccountSelector`.
 The selector remains optional: with no selection, record the payment transaction and ledger entry normally; when selected, pass the account ID and name snapshot to the payment transaction so its account movement is created.
 Do not create a module-specific account selector or update a payment-account balance directly; account movements must be derived from the payment transaction.
@@ -31,6 +32,8 @@ Any new or changed transaction flow MUST include Vitest coverage that verifies t
 Tests must cover both the successful path and important validation or failure paths.
 
 # Atlas UI conventions
+
+All full-page forms and detail/view pages MUST use the full available content area. Do not constrain them with a centered max-width wrapper unless the user explicitly requests it.
 
 ## Dialogs (required)
 

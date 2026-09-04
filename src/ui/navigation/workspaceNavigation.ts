@@ -2,6 +2,7 @@ import type { TFunction } from "i18next";
 import {
   ArrowRightLeft,
   Car,
+  Plane,
   BarChart3,
   Boxes,
   Building2,
@@ -304,6 +305,15 @@ export function buildWorkspaceNavigation({
               icon: FileText,
             },
           ],
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("travel_transportation") && canAccessPermission("travelTransportation.access")
+      ? [
+        {
+          name: t("travelTransportation.title", { defaultValue: "Travel & Transportation" }),
+          href: "/travel-transportation",
+          icon: Plane,
         },
       ]
       : []),

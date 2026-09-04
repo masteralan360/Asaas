@@ -28,11 +28,22 @@ import {
   PackageCheck,
   History as RouteHistory,
   Car,
+  Plane,
   Link2,
   Trash2,
 } from "lucide-react";
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
+  {
+    key: "travelTransportation.access",
+    module: "travelTransportation",
+    labelKey: "travelTransportation.permissions.access",
+    defaultLabel: "Travel & Transportation",
+    descriptionKey: "travelTransportation.permissions.accessDescription",
+    defaultDescription: "Access travel bookings, passenger records, and profit payment collection.",
+    icon: Plane,
+    section: "sell-and-serve",
+  },
   {
     key: "carRental.access",
     module: "carRental",

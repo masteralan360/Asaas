@@ -1315,6 +1315,41 @@ export interface RealEstatePayment extends BaseEntity {
   createdBy?: string | null
 }
 
+/** Workflow states for a Travel & Transportation booking. */
+export type TravelBookingStatus = 'draft' | 'booked' | 'partially_paid' | 'completed' | 'cancelled'
+export type TravelTransportationType = 'flight' | 'bus'
+
+/**
+ * The booking header deliberately keeps passenger value separate from profit.
+ * `passengerTotal` and `bookingTotal` are the raw sum of passenger prices.
+ * `adjustedBookingTotal` is the separate result after confirmed booking
+ * adjustments. None of these values is a cash collection.
+ */
+export interface TravelBooking extends BaseEntity {
+  bookingNumber: string
+  currency: CurrencyCode
+  travelDate?: string | null
+  passengerTotal: number
+  bookingTotal: number
+  adjustedBookingTotal: number
+  bookingAdjustments?: OrderAdjustment[] | null
+  profitAmount: number
+  paidProfitAmount: number
+  outstandingProfitAmount: number
+  paymentMethod: WorkspacePaymentMethod
+  status: TravelBookingStatus
+  notes?: string | null
+  createdBy?: string | null
+}
+
+/** A passenger belongs to exactly one Travel & Transportation booking. */
+export interface TravelPassenger extends BaseEntity {
+  bookingId: string
+  name: string
+  transportationType: TravelTransportationType
+  price: number
+}
+
 export type ActivityTransactionStatus = 'completed' | 'cancelled' | 'refunded'
 
 /** A workspace-owned activity/service that can be sold from the Activities module. */
@@ -1974,6 +2009,7 @@ export type PaymentTransactionSourceModule =
   | 'currency_exchange'
   | 'post_service'
   | 'car_rental'
+  | 'travel_transportation'
   | 'payments'
   | 'payment_accounts'
 export type PaymentTransactionSourceType =
@@ -2010,6 +2046,7 @@ export type PaymentTransactionSourceType =
   | 'rental_payment'
   | 'rental_deposit'
   | 'rental_deposit_refund'
+  | 'travel_booking_payment'
 export type PaymentTransactionDirection = 'incoming' | 'outgoing'
 
 export interface PaymentTransaction extends BaseEntity {

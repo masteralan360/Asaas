@@ -60,7 +60,7 @@ import { useWorkspacePermissions } from '@/permissions'
 
 type PaymentsTab = 'open-items' | 'payable' | 'collectable' | 'transactions'
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
-type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'activities' | 'clinical_appointments' | 'car_rental' | 'payments' | 'payment_accounts'
+type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'activities' | 'clinical_appointments' | 'car_rental' | 'travel_transportation' | 'payments' | 'payment_accounts'
 type OpenStatusFilter = 'all' | 'open' | 'overdue'
 
 function sourceTypeLabel(
@@ -128,6 +128,8 @@ function sourceTypeLabel(
             return t('payments.sourceType.rentalDeposit')
         case 'rental_deposit_refund':
             return t('payments.sourceType.rentalDepositRefund')
+        case 'travel_booking_payment':
+            return t('travelTransportation.recordProfitPayment')
         default:
             return value
     }
@@ -217,7 +219,7 @@ export function Payments() {
     const { dateRange, customDates } = useDateRange()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments || features.car_rental || hasFeature('payment_accounts')
+    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments || features.car_rental || features.travel_transportation || hasFeature('payment_accounts')
 
     const [activeTab, setActiveTab] = useState<PaymentsTab>('open-items')
     const [search, setSearch] = useState('')
@@ -541,6 +543,7 @@ export function Payments() {
                                     <SelectItem value="activities">{t('payments.filters.activities', { defaultValue: 'Activities' })}</SelectItem>
                                     <SelectItem value="clinical_appointments">{t('payments.filters.appointments', { defaultValue: 'Appointments' })}</SelectItem>
                                     <SelectItem value="car_rental">{t('payments.filters.carRental')}</SelectItem>
+                                    <SelectItem value="travel_transportation">{t('travelTransportation.title')}</SelectItem>
                                     <SelectItem value="payments">{t('payments.filters.directManual', { defaultValue: 'Direct / Manual' })}</SelectItem>
                                     <SelectItem value="payment_accounts">{t('paymentAccounts.title')}</SelectItem>
                                 </SelectContent>

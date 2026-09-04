@@ -466,6 +466,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Open, settle, and review purchase or sales orders.",
     badge: "Pipeline",
   },
+  "/travel-transportation": {
+    section: "sell-and-serve",
+    description: "Create, book, and settle travel and transportation bookings.",
+    badge: "Travel",
+  },
   "/ecommerce": {
     section: "partners-and-demand",
     description: "Track and manage incoming marketplace orders.",

@@ -99,6 +99,8 @@ const SYNC_PULL_TABLES = [
   "real_estate_transactions",
   "real_estate_installments",
   "real_estate_payments",
+  "travel_bookings",
+  "travel_passengers",
   "activity_catalog",
   "activity_transactions",
   "activity_transaction_lines",
@@ -351,6 +353,9 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       break;
     case "payment_transactions":
       addParent("payment_accounts", "accountId", "account_id");
+      break;
+    case "travel_passengers":
+      addParent("travel_bookings", "bookingId", "booking_id");
       break;
     case "cashier_shifts":
       addParent("payment_accounts", "accountId", "account_id");

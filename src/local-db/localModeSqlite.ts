@@ -89,6 +89,8 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "real_estate_transactions",
   "real_estate_installments",
   "real_estate_payments",
+  "travel_bookings",
+  "travel_passengers",
   "activity_catalog",
   "activity_transactions",
   "activity_transaction_lines",

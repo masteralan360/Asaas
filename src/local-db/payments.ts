@@ -336,6 +336,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
         return '/car-rental/contracts'
     }
 
+    if (transaction.sourceModule === 'travel_transportation') {
+        return `/travel-transportation/${transaction.sourceRecordId}`
+    }
+
     if (transaction.sourceType === 'simple_loan') {
         return `/loans/${transaction.sourceRecordId}`
     }
@@ -1241,7 +1245,7 @@ function assertSettlementPaymentMethod(paymentMethod: WorkspacePaymentMethod): a
     }
 }
 
-function assertStandardSettlementPaymentMethod(
+export function assertStandardSettlementPaymentMethod(
     paymentMethod: WorkspacePaymentMethod
 ): asserts paymentMethod is Exclude<LoanPaymentMethod, 'loan_adjustment' | 'loan'> {
     assertSettlementPaymentMethod(paymentMethod)
@@ -1257,6 +1261,7 @@ export function isReversiblePaymentSourceType(sourceType: PaymentTransactionSour
         || sourceType === 'loan_installment'
         || sourceType === 'real_estate_commission'
         || sourceType === 'clinical_appointment'
+        || sourceType === 'travel_booking_payment'
         || sourceType === 'sales_order'
         || sourceType === 'purchase_order'
         || sourceType === 'expense_item'
@@ -2730,6 +2735,12 @@ export async function reversePaymentTransaction(
             })
             const { updateClinicalAppointment } = await import('./clinicalAppointments')
             await updateClinicalAppointment(transaction.sourceRecordId, {}, workspaceId)
+            return reversal
+        }
+
+        case 'travel_booking_payment': {
+            const { reverseTravelBookingPayment } = await import('./travelTransportation')
+            const { reversal } = await reverseTravelBookingPayment(workspaceId, transaction.id, input)
             return reversal
         }
 

@@ -14,7 +14,7 @@ import { getDateRangeBounds } from '@/lib/dateRangeFilters'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, type CurrencyCode, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
+import { adjustInventoryQuantity, applySalesOrderReturnQuantities, appendPaymentTransaction, commitStockBatchAllocations, db, getActiveTravelBookingPayments, markPosLoanCancelledForFullSaleReturn, processSaleProductExchange, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, usePriceBookCatalogState, useProducts, useSales, useSalesOrderReturnItemsForWorkspace, useSalesOrders, useStorages, useInventory, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, useActivityTransactions, useActivityTransactionLinesForWorkspace, useWorkspaceUsers, useBusinessPartners, useDeliveryMerchantProfiles, useDeliveryShipments, useRentalContracts, useRentalVehicles, toUISale, toUISaleFromOrder, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, toUISaleFromActivityTransaction, toUISaleFromDeliveryShipment, toUISaleFromRentalContract, toUISaleFromTravelBookingPayment, type CurrencyCode, type Loan, type PaymentAccount, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation, type WorkspacePaymentMethod } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -177,6 +177,9 @@ function getExternalSaleDetailsPath(sale: Sale) {
     if (sale.origin === 'car_rental') {
         return '/car-rental/contracts'
     }
+    if (sale.origin === 'travel_transportation') {
+        return `/travel-transportation/${sale._travelBookingId || sale.id}`
+    }
     return null
 }
 
@@ -200,6 +203,9 @@ function getSaleReferenceLabel(sale: Sale) {
     if (sale.origin === 'car_rental') {
         return (sale as Sale & { _rentalContractNo?: string | null })._rentalContractNo
             || String(sale.sequenceId || `RNT-${sale.id.slice(0, 8)}`)
+    }
+    if (sale.origin === 'travel_transportation') {
+        return String(sale.sequenceId || `TT-${sale.id.slice(0, 8)}`)
     }
 
     return sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.slice(0, 8)}`
@@ -307,6 +313,12 @@ export function Sales() {
         sourceType: 'real_estate_commission',
         includeReversals: false
     }, { hydrateSourceTables: false })
+    const travelBookingPayments = usePaymentTransactions(user?.workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'travel_transportation',
+        sourceType: 'travel_booking_payment',
+        includeReversals: true
+    }, { hydrateSourceTables: false })
     const clinicalAppointments = useClinicalAppointments(user?.workspaceId)
     const clinicalAppointmentTransactions = usePaymentTransactions(user?.workspaceId, {
         direction: 'incoming',
@@ -345,6 +357,8 @@ export function Sales() {
         const realEstateCommissionSales = (realEstateCommissionTransactions || [])
             .filter(transaction => transaction.amount > 0)
             .map(toUISaleFromRealEstateCommissionTransaction)
+        const travelBookingProfitSales = getActiveTravelBookingPayments(travelBookingPayments || [])
+            .map(toUISaleFromTravelBookingPayment)
         const clinicalSales = (clinicalAppointments || [])
             .map(appointment => toUISaleFromPaidClinicalAppointment(appointment, clinicalAppointmentTransactions))
             .filter((sale): sale is NonNullable<typeof sale> => !!sale)
@@ -380,8 +394,8 @@ export function Sales() {
                 serviceName: t('carRental.reporting.serviceName'),
                 serviceCategory: t('carRental.reporting.serviceCategory'),
             }))
-        return [...sales, ...orders, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
-    }, [rawSales, rawOrders, salesOrderReturnItems, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
+        return [...sales, ...orders, ...exchangeSales, ...realEstateCommissionSales, ...travelBookingProfitSales, ...clinicalSales, ...activitySales, ...deliverySales, ...rentalSales]
+    }, [rawSales, rawOrders, salesOrderReturnItems, rawExchangeTransactions, realEstateCommissionTransactions, travelBookingPayments, clinicalAppointments, clinicalAppointmentTransactions, activityTransactions, activityTransactionLines, cashierNameById, dateBounds.endDate, dateBounds.startDate, deliveryMerchantBusinessPartnerIdByProfileId, deliveryMerchantNameByProfileId, deliveryShipments, rentalContracts, rentalVehicleById, t])
 
     const isLoading = rawSales === undefined || rawOrders === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
@@ -2564,7 +2578,9 @@ export function Sales() {
                                                                     )}>
                                                                         {sale.origin === 'car_rental'
                                                                             ? t('revenue.filters.origins.carRental')
-                                                                            : formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
+                                                                            : sale.origin === 'travel_transportation'
+                                                                                ? t('travelTransportation.title')
+                                                                                : formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
                                                                     </span>
                                                                     {loanIndicator && (
                                                                         <Tooltip>
@@ -2988,7 +3004,9 @@ export function Sales() {
                                                             )}>
                                                                 {sale.origin === 'car_rental'
                                                                     ? t('revenue.filters.origins.carRental')
-                                                                    : formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
+                                                                    : sale.origin === 'travel_transportation'
+                                                                        ? t('travelTransportation.title')
+                                                                        : formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
                                                             </span>
                                                         </TableCell>
                                                         <TableCell className="text-start">

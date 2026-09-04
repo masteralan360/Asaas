@@ -42,6 +42,11 @@ interface OrderAdjustmentsDialogProps {
     exchangeRates: ExchangeRateSnapshot[]
     availableCurrencies: CurrencyCode[]
     iqdDisplayPreference?: Parameters<typeof CurrencySelector>[0]['iqdDisplayPreference']
+    /**
+     * Reuses the adjustment workflow for other document types while keeping
+     * its language specific to the parent record.
+     */
+    translationKeyPrefix?: string
 }
 
 const DEDUCTION_SIGN = '\u2212'
@@ -65,9 +70,11 @@ export function OrderAdjustmentsDialog({
     orderCurrency,
     exchangeRates,
     availableCurrencies,
-    iqdDisplayPreference
+    iqdDisplayPreference,
+    translationKeyPrefix = 'orders.adjustments'
 }: OrderAdjustmentsDialogProps) {
     const { t } = useTranslation()
+    const adjustmentT = (key: string, defaultValue: string) => t(`${translationKeyPrefix}.${key}`, { defaultValue })
     const [drafts, setDrafts] = useState<EditableAdjustment[]>([])
     const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false)
     const confirmedDraftIds = useRef(new Set<string>())
@@ -139,18 +146,16 @@ export function OrderAdjustmentsDialog({
         <Dialog open={open} onOpenChange={(nextOpen) => nextOpen ? onOpenChange(true) : requestClose()}>
             <DialogContent layout="structured" className="max-w-4xl" showCloseButton={true}>
                 <DialogHeader layout="structured">
-                    <DialogTitle>{t('orders.adjustments.title', { defaultValue: 'Order Adjustments' })}</DialogTitle>
+                    <DialogTitle>{adjustmentT('title', 'Order Adjustments')}</DialogTitle>
                     <DialogDescription>
-                        {t('orders.adjustments.description', {
-                            defaultValue: 'Confirm each row before it affects the order total.'
-                        })}
+                        {adjustmentT('description', 'Confirm each row before it affects the order total.')}
                     </DialogDescription>
                 </DialogHeader>
 
                 <DialogBody className="space-y-4">
                     {adjustments.length === 0 && drafts.length === 0 ? (
                         <div className="rounded-2xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-                            {t('orders.adjustments.empty', { defaultValue: 'No confirmed order adjustments.' })}
+                            {adjustmentT('empty', 'No confirmed order adjustments.')}
                         </div>
                     ) : null}
 
@@ -158,15 +163,15 @@ export function OrderAdjustmentsDialog({
                         <div key={adjustment.id} className="grid gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-3 sm:grid-cols-[minmax(120px,0.8fr)_minmax(150px,1.3fr)_90px_110px_minmax(130px,1fr)_auto] sm:items-end">
                             <AdjustmentTypeValue
                                 type={adjustment.type}
-                                label={t('orders.adjustments.type', { defaultValue: 'Adjustment type' })}
-                                additionLabel={t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })}
-                                deductionLabel={t('orders.adjustments.deduction', { defaultValue: `Deduction (${DEDUCTION_SIGN})` })}
+                                label={adjustmentT('type', 'Adjustment type')}
+                                additionLabel={adjustmentT('addition', 'Addition (+)')}
+                                deductionLabel={adjustmentT('deduction', `Deduction (${DEDUCTION_SIGN})`)}
                             />
                             <AdjustmentValue label={t('common.name', { defaultValue: 'Name' })} value={adjustment.name} />
                             <AdjustmentValue label={t('orders.form.currency', { defaultValue: 'Currency' })} value={adjustment.currency.toUpperCase()} />
                             <AdjustmentValue label={t('common.amount', { defaultValue: 'Amount' })} value={formatNumericInput(String(adjustment.amount))} />
                             <AdjustmentValue
-                                label={t('orders.adjustments.convertedAmount', { defaultValue: 'Applied to order' })}
+                                label={adjustmentT('convertedAmount', 'Applied to order')}
                                 value={`${formatNumericInput(String(adjustment.convertedAmount))} ${adjustment.orderCurrency.toUpperCase()}`}
                             />
                             <div className="flex gap-1 sm:justify-end">
@@ -186,18 +191,18 @@ export function OrderAdjustmentsDialog({
                         return (
                             <div key={draft.id} className="grid gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/5 p-3 sm:grid-cols-[minmax(120px,0.8fr)_minmax(150px,1.3fr)_130px_110px_minmax(150px,1fr)_auto] sm:items-end">
                                 <div className="space-y-2">
-                                    <Label>{t('orders.adjustments.type', { defaultValue: 'Adjustment type' })}</Label>
+                                    <Label>{adjustmentT('type', 'Adjustment type')}</Label>
                                     <Select value={draft.type} onValueChange={(value) => updateDraft(draft.id, { type: value as OrderAdjustmentType })}>
                                         <SelectTrigger><SelectValue placeholder={t('common.select', { defaultValue: 'Select' })} /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="deduction">{t('orders.adjustments.deduction', { defaultValue: `Deduction (${DEDUCTION_SIGN})` })}</SelectItem>
-                                            <SelectItem value="addition">{t('orders.adjustments.addition', { defaultValue: 'Addition (+)' })}</SelectItem>
+                                            <SelectItem value="deduction">{adjustmentT('deduction', `Deduction (${DEDUCTION_SIGN})`)}</SelectItem>
+                                            <SelectItem value="addition">{adjustmentT('addition', 'Addition (+)')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>{t('common.name', { defaultValue: 'Name' })}</Label>
-                                    <Input value={draft.name} onChange={(event) => updateDraft(draft.id, { name: event.target.value })} placeholder={t('orders.adjustments.namePlaceholder', { defaultValue: 'Shipping, Handling Fee…' })} />
+                                    <Input value={draft.name} onChange={(event) => updateDraft(draft.id, { name: event.target.value })} placeholder={adjustmentT('namePlaceholder', 'Shipping, Handling Fee…')} />
                                 </div>
                                 <CurrencySelector
                                     value={draft.currency}
@@ -218,10 +223,10 @@ export function OrderAdjustmentsDialog({
                                     />
                                 </div>
                                 <AdjustmentValue
-                                    label={t('orders.adjustments.convertedAmount', { defaultValue: 'Applied to order' })}
+                                    label={adjustmentT('convertedAmount', 'Applied to order')}
                                     value={conversion
                                         ? `${formatNumericInput(String(conversion.convertedAmount))} ${orderCurrency.toUpperCase()}`
-                                        : t('orders.adjustments.exchangeRateUnavailable', { defaultValue: 'Exchange rate unavailable' })}
+                                        : adjustmentT('exchangeRateUnavailable', 'Exchange rate unavailable')}
                                     valueClassName={conversion ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}
                                 />
                                 <div className="flex gap-1 sm:justify-end">
@@ -236,8 +241,8 @@ export function OrderAdjustmentsDialog({
                                     <div className="sm:col-span-6 flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300">
                                         <AlertTriangle className="h-3.5 w-3.5" />
                                         {isValidOrderAdjustmentDraft(draft)
-                                            ? t('orders.adjustments.exchangeRateUnavailable', { defaultValue: 'Exchange rate unavailable for the selected currency.' })
-                                            : t('orders.adjustments.validation', { defaultValue: 'Select a type, enter a name, choose a currency, and enter an amount greater than zero.' })}
+                                            ? adjustmentT('exchangeRateUnavailable', 'Exchange rate unavailable for the selected currency.')
+                                            : adjustmentT('validation', 'Select a type, enter a name, choose a currency, and enter an amount greater than zero.')}
                                     </div>
                                 ) : null}
                             </div>
@@ -246,13 +251,13 @@ export function OrderAdjustmentsDialog({
 
                     <Button type="button" variant="outline" className="w-full border-dashed" onClick={addDraft}>
                         <Plus className="mr-2 h-4 w-4" />
-                        {t('orders.adjustments.addRow', { defaultValue: 'Add Row' })}
+                        {adjustmentT('addRow', 'Add Row')}
                     </Button>
                 </DialogBody>
 
                 <DialogFooter layout="structured">
                     <span className="text-xs text-muted-foreground">
-                        {adjustments.length} {t('orders.adjustments.confirmed', { defaultValue: 'confirmed' })}
+                        {adjustments.length} {adjustmentT('confirmed', 'confirmed')}
                     </span>
                     <Button type="button" onClick={requestClose}>{t('common.done', { defaultValue: 'Done' })}</Button>
                 </DialogFooter>
@@ -263,12 +268,10 @@ export function OrderAdjustmentsDialog({
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
                             <AlertTriangle className="h-5 w-5" />
-                            {t('orders.adjustments.discardTitle', { defaultValue: 'Discard incomplete adjustments?' })}
+                            {adjustmentT('discardTitle', 'Discard incomplete adjustments?')}
                         </DialogTitle>
                         <DialogDescription>
-                            {t('orders.adjustments.discardWarning', {
-                                defaultValue: 'You have incomplete Order Adjustments. Closing now will discard those unsaved rows.'
-                            })}
+                            {adjustmentT('discardWarning', 'You have incomplete Order Adjustments. Closing now will discard those unsaved rows.')}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="gap-2 sm:gap-0">
@@ -276,7 +279,7 @@ export function OrderAdjustmentsDialog({
                             {t('common.cancel', { defaultValue: 'Cancel' })}
                         </Button>
                         <Button type="button" variant="destructive" onClick={discardDraftsAndClose}>
-                            {t('orders.adjustments.discardAndClose', { defaultValue: 'Discard and close' })}
+                            {adjustmentT('discardAndClose', 'Discard and close')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
