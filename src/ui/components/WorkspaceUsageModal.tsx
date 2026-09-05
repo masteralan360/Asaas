@@ -392,7 +392,7 @@ export function WorkspaceUsageModal({
                                 />
                             </div>
 
-                            <div className="mt-5 rounded-2xl border border-border/60 bg-background p-4">
+                            <div className="mt-5 min-w-0 rounded-2xl border border-border/60 bg-background p-4">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div>
                                         <h3 className="text-sm font-bold">{t('workspaceUsage.payg.graphTitle')}</h3>
@@ -407,8 +407,8 @@ export function WorkspaceUsageModal({
                                         value: formatTimestamp(paygSummary.lastUpdatedAt, locale)
                                     })}
                                 </p>
-                                <div className="mt-4 h-72 w-full" dir="ltr">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                <div className="mt-4 h-72 min-w-0 w-full" dir="ltr">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
                                         <ComposedChart data={paygGraphData} margin={{ top: 12, right: 12, bottom: 4, left: 4 }}>
                                             <CartesianGrid strokeDasharray="4 4" stroke="hsl(var(--border))" opacity={0.6} />
                                             <XAxis dataKey="gb" type="number" domain={[0, 100]} unit=" GB" tick={{ fontSize: 10 }} />
@@ -570,8 +570,8 @@ export function WorkspaceUsageModal({
                                 </div>
                             </div>
 
-                            <div className="mt-5 h-64 w-full" dir="ltr">
-                                <ResponsiveContainer width="100%" height="100%">
+                            <div className="mt-5 h-64 min-w-0 w-full" dir="ltr">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
                                     <BarChart data={insights.chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                                         <CartesianGrid
                                             strokeDasharray="4 4"
