@@ -61,7 +61,6 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "delivery_settlements",
   "delivery_ledger_entries",
   "business_partners",
-  "business_partner_merge_candidates",
   "employees",
   "budget_settings",
   "budget_allocations",

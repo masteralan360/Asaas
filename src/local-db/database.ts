@@ -3437,7 +3437,6 @@ export class AtlasDatabase extends Dexie {
       'delivery_settlements',
       'delivery_ledger_entries',
       'business_partners',
-      'business_partner_merge_candidates',
       'employees',
       'workspace_contacts',
       'loans',

@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { canAccessBusinessPartnerInLocalCache } from './businessPartnerPrivacy'
 import {
     addMonths,
     buildDueDate,
@@ -1105,7 +1106,21 @@ export function usePaymentTransactions(
                 .equals(workspaceId)
                 .toArray()
 
-            return filterTransactions(items, filters).sort((left, right) =>
+            const visibility = await Promise.all(items.map((transaction) => {
+                const businessPartnerId = transaction.metadata?.businessPartnerId
+                return typeof businessPartnerId === 'string'
+                    ? canAccessBusinessPartnerInLocalCache(
+                        workspaceId,
+                        businessPartnerId,
+                        transaction.sourceType === 'purchase_order' ? 'supplier' : 'customer'
+                    )
+                    : true
+            }))
+
+            return filterTransactions(
+                items.filter((_, index) => visibility[index]),
+                filters
+            ).sort((left, right) =>
                 right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt)
             )
         },

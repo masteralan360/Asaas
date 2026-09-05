@@ -644,6 +644,25 @@ describe('fullSync error reporting', () => {
         workspaceModeMock.isLocalWorkspaceMode.mockReturnValue(false)
     })
 
+    it('retires legacy duplicate-candidate mutations without syncing or pulling them', async () => {
+        dbMock.rows.push({
+            id: 'merge-candidate-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'business_partner_merge_candidates',
+            entityId: 'merge-candidate-1',
+            operation: 'create',
+            payload: { id: 'merge-candidate-1' },
+            createdAt: '2026-09-05T00:00:00.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result).toMatchObject({ success: true, pushed: 1 })
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
+        expect(supabaseMock.from).not.toHaveBeenCalledWith('business_partner_merge_candidates')
+    })
+
     it('returns a failed result with the mutation error and leaves the queued mutation marked failed', async () => {
         dbMock.rows.push({
             id: 'mutation-1',

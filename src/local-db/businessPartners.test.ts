@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { setNetworkStatus } from '@/lib/network'
+import { setActiveBusinessUser, setNetworkStatus } from '@/lib/network'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
@@ -12,6 +12,7 @@ let deleteBusinessPartner: typeof import('./businessPartners').deleteBusinessPar
 let mergeBusinessPartners: typeof import('./businessPartners').mergeBusinessPartners
 let replaceAgentExcludedCategories: typeof import('./businessPartners').replaceAgentExcludedCategories
 let updateBusinessPartner: typeof import('./businessPartners').updateBusinessPartner
+let canAccessBusinessPartnerInLocalCache: typeof import('./businessPartnerPrivacy').canAccessBusinessPartnerInLocalCache
 
 async function createAgentForExcludedCategoryTest() {
     const partner = await createBusinessPartner(WORKSPACE_ID, {
@@ -142,16 +143,20 @@ describe('business partner agent facets', () => {
         mergeBusinessPartners = businessPartners.mergeBusinessPartners
         replaceAgentExcludedCategories = businessPartners.replaceAgentExcludedCategories
         updateBusinessPartner = businessPartners.updateBusinessPartner
+        const privacy = await import('./businessPartnerPrivacy')
+        canAccessBusinessPartnerInLocalCache = privacy.canAccessBusinessPartnerInLocalCache
     })
 
     beforeEach(async () => {
         await db.delete()
         await db.open()
+        setActiveBusinessUser(null)
         setNetworkStatus(true)
         writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
     })
 
     afterEach(async () => {
+        setActiveBusinessUser(null)
         clearWorkspaceModeSnapshot(WORKSPACE_ID)
         setNetworkStatus(true)
     })
@@ -221,12 +226,250 @@ describe('business partner agent facets', () => {
         await expect(createBusinessPartner(WORKSPACE_ID, {
             partnerName: '   ',
             phone: '07500000010',
+            address: 'Erbil',
             defaultCurrency: 'usd',
             creditLimit: 0,
             role: 'customer'
         })).rejects.toThrow('Partner name is required')
 
         expect(await db.business_partners.count()).toBe(0)
+    })
+
+    it('persists the compact customer payload as a customer partner', async () => {
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Quick Customer',
+            phone: '07500000012',
+            address: 'Erbil',
+            defaultCurrency: 'usd',
+            creditLimit: 0,
+            role: 'customer'
+        })
+
+        expect(partner).toMatchObject({
+            partnerName: 'Quick Customer',
+            phone: '07500000012',
+            address: 'Erbil',
+            role: 'customer',
+            defaultCurrency: 'usd',
+            creditLimit: 0
+        })
+        expect(await db.customers.get(partner.customerFacetId!)).toMatchObject({
+            businessPartnerId: partner.id,
+            partnerName: 'Quick Customer'
+        })
+    })
+
+    it('makes a non-admin staff member\'s new customer private when the opt-in is enabled', async () => {
+        const now = new Date().toISOString()
+        const staffUserId = '00000000-0000-4000-8000-000000000020'
+        await db.workspaces.put({
+            id: WORKSPACE_ID,
+            workspaceId: WORKSPACE_ID,
+            data_mode: 'local',
+            private_staff_customers: true
+        } as never)
+        await db.users.put({
+            id: staffUserId,
+            workspaceId: WORKSPACE_ID,
+            email: 'staff@example.test',
+            name: 'Staff member',
+            role: 'staff',
+            createdAt: now,
+            updatedAt: now,
+            syncStatus: 'synced',
+            lastSyncedAt: now,
+            version: 1,
+            isDeleted: false
+        })
+        setActiveBusinessUser(staffUserId)
+
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Staff-owned customer',
+            phone: '07500000020',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'customer'
+        })
+
+        expect(partner).toMatchObject({
+            staffVisibility: 'owner_private',
+            ownerUserId: staffUserId
+        })
+        expect(await db.customers.get(partner.customerFacetId!)).toMatchObject({
+            businessPartnerId: partner.id,
+            partnerName: 'Staff-owned customer'
+        })
+
+        const otherStaffUserId = '00000000-0000-4000-8000-000000000026'
+        await db.users.put({
+            id: otherStaffUserId,
+            workspaceId: WORKSPACE_ID,
+            email: 'other-staff@example.test',
+            name: 'Other staff member',
+            role: 'staff',
+            createdAt: now,
+            updatedAt: now,
+            syncStatus: 'synced',
+            lastSyncedAt: now,
+            version: 1,
+            isDeleted: false
+        })
+        setActiveBusinessUser(otherStaffUserId)
+
+        await expect(canAccessBusinessPartnerInLocalCache(
+            WORKSPACE_ID,
+            partner.id,
+            'customer'
+        )).resolves.toBe(false)
+    })
+
+    it('blocks a non-admin from creating suppliers when supplier privacy is enabled', async () => {
+        const now = new Date().toISOString()
+        const staffUserId = '00000000-0000-4000-8000-000000000021'
+        await db.workspaces.put({
+            id: WORKSPACE_ID,
+            workspaceId: WORKSPACE_ID,
+            data_mode: 'local',
+            suppliers_admin_only: true
+        } as never)
+        await db.users.put({
+            id: staffUserId,
+            workspaceId: WORKSPACE_ID,
+            email: 'staff@example.test',
+            name: 'Staff member',
+            role: 'staff',
+            createdAt: now,
+            updatedAt: now,
+            syncStatus: 'synced',
+            lastSyncedAt: now,
+            version: 1,
+            isDeleted: false
+        })
+        setActiveBusinessUser(staffUserId)
+
+        await expect(createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Restricted supplier',
+            phone: '07500000021',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'supplier'
+        })).rejects.toThrow('Supplier access is restricted to administrators')
+
+        expect(await db.business_partners.count()).toBe(0)
+    })
+
+    it('preserves a mixed partner while staff edit its customer side under supplier privacy', async () => {
+        const now = new Date().toISOString()
+        const adminUserId = '00000000-0000-4000-8000-000000000024'
+        const staffUserId = '00000000-0000-4000-8000-000000000025'
+        await db.users.bulkPut([
+            {
+                id: adminUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'admin@example.test',
+                name: 'Administrator',
+                role: 'admin',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            },
+            {
+                id: staffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'staff@example.test',
+                name: 'Staff member',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            }
+        ])
+        setActiveBusinessUser(adminUserId)
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Existing mixed partner',
+            phone: '07500000024',
+            defaultCurrency: 'iqd',
+            creditLimit: 250,
+            role: 'both'
+        })
+        await db.workspaces.put({
+            id: WORKSPACE_ID,
+            workspaceId: WORKSPACE_ID,
+            data_mode: 'local',
+            suppliers_admin_only: true
+        } as never)
+        setActiveBusinessUser(staffUserId)
+
+        await updateBusinessPartner(partner.id, {
+            partnerName: 'Updated customer-facing name',
+            role: 'customer',
+            creditLimit: 0,
+            payableCreditLimit: null
+        })
+
+        expect(await db.business_partners.get(partner.id)).toMatchObject({
+            partnerName: 'Updated customer-facing name',
+            role: 'both',
+            payableCreditLimit: 250
+        })
+    })
+
+    it('allows an administrator to assign a private customer to a non-admin owner', async () => {
+        const now = new Date().toISOString()
+        const adminUserId = '00000000-0000-4000-8000-000000000022'
+        const staffUserId = '00000000-0000-4000-8000-000000000023'
+        await db.users.bulkPut([
+            {
+                id: adminUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'admin@example.test',
+                name: 'Administrator',
+                role: 'admin',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            },
+            {
+                id: staffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'staff@example.test',
+                name: 'Staff owner',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            }
+        ])
+        setActiveBusinessUser(adminUserId)
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Admin-managed customer',
+            phone: '07500000022',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'customer'
+        })
+
+        const updated = await updateBusinessPartner(partner.id, {
+            staffVisibility: 'owner_private',
+            ownerUserId: staffUserId
+        })
+
+        expect(updated).toMatchObject({
+            staffVisibility: 'owner_private',
+            ownerUserId: staffUserId
+        })
     })
 
     it('creates an agent facet linked to the business partner', async () => {

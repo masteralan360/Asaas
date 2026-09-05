@@ -9,6 +9,7 @@ import { generateId, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import { canAccessBusinessPartnerInLocalCache } from './businessPartnerPrivacy'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
 import { getBusinessPartnerByAnyId } from './businessPartners'
 import type {
@@ -50,6 +51,16 @@ const tableByName = {
 
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
+}
+
+async function canAccessRealEstateTransactionInLocalCache(
+    transaction: Pick<RealEstateTransaction, 'workspaceId' | 'buyerBusinessPartnerId' | 'sellerBusinessPartnerId'>
+): Promise<boolean> {
+    const visible = await Promise.all([
+        canAccessBusinessPartnerInLocalCache(transaction.workspaceId, transaction.buyerBusinessPartnerId, 'customer'),
+        canAccessBusinessPartnerInLocalCache(transaction.workspaceId, transaction.sellerBusinessPartnerId, 'customer')
+    ])
+    return visible.every(Boolean)
 }
 
 function getSyncMetadata(workspaceId: string, timestamp: string) {
@@ -792,14 +803,17 @@ export function useRealEstateTransactions(workspaceId: string | undefined) {
     const online = useNetworkStatus()
 
     const transactions = useLiveQuery(
-        () => workspaceId
-            ? db.real_estate_transactions
+        async () => {
+            if (!workspaceId) return []
+            const rows = await db.real_estate_transactions
                 .where('workspaceId')
                 .equals(workspaceId)
                 .and((item) => !item.isDeleted)
                 .reverse()
                 .sortBy('createdAt')
-            : [],
+            const visibility = await Promise.all(rows.map(canAccessRealEstateTransactionInLocalCache))
+            return rows.filter((_, index) => visibility[index])
+        },
         [workspaceId]
     )
 
@@ -818,7 +832,14 @@ export function useRealEstateTransactions(workspaceId: string | undefined) {
 
 export function useRealEstateTransaction(transactionId: string | undefined) {
     return useLiveQuery(
-        () => transactionId ? db.real_estate_transactions.get(transactionId) : undefined,
+        async () => {
+            if (!transactionId) return undefined
+            const transaction = await db.real_estate_transactions.get(transactionId)
+            if (!transaction || transaction.isDeleted) return undefined
+            return await canAccessRealEstateTransactionInLocalCache(transaction)
+                ? transaction
+                : undefined
+        },
         [transactionId]
     )
 }
@@ -827,13 +848,18 @@ export function useRealEstateInstallments(transactionId: string | undefined, wor
     const online = useNetworkStatus()
 
     const installments = useLiveQuery(
-        () => transactionId
-            ? db.real_estate_installments
+        async () => {
+            if (!transactionId) return []
+            const transaction = await db.real_estate_transactions.get(transactionId)
+            if (!transaction || transaction.isDeleted || !await canAccessRealEstateTransactionInLocalCache(transaction)) {
+                return []
+            }
+            return db.real_estate_installments
                 .where('transactionId')
                 .equals(transactionId)
                 .and((item) => !item.isDeleted)
                 .sortBy('installmentNo')
-            : [],
+        },
         [transactionId]
     )
 
@@ -861,7 +887,18 @@ export function useRealEstateWorkspaceInstallments(workspaceId: string | undefin
                 .and((item) => !item.isDeleted)
                 .toArray()
 
-            return rows.sort((left, right) =>
+            const transactionIds = [...new Set(rows.map((installment) => installment.transactionId))]
+            const transactions = await db.real_estate_transactions.bulkGet(transactionIds)
+            const visibility = await Promise.all(transactions.map((transaction) => (
+                transaction && !transaction.isDeleted
+                    ? canAccessRealEstateTransactionInLocalCache(transaction)
+                    : false
+            )))
+            const visibleTransactionIds = new Set(transactionIds.filter((_, index) => visibility[index]))
+
+            return rows
+                .filter((installment) => visibleTransactionIds.has(installment.transactionId))
+                .sort((left, right) =>
                 left.dueDate.localeCompare(right.dueDate) ||
                 left.installmentNo - right.installmentNo
             )
@@ -886,14 +923,19 @@ export function useRealEstatePayments(transactionId: string | undefined, workspa
     const online = useNetworkStatus()
 
     const payments = useLiveQuery(
-        () => transactionId
-            ? db.real_estate_payments
+        async () => {
+            if (!transactionId) return []
+            const transaction = await db.real_estate_transactions.get(transactionId)
+            if (!transaction || transaction.isDeleted || !await canAccessRealEstateTransactionInLocalCache(transaction)) {
+                return []
+            }
+            return db.real_estate_payments
                 .where('transactionId')
                 .equals(transactionId)
                 .and((item) => !item.isDeleted)
                 .reverse()
                 .sortBy('paidAt')
-            : [],
+        },
         [transactionId]
     )
 

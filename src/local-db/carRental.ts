@@ -9,6 +9,7 @@ import { generateId, toSnakeCase } from "@/lib/utils";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
 import { db } from "./database";
+import { canAccessBusinessPartnerInLocalCache } from "./businessPartnerPrivacy";
 import { addToOfflineMutations, fetchTableFromSupabase } from "./hooks";
 import { appendPaymentTransaction } from "./payments";
 import type {
@@ -311,13 +312,18 @@ export function useRentalVehicles(workspaceId?: string) {
 export function useRentalRequests(workspaceId?: string) {
   const online = useNetworkStatus();
   const requests = useLiveQuery(
-    () => workspaceId
-      ? db.rental_requests
+    async () => {
+      if (!workspaceId) return [];
+      const rows = await db.rental_requests
         .where("workspaceId")
         .equals(workspaceId)
         .and((row) => !row.isDeleted)
-        .toArray()
-      : [],
+        .toArray();
+      const visibility = await Promise.all(rows.map((request) =>
+        canAccessBusinessPartnerInLocalCache(workspaceId, request.businessPartnerId, "customer")
+      ));
+      return rows.filter((_, index) => visibility[index]);
+    },
     [workspaceId],
   );
 
@@ -334,13 +340,27 @@ export function useRentalRequests(workspaceId?: string) {
 export function useRentalContracts(workspaceId?: string) {
   const online = useNetworkStatus();
   const contracts = useLiveQuery(
-    () => workspaceId
-      ? db.rental_contracts
+    async () => {
+      if (!workspaceId) return [];
+      const rows = await db.rental_contracts
         .where("workspaceId")
         .equals(workspaceId)
         .and((row) => !row.isDeleted)
-        .toArray()
-      : [],
+        .toArray();
+      const visibility = await Promise.all(rows.map(async (contract) => {
+        if (!await canAccessBusinessPartnerInLocalCache(workspaceId, contract.businessPartnerId, "customer")) {
+          return false;
+        }
+        if (!contract.requestId) return true;
+        const request = await db.rental_requests.get(contract.requestId);
+        return !request || await canAccessBusinessPartnerInLocalCache(
+          workspaceId,
+          request.businessPartnerId,
+          "customer"
+        );
+      }));
+      return rows.filter((_, index) => visibility[index]);
+    },
     [workspaceId],
   );
 

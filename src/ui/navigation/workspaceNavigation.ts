@@ -115,6 +115,9 @@ export function buildWorkspaceNavigation({
     features.data_mode !== "local" &&
     features.data_mode !== "demo" &&
     hasFeature("ecommerce");
+  const canAccessSuppliers =
+    canAccessPermission("suppliers.access")
+    && (!features.suppliers_admin_only || role === "admin");
 
   // 1. Define all possible individual navigation items with their visibility logic
   const dashboardItem: WorkspaceNavigationItem = {
@@ -170,7 +173,7 @@ export function buildWorkspaceNavigation({
       ? [
         ...(canAccessPermission("businessPartners.access") ||
         canAccessPermission("customers.access") ||
-        canAccessPermission("suppliers.access")
+        canAccessSuppliers
           ? [
             {
               name: t("businessPartners.title", {
@@ -188,7 +191,7 @@ export function buildWorkspaceNavigation({
                     },
                   ]
                   : []),
-                ...(canAccessPermission("suppliers.access")
+                ...(canAccessSuppliers
                   ? [
                     {
                       name: t("nav.suppliers", { defaultValue: "Suppliers" }),
@@ -219,7 +222,7 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
-        ...(hasFeature("orders") && (canAccessPermission("orders.saleOrdersAccess") || canAccessPermission("orders.purchaseOrdersAccess"))
+        ...(hasFeature("orders") && (canAccessPermission("orders.saleOrdersAccess") || (canAccessSuppliers && canAccessPermission("orders.purchaseOrdersAccess")))
           ? [
             {
               name: t("nav.orders", { defaultValue: "Orders" }),
@@ -233,7 +236,7 @@ export function buildWorkspaceNavigation({
                     icon: ShoppingCart,
                   }]
                   : []),
-                ...(canAccessPermission("orders.purchaseOrdersAccess")
+                ...(canAccessSuppliers && canAccessPermission("orders.purchaseOrdersAccess")
                   ? [{
                     name: t("nav.purchaseOrders", { defaultValue: "Purchase Orders" }),
                     href: "/orders/purchase",

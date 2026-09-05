@@ -3,6 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { v5 as uuidv5 } from 'uuid'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import {
+    canAccessBusinessPartnerFacetInLocalCache,
+    canAccessBusinessPartnerInLocalCache
+} from './businessPartnerPrivacy'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { createOrderAdjustment, normalizeOrderAdjustments, type OrderAdjustmentDraft } from '@/lib/orderAdjustments'
@@ -1672,7 +1676,13 @@ export function useSalesOrders(workspaceId: string | undefined, startDate?: stri
             }
 
             const rows = await query.toArray()
-            return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+            const visibility = await Promise.all(rows.map((order) => order.businessPartnerId
+                ? canAccessBusinessPartnerInLocalCache(workspaceId, order.businessPartnerId, 'customer')
+                : canAccessBusinessPartnerFacetInLocalCache(workspaceId, order.customerId, 'customer')
+            ))
+            return rows
+                .filter((_, index) => visibility[index])
+                .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
         [workspaceId, startDate, endDate, viewOwnScope.isRestricted, viewOwnScope.userId, assignedOrderAccess]
     )
@@ -1703,7 +1713,13 @@ export function usePurchaseOrders(workspaceId: string | undefined) {
                     !viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId
                 ))
                 .toArray()
-            return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+            const visibility = await Promise.all(rows.map((order) => order.businessPartnerId
+                ? canAccessBusinessPartnerInLocalCache(workspaceId, order.businessPartnerId, 'supplier')
+                : canAccessBusinessPartnerFacetInLocalCache(workspaceId, order.supplierId, 'supplier')
+            ))
+            return rows
+                .filter((_, index) => visibility[index])
+                .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
         [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId]
     )
@@ -1724,7 +1740,16 @@ export function useSalesOrder(orderId: string | undefined) {
     return useLiveQuery(async () => {
         if (!orderId) return undefined
         const order = await db.sales_orders.get(orderId)
-        if (!order || !viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId) {
+        if (!order) {
+            return undefined
+        }
+        const visible = order.businessPartnerId
+            ? await canAccessBusinessPartnerInLocalCache(order.workspaceId, order.businessPartnerId, 'customer')
+            : await canAccessBusinessPartnerFacetInLocalCache(order.workspaceId, order.customerId, 'customer')
+        if (!visible) {
+            return undefined
+        }
+        if (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId) {
             return order
         }
         const assignedOrderIds = await getSalesOrderIdsAssignedToLinkedFieldAgent(
@@ -1867,7 +1892,13 @@ export function usePurchaseOrder(orderId: string | undefined) {
     return useLiveQuery(async () => {
         if (!orderId) return undefined
         const order = await db.purchase_orders.get(orderId)
-        return order && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
+        if (!order) {
+            return undefined
+        }
+        const visible = order.businessPartnerId
+            ? await canAccessBusinessPartnerInLocalCache(order.workspaceId, order.businessPartnerId, 'supplier')
+            : await canAccessBusinessPartnerFacetInLocalCache(order.workspaceId, order.supplierId, 'supplier')
+        return visible && (!viewOwnScope.isRestricted || order.createdBy === viewOwnScope.userId)
             ? order
             : undefined
     }, [orderId, viewOwnScope.isRestricted, viewOwnScope.userId])

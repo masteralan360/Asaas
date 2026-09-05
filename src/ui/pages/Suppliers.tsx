@@ -45,6 +45,7 @@ export function Suppliers() {
     const { toast } = useToast()
     const [, navigate] = useLocation()
     const { hasPermission } = useWorkspacePermissions()
+    const suppliersRestricted = features.suppliers_admin_only && user?.role !== 'admin'
     const canViewAll = hasPermission('businessPartners.access')
     const canViewCustomers = hasPermission('customers.access')
     const [scope, setScope] = useState<'all' | 'customers' | 'suppliers'>('suppliers')
@@ -114,6 +115,10 @@ export function Suppliers() {
                 variant: 'destructive'
             })
         }
+    }
+
+    if (suppliersRestricted) {
+        return null
     }
 
     return (

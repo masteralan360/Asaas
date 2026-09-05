@@ -12,6 +12,7 @@ import { useViewOwnRecordScope, type ViewOwnRecordScope } from "@/permissions/us
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
 import { db } from "./database";
+import { canAccessBusinessPartnerInLocalCache } from "./businessPartnerPrivacy";
 import { fetchTableFromSupabase } from "./hooks";
 import { addToOfflineMutations } from "./offlineMutations";
 import { appendPaymentTransaction } from "./payments";
@@ -478,7 +479,25 @@ async function getVisibleDeliveryShipmentIds(
     .equals(workspaceId)
     .and((shipment) => isVisibleDeliveryShipment(shipment, viewOwnScope, linkedCourierIds))
     .toArray();
-  return new Set(shipments.map((shipment) => shipment.id));
+  const visibility = await Promise.all(shipments.map((shipment) =>
+    canAccessBusinessPartnerInLocalCache(workspaceId, shipment.merchantBusinessPartnerId, "customer")
+  ));
+  return new Set(shipments.filter((_, index) => visibility[index]).map((shipment) => shipment.id));
+}
+
+async function canAccessDeliveryPartner(
+  workspaceId: string,
+  businessPartnerId: string | null | undefined,
+  merchantProfileId?: string | null,
+) {
+  const profile = !businessPartnerId && merchantProfileId
+    ? await db.delivery_merchant_profiles.get(merchantProfileId)
+    : undefined;
+  return canAccessBusinessPartnerInLocalCache(
+    workspaceId,
+    businessPartnerId ?? profile?.businessPartnerId,
+    "customer",
+  );
 }
 
 function getSyncMetadata(workspaceId: string, timestamp: string) {
@@ -908,9 +927,18 @@ function courierFeeAccountBalance(
 export function useDeliveryMerchantProfiles(workspaceId?: string) {
   const online = useNetworkStatus();
   const rows = useLiveQuery(
-    () => workspaceId
-      ? db.delivery_merchant_profiles.where("workspaceId").equals(workspaceId).and((row) => !row.isDeleted).toArray()
-      : [],
+    async () => {
+      if (!workspaceId) return [];
+      const profiles = await db.delivery_merchant_profiles
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((row) => !row.isDeleted)
+        .toArray();
+      const visibility = await Promise.all(profiles.map((profile) =>
+        canAccessBusinessPartnerInLocalCache(workspaceId, profile.businessPartnerId, "customer")
+      ));
+      return profiles.filter((_, index) => visibility[index]);
+    },
     [workspaceId],
   ) ?? [];
 
@@ -934,11 +962,15 @@ export function useDeliveryShipments(workspaceId?: string) {
       const linkedCourierIds = viewOwnScope.isRestricted
         ? await getLinkedCourierIds(workspaceId, viewOwnScope.userId)
         : new Set<string>();
-      return db.delivery_shipments
+      const shipments = await db.delivery_shipments
         .where("workspaceId")
         .equals(workspaceId)
         .and((shipment) => isVisibleDeliveryShipment(shipment, viewOwnScope, linkedCourierIds))
         .toArray();
+      const visibility = await Promise.all(shipments.map((shipment) =>
+        canAccessBusinessPartnerInLocalCache(workspaceId, shipment.merchantBusinessPartnerId, "customer")
+      ));
+      return shipments.filter((_, index) => visibility[index]);
     },
     [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];
@@ -965,7 +997,6 @@ export function useDeliveryShipmentEvents(workspaceId?: string) {
         .equals(workspaceId)
         .and((event) => !event.isDeleted)
         .toArray();
-      if (!viewOwnScope.isRestricted) return events;
       const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
       return events.filter((event) => visibleShipmentIds.has(event.shipmentId));
     },
@@ -995,12 +1026,8 @@ export function useDeliveryShipmentCodAdjustmentRequests(workspaceId?: string) {
         .equals(workspaceId)
         .and((request) => !request.isDeleted)
         .toArray();
-      if (!viewOwnScope.isRestricted) return requests;
       const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
-      return requests.filter((request) => (
-        request.requesterUserId === viewOwnScope.userId
-        || visibleShipmentIds.has(request.shipmentId)
-      ));
+      return requests.filter((request) => visibleShipmentIds.has(request.shipmentId));
     },
     [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];
@@ -1027,8 +1054,6 @@ export function useDeliveryRuns(workspaceId?: string) {
         .equals(workspaceId)
         .and((run) => !run.isDeleted)
         .toArray();
-      if (!viewOwnScope.isRestricted) return runs;
-
       const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
       if (visibleShipmentIds.size === 0) return [];
       const runItems = await db.delivery_run_items
@@ -1064,11 +1089,13 @@ export function useDeliverySettlements(workspaceId?: string) {
         .equals(workspaceId)
         .and((settlement) => !settlement.isDeleted)
         .toArray();
-      if (!viewOwnScope.isRestricted) return settlements;
-
       const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
-      return settlements.filter((settlement) => (
-        !!settlement.shipmentId && visibleShipmentIds.has(settlement.shipmentId)
+      const directVisibility = await Promise.all(settlements.map((settlement) =>
+        canAccessDeliveryPartner(workspaceId, settlement.businessPartnerId, settlement.merchantProfileId)
+      ));
+      return settlements.filter((settlement, index) => (
+        directVisibility[index]
+        && (!settlement.shipmentId || visibleShipmentIds.has(settlement.shipmentId))
       ));
     },
     [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
@@ -1096,13 +1123,19 @@ export function useDeliveryLedgerEntries(workspaceId?: string) {
         .equals(workspaceId)
         .and((entry) => !entry.isDeleted)
         .toArray();
-      if (!viewOwnScope.isRestricted) return entries;
-
       const [visibleShipmentIds, linkedCourierIds] = await Promise.all([
         getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope),
         getLinkedCourierIds(workspaceId, viewOwnScope.userId),
       ]);
-      return entries.filter((entry) => isVisibleDeliveryLedgerEntry(entry, visibleShipmentIds, linkedCourierIds));
+      const visibility = await Promise.all(entries.map((entry) =>
+        canAccessDeliveryPartner(workspaceId, entry.businessPartnerId, entry.merchantProfileId)
+      ));
+      return entries.filter((entry, index) => (
+        visibility[index]
+        && (viewOwnScope.isRestricted
+          ? isVisibleDeliveryLedgerEntry(entry, visibleShipmentIds, linkedCourierIds)
+          : (!entry.shipmentId || visibleShipmentIds.has(entry.shipmentId)))
+      ));
     },
     [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
   ) ?? [];

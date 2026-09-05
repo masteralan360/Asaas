@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { Eye, GitMerge, MapPin, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react'
+import { Eye, MapPin, Pencil, Plus, Search, Trash2, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
@@ -9,11 +9,8 @@ import { useDemoTutorial } from '@/demo'
 import {
     createBusinessPartner,
     deleteBusinessPartner,
-    dismissBusinessPartnerMergeCandidate,
-    mergeBusinessPartners,
     updateBusinessPartner,
     useAgents,
-    useBusinessPartnerMergeCandidates,
     useBusinessPartners,
     useWorkspaceUsers,
     type BusinessPartner,
@@ -189,6 +186,7 @@ export function BusinessPartners() {
     const { hasPermission } = useWorkspacePermissions()
     const canViewCustomers = hasPermission('customers.access')
     const canViewSuppliers = hasPermission('suppliers.access')
+        && (!features.suppliers_admin_only || user?.role === 'admin')
     const [scope, setScope] = useState<'all' | 'customers' | 'suppliers'>('all')
     const partners = useBusinessPartners(user?.workspaceId, {
         includeRealEstateRoles: features.real_estate,
@@ -196,16 +194,14 @@ export function BusinessPartners() {
     })
     const agents = useAgents(user?.workspaceId)
     const workspaceUsers = useWorkspaceUsers(user?.workspaceId)
-    const mergeCandidates = useBusinessPartnerMergeCandidates(user?.workspaceId)
     const [search, setSearch] = useState('')
-    const [activeTab, setActiveTab] = useState<'partners' | 'maps' | 'merge-review'>('partners')
+    const [activeTab, setActiveTab] = useState<'partners' | 'maps'>('partners')
     const [mapPartnerSearch, setMapPartnerSearch] = useState('')
     const [focusedMapPartnerId, setFocusedMapPartnerId] = useState<string | null>(null)
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
-    const [isMerging, setIsMerging] = useState<string | null>(null)
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
@@ -242,14 +238,6 @@ export function BusinessPartners() {
         })
     }, [agentMap, visiblePartners, search])
 
-    const partnerMap = useMemo(
-        () => new Map(partners.map((partner) => [partner.id, partner])),
-        [partners]
-    )
-    const pendingMergeCandidates = useMemo(
-        () => mergeCandidates.filter((candidate) => candidate.status === 'pending' && !candidate.isDeleted),
-        [mergeCandidates]
-    )
     const receivableTotals = useMemo(
         () => groupPartnerTotalsByCurrency(visiblePartners, (partner) => partner.receivableBalance),
         [visiblePartners]
@@ -345,37 +333,6 @@ export function BusinessPartners() {
         }
     }
 
-    async function handleAcceptMerge(candidateId: string, primaryPartnerId: string, secondaryPartnerId: string) {
-        setIsMerging(candidateId)
-        try {
-            await mergeBusinessPartners(primaryPartnerId, secondaryPartnerId)
-            toast({ title: t('businessPartners.messages.mergeSuccess') || 'Business partners merged successfully' })
-        } catch (error: any) {
-            toast({
-                title: t('common.error') || 'Error',
-                description: error?.message || 'Failed to merge business partners',
-                variant: 'destructive'
-            })
-        } finally {
-            setIsMerging(null)
-        }
-    }
-
-    async function handleDismissMerge(candidateId: string) {
-        setIsMerging(candidateId)
-        try {
-            await dismissBusinessPartnerMergeCandidate(candidateId)
-        } catch (error: any) {
-            toast({
-                title: t('common.error') || 'Error',
-                description: error?.message || 'Failed to dismiss merge candidate',
-                variant: 'destructive'
-            })
-        } finally {
-            setIsMerging(null)
-        }
-    }
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -456,22 +413,13 @@ export function BusinessPartners() {
                         {renderGroupedTotals(payableTotals)}
                     </CardContent>
                 </Card>
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground">{t('businessPartners.mergeReview') || 'Merge Review'}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-black">{pendingMergeCandidates.length}</div>
-                    </CardContent>
-                </Card>
             </div>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'partners' | 'maps' | 'merge-review')} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'partners' | 'maps')} className="space-y-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <TabsList className="grid w-full max-w-[480px] grid-cols-3 rounded-2xl bg-secondary/50 p-1">
+                    <TabsList className="grid w-full max-w-[360px] grid-cols-2 rounded-2xl bg-secondary/50 p-1">
                         <TabsTrigger value="partners" className="rounded-xl">{t('businessPartners.title') || 'Business Partners'}</TabsTrigger>
                         <TabsTrigger value="maps" className="rounded-xl">{t('businessPartners.maps', { defaultValue: 'Maps' })}</TabsTrigger>
-                        <TabsTrigger value="merge-review" className="rounded-xl">{t('businessPartners.mergeReview') || 'Merge Review'}</TabsTrigger>
                     </TabsList>
 
                     {activeTab === 'partners' ? (
@@ -728,55 +676,6 @@ export function BusinessPartners() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="merge-review" className="mt-0">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>{t('businessPartners.mergeReview') || 'Merge Review'}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {pendingMergeCandidates.length === 0 ? (
-                                <div className="rounded-2xl border py-12 text-center text-muted-foreground">
-                                    {t('businessPartners.noMergeCandidates') || 'No merge candidates found.'}
-                                </div>
-                            ) : pendingMergeCandidates.map((candidate) => {
-                                const primary = partnerMap.get(candidate.primaryPartnerId)
-                                const secondary = partnerMap.get(candidate.secondaryPartnerId)
-                                return (
-                                    <div key={candidate.id} className="rounded-2xl border bg-background/70 p-4">
-                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2 text-sm font-semibold">
-                                                    <GitMerge className="h-4 w-4 text-primary" />
-                                                    <span>{primary?.partnerName || candidate.primaryPartnerId}</span>
-                                                    <span className="text-muted-foreground">/</span>
-                                                    <span>{secondary?.partnerName || candidate.secondaryPartnerId}</span>
-                                                </div>
-                                                <div className="text-sm text-muted-foreground">
-                                                    {candidate.reason} · {(candidate.confidence * 100).toFixed(0)}%
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    disabled={isMerging === candidate.id}
-                                                    onClick={() => handleDismissMerge(candidate.id)}
-                                                >
-                                                    {t('common.dismiss') || 'Dismiss'}
-                                                </Button>
-                                                <Button
-                                                    disabled={isMerging === candidate.id}
-                                                    onClick={() => handleAcceptMerge(candidate.id, candidate.primaryPartnerId, candidate.secondaryPartnerId)}
-                                                >
-                                                    {t('businessPartners.merge') || 'Merge'}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
             </Tabs>
                 </TabsContent>
             </Tabs>

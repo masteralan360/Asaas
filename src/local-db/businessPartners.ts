@@ -12,10 +12,16 @@ import {
     getAgentExcludedCategoryIds
 } from '@/lib/agentProductSelection'
 import { roundOrderValue } from '@/lib/orderPrecision'
-import { generateId, toCamelCase } from '@/lib/utils'
+import { generateId } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import {
+    canAccessBusinessPartner,
+    getBusinessPartnerPrivacyContext as getPartnerPrivacyContext,
+    getBusinessPartnerStaffVisibility,
+    type BusinessPartnerPrivacyContext
+} from './businessPartnerPrivacy'
 import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
 import { getOrderBalanceAmount } from './orderInstallments'
@@ -29,8 +35,8 @@ import type {
     AgentExcludedCategory,
     AgentFacetInput,
     BusinessPartner,
-    BusinessPartnerMergeCandidate,
     BusinessPartnerRole,
+    BusinessPartnerStaffVisibility,
     CurrencyCode,
     Customer,
     Loan,
@@ -40,7 +46,7 @@ import type {
 } from './models'
 import { isRealEstateBusinessPartnerRole } from './models'
 
-type PartnerTableName = 'business_partners' | 'business_partner_merge_candidates' | 'customers' | 'suppliers' | 'agents' | 'agent_excluded_categories'
+type PartnerTableName = 'business_partners' | 'customers' | 'suppliers' | 'agents' | 'agent_excluded_categories'
 type PartnerFacetType = 'customer' | 'supplier'
 type SyncEntity = { id: string; version: number } & Record<string, unknown>
 type PartnerFilterOptions = {
@@ -140,64 +146,129 @@ function normalizeRuntimePartnerName(partner: BusinessPartner): BusinessPartner 
         country?: unknown
     }
     const partnerName = typeof partner.partnerName === 'string' ? partner.partnerName.trim() : ''
-    if (partnerName) {
-        return partnerName === partner.partnerName
-            ? activePartner
-            : { ...activePartner, partnerName }
+    const normalizedPartner = partnerName === partner.partnerName
+        ? activePartner
+        : { ...activePartner, partnerName: partnerName || 'Unnamed partner' }
+
+    return {
+        ...normalizedPartner,
+        staffVisibility: normalizedPartner.staffVisibility ?? 'shared',
+        ownerUserId: normalizedPartner.ownerUserId ?? null
     }
-    return { ...activePartner, partnerName: 'Unnamed partner' }
+}
+
+function canActorSeePartner(
+    partner: BusinessPartner,
+    context: BusinessPartnerPrivacyContext
+): boolean {
+    // A mixed partner remains usable as a customer. Its supplier facet is
+    // redacted below rather than dropping the entire customer record.
+    return !(context.suppliersAdminOnly && partner.role === 'supplier')
+        && canAccessBusinessPartner(partner, context, 'customer')
+}
+
+function redactSupplierFacetForActor(
+    partner: BusinessPartner,
+    context: BusinessPartnerPrivacyContext
+): BusinessPartner {
+    if (context.actor.isAdmin || !context.suppliersAdminOnly || partner.role !== 'both') {
+        return partner
+    }
+
+    return {
+        ...partner,
+        role: 'customer',
+        supplierFacetId: null,
+        payableCreditLimit: null,
+        totalPurchaseOrders: 0,
+        totalPurchaseValue: 0,
+        payableBalance: 0
+    }
+}
+
+function visiblePartnerForActor(
+    partner: BusinessPartner | undefined,
+    context: BusinessPartnerPrivacyContext
+): BusinessPartner | undefined {
+    if (!partner || partner.isDeleted || !canActorSeePartner(partner, context)) {
+        return undefined
+    }
+
+    return normalizeRuntimePartnerName(redactSupplierFacetForActor(partner, context))
+}
+
+function matchesPartnerRoleFilter(partner: BusinessPartner, roles?: BusinessPartnerRole[]) {
+    return !roles?.length || roles.some((role) =>
+        partner.role === role
+        || (partner.role === 'both' && (role === 'customer' || role === 'supplier'))
+    )
+}
+
+async function resolveNewPartnerPrivacy(
+    workspaceId: string,
+    role: BusinessPartnerRole,
+    requestedVisibility?: BusinessPartnerStaffVisibility,
+    requestedOwnerUserId?: string | null
+): Promise<Pick<BusinessPartner, 'staffVisibility' | 'ownerUserId'>> {
+    const context = await getPartnerPrivacyContext(workspaceId)
+
+    if (!context.actor.isAdmin) {
+        if (context.privateStaffCustomers && roleIncludesCustomer(role) && context.actor.id) {
+            return { staffVisibility: 'owner_private', ownerUserId: context.actor.id }
+        }
+        return { staffVisibility: 'shared', ownerUserId: null }
+    }
+
+    const staffVisibility = requestedVisibility ?? 'shared'
+    if (staffVisibility !== 'shared' && !roleIncludesCustomer(role)) {
+        throw new Error('Only customer-capable business partners can use staff privacy')
+    }
+    if (staffVisibility !== 'owner_private') {
+        return { staffVisibility, ownerUserId: null }
+    }
+
+    if (!requestedOwnerUserId) {
+        throw new Error('Select a staff owner for a private business partner')
+    }
+
+    const owner = await db.users.get(requestedOwnerUserId) ?? await db.profiles.get(requestedOwnerUserId)
+    if (!owner || owner.workspaceId !== workspaceId || owner.role === 'admin') {
+        throw new Error('Select an active non-admin workspace member as the owner')
+    }
+
+    return { staffVisibility, ownerUserId: requestedOwnerUserId }
+}
+
+async function resolveUpdatedPartnerPrivacy(
+    existing: BusinessPartner,
+    changes: Partial<BusinessPartner>
+): Promise<Pick<BusinessPartner, 'staffVisibility' | 'ownerUserId'>> {
+    const hasPrivacyChange = changes.staffVisibility !== undefined || changes.ownerUserId !== undefined
+    const existingPrivacy = {
+        staffVisibility: getBusinessPartnerStaffVisibility(existing),
+        ownerUserId: existing.ownerUserId ?? null
+    } satisfies Pick<BusinessPartner, 'staffVisibility' | 'ownerUserId'>
+
+    if (!hasPrivacyChange) {
+        return existingPrivacy
+    }
+
+    const context = await getPartnerPrivacyContext(existing.workspaceId)
+    if (!context.actor.isAdmin) {
+        throw new Error('Only an administrator can change business partner privacy')
+    }
+
+    const nextRole = (changes.role ?? existing.role) as BusinessPartnerRole
+    return resolveNewPartnerPrivacy(
+        existing.workspaceId,
+        nextRole,
+        changes.staffVisibility ?? existingPrivacy.staffVisibility,
+        changes.ownerUserId ?? existingPrivacy.ownerUserId
+    )
 }
 
 function roundAmount(amount: number, _currency: CurrencyCode) {
     return roundOrderValue(amount)
-}
-
-function getMergeCandidateKey(
-    primaryPartnerId: string,
-    secondaryPartnerId: string,
-    mergeType: BusinessPartnerMergeCandidate['mergeType'] = 'customer_supplier'
-) {
-    return `${primaryPartnerId}:${secondaryPartnerId}:${mergeType}`
-}
-
-function getMergeCandidateKeyFromEntity(
-    entity: Pick<BusinessPartnerMergeCandidate, 'primaryPartnerId' | 'secondaryPartnerId' | 'mergeType'>
-) {
-    return getMergeCandidateKey(entity.primaryPartnerId, entity.secondaryPartnerId, entity.mergeType)
-}
-
-function getMergeCandidateSyncPriority(candidate: Pick<BusinessPartnerMergeCandidate, 'syncStatus' | 'version' | 'updatedAt' | 'isDeleted'>) {
-    const syncRank = candidate.syncStatus === 'synced'
-        ? 2
-        : candidate.syncStatus === 'pending'
-            ? 1
-            : 0
-    const updatedRank = Date.parse(candidate.updatedAt || '') || 0
-
-    return [
-        candidate.isDeleted ? 0 : 1,
-        syncRank,
-        candidate.version,
-        updatedRank
-    ]
-}
-
-function preferMergeCandidate(
-    left: BusinessPartnerMergeCandidate,
-    right: BusinessPartnerMergeCandidate
-) {
-    const leftPriority = getMergeCandidateSyncPriority(left)
-    const rightPriority = getMergeCandidateSyncPriority(right)
-
-    for (let index = 0; index < leftPriority.length; index += 1) {
-        if (leftPriority[index] === rightPriority[index]) {
-            continue
-        }
-
-        return leftPriority[index] > rightPriority[index] ? left : right
-    }
-
-    return left
 }
 
 async function removeOfflineMutationsForEntityIds(tableName: PartnerTableName, entityIds: string[]) {
@@ -275,62 +346,6 @@ async function syncUpsertEntities(tableName: PartnerTableName, entities: SyncEnt
     try {
         const client = getSupabaseClientForTable(tableName)
         const payload = entities.map((entity) => sanitizeSyncPayload(tableName, entity))
-
-        if (tableName === 'business_partner_merge_candidates') {
-            const mergeEntities = entities as unknown as BusinessPartnerMergeCandidate[]
-            const dedupedEntities = Array.from(
-                new Map(
-                    mergeEntities.map((entity) => [getMergeCandidateKeyFromEntity(entity), entity])
-                ).values()
-            )
-            const dedupedPayload = dedupedEntities.map((entity) => sanitizeSyncPayload(tableName, entity as unknown as SyncEntity))
-            const { data, error } = await runMutation(`${tableName}.sync`, () =>
-                client
-                    .from(tableName)
-                    .upsert(dedupedPayload, { onConflict: 'primary_partner_id,secondary_partner_id,merge_type' })
-                    .select('*')
-            )
-            if (error) {
-                throw error
-            }
-
-            const syncedAt = new Date().toISOString()
-            const remoteRows = ((data || []) as Record<string, unknown>[])
-                .map((row) => ({
-                    ...(toCamelCase(row) as unknown as BusinessPartnerMergeCandidate),
-                    syncStatus: 'synced' as const,
-                    lastSyncedAt: syncedAt
-                }))
-            const remoteByKey = new Map(remoteRows.map((row) => [getMergeCandidateKeyFromEntity(row), row]))
-            const replacedLocalIds: string[] = []
-
-            await db.transaction('rw', [db.business_partner_merge_candidates, db.offline_mutations], async () => {
-                for (const entity of dedupedEntities) {
-                    const remote = remoteByKey.get(getMergeCandidateKeyFromEntity(entity))
-
-                    if (!remote) {
-                        await db.business_partner_merge_candidates.update(entity.id, {
-                            syncStatus: 'synced',
-                            lastSyncedAt: syncedAt
-                        })
-                        continue
-                    }
-
-                    await db.business_partner_merge_candidates.put(remote)
-
-                    if (remote.id !== entity.id) {
-                        replacedLocalIds.push(entity.id)
-                    }
-                }
-
-                if (replacedLocalIds.length > 0) {
-                    await db.business_partner_merge_candidates.bulkDelete(replacedLocalIds)
-                    await removeOfflineMutationsForEntityIds(tableName, replacedLocalIds)
-                }
-            })
-
-            return
-        }
 
         const { error } = await runMutation(`${tableName}.sync`, () => client.from(tableName).upsert(payload))
         if (error) {
@@ -424,10 +439,6 @@ function buildBaseEntity<T extends Record<string, unknown>>(workspaceId: string,
     }
 }
 
-function normalizeMatchValue(value?: string | null) {
-    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
 function roleIncludesCustomer(role: BusinessPartnerRole) {
     return role === 'customer' || role === 'both'
 }
@@ -498,16 +509,21 @@ function partnerToSupplier(partner: BusinessPartner): Supplier {
 }
 
 async function getPartnerByAnyId(id: string) {
+    const applyVisibility = async (partner: BusinessPartner | undefined) => {
+        if (!partner) return undefined
+        return visiblePartnerForActor(partner, await getPartnerPrivacyContext(partner.workspaceId))
+    }
+
     const direct = await db.business_partners.get(id)
     if (direct && !direct.isDeleted) {
-        return normalizeRuntimePartnerName(direct)
+        return applyVisibility(direct)
     }
 
     const customerFacet = await db.customers.get(id)
     if (customerFacet?.businessPartnerId) {
         const customerPartner = await db.business_partners.get(customerFacet.businessPartnerId)
         if (customerPartner && !customerPartner.isDeleted) {
-            return normalizeRuntimePartnerName(customerPartner)
+            return applyVisibility(customerPartner)
         }
     }
 
@@ -515,7 +531,7 @@ async function getPartnerByAnyId(id: string) {
     if (supplierFacet?.businessPartnerId) {
         const supplierPartner = await db.business_partners.get(supplierFacet.businessPartnerId)
         if (supplierPartner && !supplierPartner.isDeleted) {
-            return normalizeRuntimePartnerName(supplierPartner)
+            return applyVisibility(supplierPartner)
         }
     }
 
@@ -523,7 +539,7 @@ async function getPartnerByAnyId(id: string) {
     if (agentFacet?.businessPartnerId) {
         const agentPartner = await db.business_partners.get(agentFacet.businessPartnerId)
         if (agentPartner && !agentPartner.isDeleted) {
-            return normalizeRuntimePartnerName(agentPartner)
+            return applyVisibility(agentPartner)
         }
     }
 
@@ -907,7 +923,12 @@ async function setAgentFacetInactive(partner: BusinessPartner) {
     await endActiveFleetAssignmentsForAgent(agent.id)
 }
 
-function assertBusinessPartnerRoleAllowed(role: BusinessPartnerRole, options?: BusinessPartnerRoleAccessOptions) {
+async function assertBusinessPartnerRoleAllowed(
+    workspaceId: string,
+    role: BusinessPartnerRole,
+    options?: BusinessPartnerRoleAccessOptions,
+    allowExistingSupplierRole = false
+) {
     if (isRemovedBusinessPartnerRole(role)) {
         throw new Error('Witness is not a supported business partner role')
     }
@@ -918,6 +939,16 @@ function assertBusinessPartnerRoleAllowed(role: BusinessPartnerRole, options?: B
 
     if (roleIncludesAgent(role) && !options?.allowAgentRole) {
         throw new Error('Agent roles require workspace Agents module access')
+    }
+
+    const context = await getPartnerPrivacyContext(workspaceId)
+    if (
+        context.suppliersAdminOnly
+        && !context.actor.isAdmin
+        && roleIncludesSupplier(role)
+        && !allowExistingSupplierRole
+    ) {
+        throw new Error('Supplier access is restricted to administrators in this workspace')
     }
 }
 
@@ -1298,101 +1329,13 @@ export async function ensurePartnerFacet(partnerId: string, facetType: PartnerFa
     return facet
 }
 
-async function refreshBusinessPartnerMergeCandidates(workspaceId: string) {
-    const partners = await db.business_partners.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted && !item.mergedIntoBusinessPartnerId).toArray()
-    const currentCandidates = await db.business_partner_merge_candidates.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
-    const currentByKey = new Map<string, BusinessPartnerMergeCandidate>()
-    const duplicateCandidateIds: string[] = []
-    const nextRows: BusinessPartnerMergeCandidate[] = []
-
-    for (const candidate of currentCandidates) {
-        const key = getMergeCandidateKeyFromEntity(candidate)
-        const existing = currentByKey.get(key)
-        if (!existing) {
-            currentByKey.set(key, candidate)
-            continue
-        }
-
-        const preferred = preferMergeCandidate(existing, candidate)
-        currentByKey.set(key, preferred)
-        duplicateCandidateIds.push(preferred.id === existing.id ? candidate.id : existing.id)
-    }
-
-    if (duplicateCandidateIds.length > 0) {
-        await db.transaction('rw', [db.business_partner_merge_candidates, db.offline_mutations], async () => {
-            await db.business_partner_merge_candidates.bulkDelete(duplicateCandidateIds)
-            await removeOfflineMutationsForEntityIds('business_partner_merge_candidates', duplicateCandidateIds)
-        })
-    }
-
-    const customerPartners = partners.filter((partner) => roleIncludesCustomer(partner.role))
-    const supplierPartners = partners.filter((partner) => roleIncludesSupplier(partner.role))
-
-    for (const customerPartner of customerPartners) {
-        const customerName = normalizeMatchValue(customerPartner.partnerName)
-        const customerPhone = normalizeMatchValue(customerPartner.phone)
-
-        for (const supplierPartner of supplierPartners) {
-            if (customerPartner.id === supplierPartner.id) {
-                continue
-            }
-
-            const supplierName = normalizeMatchValue(supplierPartner.partnerName)
-            const supplierPhone = normalizeMatchValue(supplierPartner.phone)
-            const exactName = customerName && customerName === supplierName
-            const phoneMatch = customerPhone && customerPhone === supplierPhone
-
-            if (!exactName && !phoneMatch) {
-                continue
-            }
-
-            const existing = currentByKey.get(getMergeCandidateKey(customerPartner.id, supplierPartner.id))
-            const reasons = [
-                exactName ? 'matching name' : '',
-                phoneMatch ? 'matching phone' : ''
-            ].filter(Boolean)
-            const confidence = exactName && phoneMatch
-                ? 0.98
-                : exactName
-                    ? 0.86
-                    : 0.78
-            const timestamp = new Date().toISOString()
-
-            nextRows.push({
-                ...(existing || buildBaseEntity(workspaceId, {
-                    primaryPartnerId: customerPartner.id,
-                    secondaryPartnerId: supplierPartner.id,
-                    mergeType: 'customer_supplier',
-                    reason: reasons.join(', '),
-                    confidence,
-                    status: 'pending'
-                })),
-                workspaceId,
-                primaryPartnerId: customerPartner.id,
-                secondaryPartnerId: supplierPartner.id,
-                mergeType: 'customer_supplier',
-                reason: reasons.join(', '),
-                confidence,
-                status: existing?.status || 'pending',
-                updatedAt: timestamp,
-                version: (existing?.version || 0) + 1,
-                ...getSyncMetadata(workspaceId, timestamp)
-            } as BusinessPartnerMergeCandidate)
-        }
-    }
-
-    if (nextRows.length > 0) {
-        await db.business_partner_merge_candidates.bulkPut(nextRows)
-        await syncUpsertEntities('business_partner_merge_candidates', nextRows as unknown as SyncEntity[], workspaceId)
-    }
-}
-
 export function useBusinessPartners(workspaceId: string | undefined, filters?: PartnerFilterOptions) {
     const online = useNetworkStatus()
 
     const partners = useLiveQuery(
         async () => {
             if (!workspaceId) return []
+            const privacyContext = await getPartnerPrivacyContext(workspaceId)
             const rows = await db.business_partners.where('workspaceId').equals(workspaceId).and((item) => {
                 if (item.isDeleted) {
                     return false
@@ -1414,14 +1357,12 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     return false
                 }
 
-                if (filters?.roles?.length) {
-                    return filters.roles.some((role) => item.role === role || (item.role === 'both' && (role === 'customer' || role === 'supplier')))
-                }
-
                 return true
             }).toArray()
             return rows
-                .map(normalizeRuntimePartnerName)
+                .map((partner) => visiblePartnerForActor(partner, privacyContext))
+                .filter((partner): partner is BusinessPartner => Boolean(partner))
+                .filter((partner) => matchesPartnerRoleFilter(partner, filters?.roles))
                 .sort((a, b) => a.partnerName.localeCompare(b.partnerName))
         },
         [workspaceId, JSON.stringify(filters || {})]
@@ -1436,7 +1377,6 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
             if (online && shouldUseCloudBusinessData(workspaceId)) {
                 await Promise.all([
                     fetchTableFromSupabase('business_partners', db.business_partners, workspaceId),
-                    fetchTableFromSupabase('business_partner_merge_candidates', db.business_partner_merge_candidates, workspaceId),
                     fetchTableFromSupabase('customers', db.customers, workspaceId),
                     fetchTableFromSupabase('suppliers', db.suppliers, workspaceId),
                     fetchTableFromSupabase('agents', db.agents, workspaceId),
@@ -1449,7 +1389,6 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
             }
 
             await recalculateAllBusinessPartnerSummaries(workspaceId)
-            await refreshBusinessPartnerMergeCandidates(workspaceId)
         }
 
         void hydrate().catch((error) => {
@@ -1486,44 +1425,12 @@ export function useAgent(agentId: string | null | undefined) {
     )
 }
 
-export function useBusinessPartnerMergeCandidates(workspaceId: string | undefined) {
-    const online = useNetworkStatus()
-
-    const candidates = useLiveQuery(
-        async () => {
-            if (!workspaceId) return []
-            const rows = await db.business_partner_merge_candidates.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
-            return rows.sort((a, b) => b.confidence - a.confidence)
-        },
-        [workspaceId]
-    )
-
-    useEffect(() => {
-        if (!workspaceId) {
-            return
-        }
-
-        const hydrate = async () => {
-            if (online && shouldUseCloudBusinessData(workspaceId)) {
-                await fetchTableFromSupabase('business_partner_merge_candidates', db.business_partner_merge_candidates, workspaceId)
-            }
-            await refreshBusinessPartnerMergeCandidates(workspaceId)
-        }
-
-        void hydrate().catch((error) => {
-            console.error('[BusinessPartners] Failed to hydrate merge candidates:', error)
-        })
-    }, [online, workspaceId])
-
-    return candidates ?? []
-}
-
 export async function createBusinessPartner(
     workspaceId: string,
     data: BusinessPartnerCreateInput,
     options?: BusinessPartnerRoleAccessOptions
 ) {
-    assertBusinessPartnerRoleAllowed(data.role, options)
+    await assertBusinessPartnerRoleAllowed(workspaceId, data.role, options)
     const { agent: agentInput, email: _email, country: _country, ...partnerData } = data as BusinessPartnerCreateInput & {
         email?: unknown
         country?: unknown
@@ -1533,6 +1440,12 @@ export async function createBusinessPartner(
         ? normalizeAgentFacetInput(agentInput)
         : undefined
     await assertAgentLinkedUserAvailable(workspaceId, normalizedAgentInput?.linkedUserId)
+    const privacy = await resolveNewPartnerPrivacy(
+        workspaceId,
+        data.role,
+        partnerData.staffVisibility,
+        partnerData.ownerUserId
+    )
 
     const legacyLimit = partnerData.creditLimit && partnerData.creditLimit > 0
         ? partnerData.creditLimit
@@ -1561,7 +1474,8 @@ export async function createBusinessPartner(
         netExposure: 0,
         mergedIntoBusinessPartnerId: null,
         latitude: partnerData.latitude ?? null,
-        longitude: partnerData.longitude ?? null
+        longitude: partnerData.longitude ?? null,
+        ...privacy
     }) as BusinessPartner
 
     await db.business_partners.put(partner)
@@ -1606,19 +1520,34 @@ export async function createBusinessPartner(
         await syncUpsertEntities('business_partners', [workingPartner as unknown as SyncEntity], workspaceId)
     }
 
-    await refreshBusinessPartnerMergeCandidates(workspaceId)
     return workingPartner
 }
 
 export async function updateBusinessPartner(id: string, data: BusinessPartnerUpdateInput, options?: BusinessPartnerRoleAccessOptions) {
-    const existing = await getPartnerByAnyId(id)
-    if (!existing || existing.isDeleted) {
+    const visiblePartner = await getPartnerByAnyId(id)
+    if (!visiblePartner || visiblePartner.isDeleted) {
         throw new Error('Business partner not found')
     }
+    // A restricted mixed partner is projected locally as customer-only. Keep
+    // its persisted role while the staff member edits the customer side, so a
+    // routine name or address edit cannot silently remove its supplier facet.
+    const storedPartner = await db.business_partners.get(visiblePartner.id)
+    const existing = storedPartner && !storedPartner.isDeleted
+        ? normalizeRuntimePartnerName(storedPartner)
+        : visiblePartner
 
     const { agent: agentInput, email: _email, country: _country, ...partnerChanges } = data as BusinessPartnerUpdateInput & {
         email?: unknown
         country?: unknown
+    }
+    const privacyContext = await getPartnerPrivacyContext(existing.workspaceId)
+    const preservesHiddenSupplierFacet = privacyContext.suppliersAdminOnly
+        && !privacyContext.actor.isAdmin
+        && existing.role === 'both'
+    if (preservesHiddenSupplierFacet) {
+        delete partnerChanges.role
+        delete partnerChanges.creditLimit
+        delete partnerChanges.payableCreditLimit
     }
     if (partnerChanges.partnerName !== undefined) {
         partnerChanges.partnerName = normalizeRequiredPartnerName(partnerChanges.partnerName)
@@ -1632,7 +1561,12 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
             partnerChanges.payableCreditLimit = partnerChanges.creditLimit
         }
     }
-    assertBusinessPartnerRoleAllowed(nextRole, options)
+    await assertBusinessPartnerRoleAllowed(
+        existing.workspaceId,
+        nextRole,
+        options,
+        preservesHiddenSupplierFacet && nextRole === 'both'
+    )
     await assertRoleRemovalAllowed(existing, nextRole)
     const existingAgent = existing.agentFacetId
         ? await db.agents.get(existing.agentFacetId)
@@ -1651,6 +1585,7 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
         email?: unknown
         country?: unknown
     }
+    const privacy = await resolveUpdatedPartnerPrivacy(existing, partnerChanges)
     let updated: BusinessPartner = {
         ...activeExisting,
         ...partnerChanges,
@@ -1661,6 +1596,7 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
         payableCreditLimit: partnerChanges.payableCreditLimit !== undefined
             ? partnerChanges.payableCreditLimit
             : existing.payableCreditLimit ?? (roleIncludesSupplier(nextRole) && existing.creditLimit ? existing.creditLimit : null),
+        ...privacy,
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
@@ -1714,7 +1650,6 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
 
     await mirrorPartnerToFacets(updated)
     await recalculateBusinessPartnerSummary(existing.workspaceId, updated.id)
-    await refreshBusinessPartnerMergeCandidates(existing.workspaceId)
     return updated
 }
 
@@ -1895,52 +1830,9 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
     await Promise.all(purchaseOrders.map((order) => db.purchase_orders.update(order.id, { businessPartnerId: primary.id, supplierId: mergedPrimary.supplierFacetId || order.supplierId })))
     await Promise.all(loans.map((loan) => db.loans.update(loan.id, { linkedPartyId: primary.id, linkedPartyType: 'business_partner' })))
 
-    const candidates = await db.business_partner_merge_candidates.where('workspaceId').equals(primary.workspaceId).and((item) => {
-        if (item.isDeleted) {
-            return false
-        }
-
-        return item.primaryPartnerId === primary.id && item.secondaryPartnerId === secondary.id
-            || item.primaryPartnerId === secondary.id
-            || item.secondaryPartnerId === secondary.id
-    }).toArray()
-
-    const updatedCandidates = candidates.map((candidate) => ({
-        ...candidate,
-        status: candidate.primaryPartnerId === primary.id && candidate.secondaryPartnerId === secondary.id ? 'accepted' : candidate.status,
-        isDeleted: candidate.primaryPartnerId === primary.id && candidate.secondaryPartnerId === secondary.id ? candidate.isDeleted : true,
-        updatedAt: now,
-        version: candidate.version + 1,
-        ...getSyncMetadata(primary.workspaceId, now)
-    })) as BusinessPartnerMergeCandidate[]
-    if (updatedCandidates.length > 0) {
-        await db.business_partner_merge_candidates.bulkPut(updatedCandidates)
-        await syncUpsertEntities('business_partner_merge_candidates', updatedCandidates as unknown as SyncEntity[], primary.workspaceId)
-    }
-
     await mirrorPartnerToFacets(mergedPrimary)
     await recalculateBusinessPartnerSummary(primary.workspaceId, primary.id)
-    await refreshBusinessPartnerMergeCandidates(primary.workspaceId)
     return mergedPrimary
-}
-
-export async function dismissBusinessPartnerMergeCandidate(id: string) {
-    const candidate = await db.business_partner_merge_candidates.get(id)
-    if (!candidate || candidate.isDeleted) {
-        return
-    }
-
-    const now = new Date().toISOString()
-    const updated: BusinessPartnerMergeCandidate = {
-        ...candidate,
-        status: 'dismissed',
-        updatedAt: now,
-        version: candidate.version + 1,
-        ...getSyncMetadata(candidate.workspaceId, now)
-    }
-
-    await db.business_partner_merge_candidates.put(updated)
-    await syncUpsertEntities('business_partner_merge_candidates', [updated as unknown as SyncEntity], candidate.workspaceId)
 }
 
 export function useCustomers(workspaceId: string | undefined) {

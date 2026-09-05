@@ -80,7 +80,6 @@ const SYNC_PULL_TABLES = [
   "delivery_settlements",
   "delivery_ledger_entries",
   "business_partners",
-  "business_partner_merge_candidates",
   "invoices",
   "invoice_versions",
   "workspaces",
@@ -864,6 +863,18 @@ export async function processMutationQueue(
   }>();
 
   for (const mutation of orderedMutations) {
+    // The duplicate detector was retired. A prior version may have queued
+    // suggestions while offline, so retire those local-only mutations without
+    // contacting the removed CRM endpoint.
+    if (mutation.entityType === "business_partner_merge_candidates") {
+      await db.offline_mutations.update(mutation.id, {
+        status: "synced",
+        error: undefined,
+      });
+      successCount++;
+      reportCompleted();
+      continue;
+    }
     // Reconcile only after every order/return/assignment/plan mutation in this
     // batch has committed. Offline entity compaction then converges directly
     // to the final server state without replaying stale ledger snapshots.
@@ -1188,33 +1199,6 @@ export async function processMutationQueue(
               throw error;
             }
           }
-        } else if (entityType === "business_partner_merge_candidates") {
-          const { data: remoteMergeCandidateRow, error } = await client
-            .from(remoteTableName)
-            .upsert(dbPayload, {
-              onConflict: "primary_partner_id,secondary_partner_id,merge_type",
-            })
-            .select("*")
-            .single();
-
-          if (error) throw error;
-
-          const syncedAt = new Date().toISOString();
-          const localMergeCandidateRow = toCamelCase(
-            remoteMergeCandidateRow as Record<string, unknown>,
-          ) as Record<string, unknown>;
-          localMergeCandidateRow.syncStatus = "synced";
-          localMergeCandidateRow.lastSyncedAt = syncedAt;
-          syncedEntityId = String(localMergeCandidateRow.id);
-
-          if (syncedEntityId !== entityId) {
-            await db.business_partner_merge_candidates.delete(entityId);
-          }
-
-          await db.business_partner_merge_candidates.put(
-            localMergeCandidateRow as never,
-          );
-          entityHandledInline = true;
         } else if (entityType === "price_book_items") {
           const priceBookId = dbPayload.price_book_id;
           const productId = dbPayload.product_id;

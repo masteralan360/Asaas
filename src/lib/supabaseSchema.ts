@@ -23,7 +23,6 @@ const crmTables = new Set([
     'agent_commission_entries',
     'agent_product_commission_entries',
     'business_partners',
-    'business_partner_merge_candidates',
     'sales_orders',
     'purchase_orders',
     'order_installments',
@@ -132,6 +131,15 @@ export function isRealEstateTable(tableName: string): boolean {
     return realEstateTables.has(tableName)
 }
 
+// Partner directory reads are routed through policy-aware RPCs. This lets a
+// non-admin keep using the customer side of a mixed customer/supplier record
+// without receiving supplier-only fields in the local cache.
+const visibilityScopedTableRpcs: Record<string, string> = {
+    business_partners: 'list_visible_business_partners',
+    customers: 'list_visible_customers',
+    suppliers: 'list_visible_suppliers'
+}
+
 export function isTravelTransportationTable(tableName: string): boolean {
     return travelTransportationTables.has(tableName)
 }
@@ -166,6 +174,10 @@ export function isPaymentAccountTable(tableName: string): boolean {
 
 export function getSupabaseRemoteTableName(tableName: string): string {
     return paymentAccountRemoteTableNames[tableName] ?? tableName
+}
+
+export function getVisibilityScopedTableRpc(tableName: string): string | undefined {
+    return visibilityScopedTableRpcs[tableName]
 }
 
 export function getFleetSupabaseClient() {
