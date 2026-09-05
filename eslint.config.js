@@ -61,4 +61,12 @@ export default tseslint.config(
     },
     rules: typescriptRules,
   },
+  {
+    extends: [js.configs.recommended],
+    files: ['cloudflare-web/src/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+    },
+  },
 )

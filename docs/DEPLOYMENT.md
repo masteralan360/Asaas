@@ -10,7 +10,7 @@ Atlas can be deployed to multiple platforms:
 | macOS | Tauri DMG | Code signing required |
 | Linux | Tauri AppImage/deb | No signing required |
 | Android | Tauri APK/AAB | Play Store ready |
-| Web | Vercel/Netlify | PWA-enabled |
+| Web | Cloudflare Workers Static Assets | PWA-enabled |
 
 ---
 ## Prerequisites
@@ -243,45 +243,71 @@ VALUES ('p2p-sync', 'p2p-sync', false);
 
 ---
 
-## Vercel Deployment (Web)
+## Cloudflare Workers Deployment (Web)
 
-### 1. Connect Repository
+Atlas Web deploys as a Worker with Static Assets. The Worker serves the Vite
+SPA, the `shop.atlaserp.dev` marketplace entry point, and the authenticated
+same-origin usage gateways. It does not replace Supabase or the existing
+`asaas-r2-proxy` Worker.
 
-1. Import GitHub repo to Vercel
-2. Select `Vite` framework preset
+### 1. Configure Cloudflare
 
-### 2. Environment Variables
+1. Upgrade the Cloudflare account to Workers Paid.
+2. Create a Worker named `erp-system`, or allow `wrangler deploy` to create it.
+3. Bind the production app domain and `shop.atlaserp.dev` to that Worker.
+4. Keep the Vercel project attached until the production cutover has been
+   validated; it is the rollback target.
 
-Add in Vercel dashboard:
+### 2. Worker secrets
+
+Set these encrypted Worker secrets with `wrangler secret put <NAME> --config
+cloudflare-web/wrangler.toml`, or through **Workers & Pages → atlas-web →
+Settings → Variables and Secrets**:
+
+- `SUPABASE_URL` — the Supabase project URL
+- `SUPABASE_ANON_KEY` — server-side copy of the public anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` — server-only; never prefix it with `VITE_`
+- `R2_WORKER_URL` — URL of the existing authenticated R2 Worker
+
+For local Worker development, put the same values in
+`cloudflare-web/.dev.vars`. That file is ignored by Git.
+
+### 3. Build-time public variables
+
+The Vite build still needs these public values. Configure them as GitHub
+Actions secrets (the included workflow reads them) or export them before a
+local deploy:
+
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `SUPABASE_URL` — server-only; the same project URL
-- `SUPABASE_ANON_KEY` — server-only copy of the public anon key
-- `SUPABASE_SERVICE_ROLE_KEY` — server-only; never prefix this with `VITE_`
-- `R2_WORKER_URL` — server-only URL of the authenticated Cloudflare R2 worker
 
 ### Web Live usage charging
 
 The browser build routes metered Supabase REST and authenticated R2 CRUD through
-the Vercel functions at `/api-workspace-data/*` and `/api-workspace-r2/*`.
-Those functions record Web Live at 20×, while the Tauri app records at 10×.
+the same-origin Worker routes at `/api-workspace-data/*`,
+`/api-workspace-storage/*`, and `/api-workspace-r2/*`. Those routes record Web
+Live at 20×, while the Tauri app records at 10×.
 
-Keep the server variables above restricted to Vercel Functions. Do not publish
-the service-role key in the Vite build. `VITE_WEB_USAGE_GATEWAY_URL` and
-`VITE_WEB_R2_USAGE_GATEWAY_URL` are optional overrides for the two same-origin
-paths when using a custom Vercel domain or routing layer.
-
-### 3. Build Settings
-
-```
-Build Command: npm run build
-Output Directory: dist
-Install Command: npm install
-```
+Keep the server variables above restricted to the Cloudflare Worker. Do not
+publish the service-role key in the Vite build.
+`VITE_WEB_USAGE_GATEWAY_URL` and `VITE_WEB_STORAGE_USAGE_GATEWAY_URL` are
+optional overrides for the two same-origin Supabase paths when using a custom
+domain or routing layer.
 
 ### 4. Deploy
 
-Push to `main` branch triggers automatic deployment.
+```
+npm ci
+npm run cf:deploy
+```
+
+The included `.github/workflows/deploy-cloudflare.yml` deploys `main` after the
+required GitHub and Worker secrets have been configured. It creates no Vercel
+deployment.
+
+After the first deployment, enable Cloudflare Web Analytics from the Worker
+dashboard if analytics is desired. The Vercel Analytics client has been
+removed because it relies on Vercel's collection routes.
 
 ---
 

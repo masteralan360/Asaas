@@ -1,5 +1,5 @@
 /*
- * This worker is deliberately deployment-stable. Vercel can deploy a new app
+ * This worker is deliberately deployment-stable. A web host can deploy a new app
  * shell without replacing this worker, so an installed Local Mode PWA keeps
  * serving its cached shell until the application explicitly stages an update.
  */
@@ -119,7 +119,7 @@ function extractInitialAssetUrls(html) {
 
 function createFreshDeploymentRequest(path, token) {
     const url = new URL(path, self.location.origin)
-    // Vercel can legitimately cache static documents at the edge. A distinct
+    // The host can legitimately cache static documents at the edge. A distinct
     // URL plus no-store makes an explicit Atlas update check reach the current
     // deployment instead of comparing a cached document with itself.
     url.searchParams.set(DEPLOYMENT_CHECK_QUERY_PARAM, `${Date.now()}-${token}`)
@@ -239,7 +239,7 @@ async function refreshToLatestDeployment(port) {
 }
 
 /**
- * A cached index can occasionally reference a hashed module that Vercel has
+ * A cached index can occasionally reference a hashed module that the host has
  * already removed. Recover from that precise situation without clearing the
  * current cache: only a fully verified deployment is allowed to replace it.
  */

@@ -68,7 +68,7 @@ export function setPwaUpdatePolicy(disabled: boolean): void {
 }
 
 /**
- * The only path that asks a PWA worker to fetch a newer Vercel deployment.
+ * The only path that asks a PWA worker to fetch a newer deployment.
  * Keeping this guard here prevents accidental update checks from other UI
  * controls while the Local Mode preference is disabled.
  */

@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
                 injectRegister: false,
                 // `/sw.js` is the stable, locally controlled worker in public/.
                 // Keep this generated Workbox artifact under another name so a
-                // Vercel deployment never replaces that update gate.
+                // A web deployment never replaces that update gate.
                 filename: 'workbox-sw.js',
                 registerType: 'prompt',
                 includeAssets: ['logo.png', 'pwa-icon.png', 'sql-wasm.wasm'],

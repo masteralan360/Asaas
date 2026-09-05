@@ -1,6 +1,5 @@
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Analytics } from '@vercel/analytics/react'
 import { requestPersistentStorage } from '@/local-db/storagePersist'
 import { isOpfsSupported } from '@/local-db/pwaSqlite'
 import { AtlasSplashScreen } from '@/ui/components/AtlasSplashScreen'
@@ -60,7 +59,7 @@ const registerAppServiceWorker = () => {
     void navigator.serviceWorker.register('/sw.js', {
         scope: '/',
         // The worker is a stable update gate. It must not be replaced by a
-        // deployment-specific Workbox worker on every Vercel build.
+        // deployment-specific Workbox worker on every web deployment.
         updateViaCache: 'none'
     }).then(async (registration) => {
         // Ask the browser to re-check the stable gate on every launch. This
@@ -168,7 +167,6 @@ const renderRoot = (content: ReactNode) => {
     root.render(
         <StrictMode>
             {content}
-            <Analytics />
         </StrictMode>,
     )
 }

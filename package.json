@@ -34,6 +34,8 @@
     "prebuild": "npm run optimize:tips",
     "dev": "vite --host",
     "build": "node scripts/build.mjs",
+    "cf:dev": "wrangler dev --config cloudflare-web/wrangler.toml",
+    "cf:deploy": "npm run build && wrangler deploy --config cloudflare-web/wrangler.toml",
     "lint": "eslint . && npm run lint:dialogs",
     "lint:dialogs": "node scripts/check-dialog-conventions.mjs",
     "preview": "vite preview",
@@ -86,7 +88,6 @@
     "@types/crypto-js": "^4.2.2",
     "@untitledui/file-icons": "^0.0.9",
     "@untitledui/icons": "^0.0.22",
-    "@vercel/analytics": "^2.0.1",
     "@wasm-audio-decoders/flac": "0.2.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -152,6 +153,7 @@
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.8",
+    "wrangler": "^4.72.0",
     "workbox-window": "^7.1.0"
   },
   "min_version": "0.8.2"

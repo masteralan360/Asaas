@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { copyFileSync, existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
@@ -61,4 +62,13 @@ if (target === 'android') {
     run(process.execPath, [require.resolve('typescript/bin/tsc'), '-b'])
     const viteCli = path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js')
     run(process.execPath, [viteCli, 'build', ...process.argv.slice(2)])
+
+    // Vite intentionally omits underscore-prefixed public files. Cloudflare
+    // parses this static-assets control file during deployment, so preserve it
+    // in the final artifact after Vite completes.
+    const cloudflareHeaders = path.resolve(process.cwd(), 'public', '_headers')
+    const outputHeaders = path.resolve(process.cwd(), 'dist', '_headers')
+    if (existsSync(cloudflareHeaders)) {
+        copyFileSync(cloudflareHeaders, outputHeaders)
+    }
 }

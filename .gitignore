@@ -147,6 +147,7 @@ Secrets/novu-ec341-firebase-adminsdk-fbsvc-ee588ba935.json
 /scripts/.optimized-tips.json
 .vercel
 .env*
+.dev.vars*
 
 # Microsoft Excel creates these temporary lock files while a workbook is open.
 ~$*.xlsx

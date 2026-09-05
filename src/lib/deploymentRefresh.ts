@@ -5,7 +5,7 @@ import { areApplicationUpdatesDisabled } from './updatePreference'
 
 /**
  * Makes a navigation URL unique so the browser and the active service worker
- * must request the current Vercel document instead of reusing an old app shell.
+ * must request the current deployment document instead of reusing an old app shell.
  */
 export function createDeploymentRefreshUrl(currentUrl: string, timestamp = Date.now()): string {
     const url = new URL(currentUrl)

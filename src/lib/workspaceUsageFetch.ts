@@ -32,9 +32,9 @@ const WORKSPACE_FILTER_KEYS = [
 type WorkspaceUsageFetchOptions = {
     supabaseUrl: string
     supabaseAnonKey: string
-    /** Same-origin Vercel REST gateway used only by the Web Live build. */
+    /** Same-origin REST gateway used only by the Web Live build. */
     webGatewayUrl?: string
-    /** Same-origin Vercel Storage gateway used only by the Web Live build. */
+    /** Same-origin Storage gateway used only by the Web Live build. */
     webStorageGatewayUrl?: string
     fetchImpl?: typeof fetch
 }
@@ -652,7 +652,7 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
             return response
         }
 
-        // The Vercel gateway has already metered this exact Web Live request
+        // The same-origin gateway has already metered this exact Web Live request
         // with its server-held credentials. Never report it a second time from
         // an untrusted browser client.
         if (gatewayRequest) {

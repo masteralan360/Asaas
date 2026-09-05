@@ -27,11 +27,12 @@ Run the development servers:
 ## Production Builds
 
 ### 1. Web Application
-To generate the static HTML/JS/CSS files for web hosting (e.g., Vercel, Netlify, Cloudflare Pages):
+To build and deploy the web application to the included Cloudflare Worker:
 ```bash
-npm run build
+npm run cf:deploy
 ```
-The output will be placed in the `dist/` directory.
+This builds `dist/`, then deploys the Worker and its static assets. Configure
+the Worker secrets listed in `docs/DEPLOYMENT.md` before the first deployment.
 
 ### 2. Desktop Application (Windows, Linux, macOS)
 To build the native desktop installer:

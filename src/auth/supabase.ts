@@ -50,7 +50,7 @@ export const isSupabaseConfigured = Boolean(isUrlValid && isKeyValid)
 // The app will redirect to configuration page if isSupabaseConfigured is false
 const clientUrl = isUrlValid ? resolvedSupabaseUrl : 'https://placeholder.supabase.co'
 const clientKey = isKeyValid ? resolvedSupabaseAnonKey : 'placeholder-key'
-// Browser REST traffic is sent through the same-origin Vercel gateway so the
+// Browser REST traffic is sent through the same-origin usage gateway so the
 // server, not the browser, chooses the Web Live (20x) charge rate. Desktop
 // clients retain their direct Tauri (10x) metering path.
 const webUsageGatewayUrl = !isTauri() && !isBackendConfigurationRequired
