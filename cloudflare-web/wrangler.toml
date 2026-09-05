@@ -1,6 +1,9 @@
 name = "atlas"
 main = "src/index.js"
 compatibility_date = "2026-09-05"
+# Preserve any dashboard-managed non-secret runtime variables when this Worker
+# is deployed with Wrangler. Secrets remain encrypted and are managed separately.
+keep_vars = true
 
 # The Vite build remains a static SPA. The Worker runs first so it can own the
 # API gateway and select marketplace.html for shop.atlaserp.dev.
