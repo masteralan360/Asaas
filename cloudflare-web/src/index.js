@@ -347,14 +347,15 @@ function staticCacheControl(pathname) {
 async function serveAsset(request, env, url) {
     const marketplaceHost = (env.MARKETPLACE_HOST || 'shop.atlaserp.dev').toLowerCase()
     const useMarketplaceEntry = url.hostname.toLowerCase() === marketplaceHost && !hasFileExtension(url.pathname)
-    const useMainEntry = !useMarketplaceEntry && !hasFileExtension(url.pathname)
     const assetUrl = new URL(request.url)
 
     if (useMarketplaceEntry) assetUrl.pathname = '/marketplace.html'
-    if (useMainEntry) assetUrl.pathname = '/index.html'
 
-    const upstream = await env.ASSETS.fetch(new Request(assetUrl, request))
-    const cacheControl = staticCacheControl(assetUrl.pathname)
+    // Cloudflare Assets owns SPA fallback for the main app. Rewriting `/` to
+    // `/index.html` causes Assets to redirect it back to `/`, creating a loop.
+    const assetRequest = useMarketplaceEntry ? new Request(assetUrl, request) : request
+    const upstream = await env.ASSETS.fetch(assetRequest)
+    const cacheControl = staticCacheControl(useMarketplaceEntry ? assetUrl.pathname : url.pathname)
     if (!cacheControl) return upstream
 
     const headers = new Headers(upstream.headers)

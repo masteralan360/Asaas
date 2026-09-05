@@ -121,6 +121,16 @@ describe('Atlas Cloudflare web Worker', () => {
         expect(response.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate')
     })
 
+    it('delegates main-app navigations to the SPA asset binding without an index redirect loop', async () => {
+        const env = createEnv()
+
+        const response = await worker.fetch(new Request('https://app.atlaserp.dev/'), env)
+
+        expect(await response.text()).toBe('/')
+        expect(new URL(env.ASSETS.fetch.mock.calls[0][0].url).pathname).toBe('/')
+        expect(response.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate')
+    })
+
     it('keeps hashed application assets immutable', async () => {
         const env = createEnv()
 
