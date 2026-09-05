@@ -102,8 +102,6 @@ export const SALES_HISTORY_ATLAS_STANDARD_HIDDEN_FIELD_KEYS = {
         saleType: 'salesHistoryAtlasStandard.invoiceDetails.saleType',
         saleNumber: 'salesHistoryAtlasStandard.invoiceDetails.saleNumber',
         cashier: 'salesHistoryAtlasStandard.invoiceDetails.cashier',
-        sourceReference: 'salesHistoryAtlasStandard.invoiceDetails.sourceReference',
-        refundStatus: 'salesHistoryAtlasStandard.invoiceDetails.refundStatus',
         saleStatus: 'salesHistoryAtlasStandard.invoiceDetails.saleStatus',
         saleDate: 'salesHistoryAtlasStandard.invoiceDetails.saleDate',
         time: 'salesHistoryAtlasStandard.invoiceDetails.time'
@@ -1242,15 +1240,12 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
         saleType: t('sales.atlasStandard.saleType', { defaultValue: 'Sale type' }),
         saleNumber: t('sales.atlasStandard.saleNumber', { defaultValue: 'Sale No.' }),
         cashier: t('sales.atlasStandard.cashier', { defaultValue: 'Cashier' }),
-        sourceReference: t('sales.atlasStandard.sourceReference', { defaultValue: 'Source reference' }),
-        refundStatus: t('sales.atlasStandard.refundStatus', { defaultValue: 'Refund status' }),
         saleStatus: t('sales.atlasStandard.saleStatus', { defaultValue: 'Sale status' }),
         saleDate: t('sales.atlasStandard.saleDate', { defaultValue: 'Sale date' }),
         salesItemsTable: t('sales.atlasStandard.salesItemsTable', { defaultValue: 'Sale items table' }),
         salesSummary: t('sales.atlasStandard.salesSummary', { defaultValue: 'Sales summary' }),
         sku: t('sales.atlasStandard.sku', { defaultValue: 'SKU' }),
         paidTotal: t('sales.atlasStandard.paidTotal', { defaultValue: 'Paid total' }),
-        refundedAmount: t('sales.atlasStandard.refundedAmount', { defaultValue: 'Refunded amount' }),
         netTotal: t('sales.atlasStandard.netTotal', { defaultValue: 'Net total' }),
         paid: t('sales.atlasStandard.paid', { defaultValue: 'Paid' }),
         noRefund: t('sales.atlasStandard.noRefund', { defaultValue: 'No refund' }),
@@ -1560,7 +1555,6 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
     }
 
     const saleNumber = `#${String(sale.sequenceId || sale.id.slice(0, 8)).padStart(5, '0')}`
-    const sourceReference = sale._transactionNo || sale._orderNumber || sale.id
     const invoiceDetailFields: HideablePrintField[] = [
         {
             key: detailsKeys.saleType,
@@ -1584,31 +1578,10 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{cashier}</div>
         },
         {
-            key: detailsKeys.sourceReference,
-            label: salesLabels.sourceReference,
-            value: sourceReference,
-            className: 'col-span-2 border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{sourceReference}</div>
-        },
-        {
-            key: detailsKeys.refundStatus,
-            label: isReturnPrint ? returnLabels.returnStatus : salesLabels.refundStatus,
-            value: statusLabel,
-            className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{statusLabel}</div>
-        },
-        {
-            key: detailsKeys.saleStatus,
-            label: salesLabels.saleStatus,
-            value: isReturnPrint ? statusLabel : salesLabels.paid,
-            className: 'border-l border-t border-[#1f2937]',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isReturnPrint ? statusLabel : salesLabels.paid}</div>
-        },
-        {
             key: detailsKeys.saleDate,
             label: isReturnPrint ? returnLabels.returnDate : salesLabels.saleDate,
             value: issuedAt.date,
-            className: 'border-l border-t border-[#1f2937]',
+            className: 'col-span-2 border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{issuedAt.date}</div>
         },
         {
@@ -1617,6 +1590,13 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
             value: issuedAt.time,
             className: 'border-l border-t border-[#1f2937]',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{issuedAt.time}</div>
+        },
+        {
+            key: detailsKeys.saleStatus,
+            label: isReturnPrint ? returnLabels.returnStatus : salesLabels.saleStatus,
+            value: isReturnPrint ? statusLabel : salesLabels.paid,
+            className: 'border-l border-t border-[#1f2937]',
+            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{isReturnPrint ? statusLabel : salesLabels.paid}</div>
         }
     ]
 
@@ -1666,14 +1646,6 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
             className: 'col-span-4 border-l border-t border-[#1f2937]',
             dialogClassName: 'col-span-2',
             render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatCurrency(originalPaidTotal, currency, iqdPreference)}</div>
-        },
-        {
-            key: financialKeys.refundedAmount,
-            label: salesLabels.refundedAmount,
-            value: formatCurrency(refundedAmount, currency, iqdPreference),
-            className: 'col-span-4 border-l border-t border-[#1f2937]',
-            dialogClassName: 'col-span-2',
-            render: (label) => <div className="min-h-[6.5mm] px-2 py-1.5 text-xs truncate"><strong>{label} : </strong>{formatCurrency(refundedAmount, currency, iqdPreference)}</div>
         },
         {
             key: financialKeys.netTotal,

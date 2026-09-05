@@ -2875,8 +2875,6 @@
       "saleType": "نوع البيع",
       "saleNumber": "رقم البيع",
       "cashier": "أمين الصندوق",
-      "sourceReference": "مرجع المصدر",
-      "refundStatus": "حالة الاسترداد",
       "saleStatus": "حالة البيع",
       "saleDate": "تاريخ البيع",
       "salesItemsTable": "جدول أصناف البيع",

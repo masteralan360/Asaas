@@ -4189,8 +4189,6 @@
       "saleType": "Sale type",
       "saleNumber": "Sale No.",
       "cashier": "Cashier",
-      "sourceReference": "Source reference",
-      "refundStatus": "Refund status",
       "saleStatus": "Sale status",
       "saleDate": "Sale date",
       "salesItemsTable": "Sale items table",

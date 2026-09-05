@@ -644,14 +644,41 @@ const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
     notes: 'This is a sample sale note. It will appear when "Show notes" is enabled.'
 }
 
+// Keep enough rows here to demonstrate both the first A4 page and a continuation page.
+const SAMPLE_SALES_HISTORY_ATLAS_STANDARD_ITEMS = Array.from({ length: 30 }, (_, index) => {
+    const productNumber = index + 1
+    const unitPrice = productNumber * 1000
+
+    return {
+        id: `sales-history-atlas-standard-item-${productNumber}`,
+        sale_id: 'sales-history-atlas-standard-sample',
+        product_id: `sample-product-${productNumber}`,
+        product_name: `Sample Product ${String(productNumber).padStart(2, '0')}`,
+        product_sku: `SKU-${String(productNumber).padStart(4, '0')}`,
+        quantity: 1,
+        unit_price: unitPrice,
+        total_price: unitPrice,
+        original_currency: 'iqd',
+        original_unit_price: unitPrice,
+        converted_unit_price: unitPrice,
+        settlement_currency: 'iqd',
+        batch_allocations: [{
+            batch_id: `sample-batch-${productNumber}`,
+            batch_number: `B-2026-${String(productNumber).padStart(2, '0')}`,
+            quantity: 1,
+            expiry_date: '2027-09-05'
+        }]
+    }
+})
+
 const SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE: Sale = {
     id: 'sales-history-atlas-standard-sample',
     workspace_id: 'sample-workspace',
     cashier_id: 'sample-cashier',
     cashier_name: 'Demo Cashier',
     sequenceId: 636,
-    total_amount: 100000,
-    original_total_amount: 100000,
+    total_amount: 465000,
+    original_total_amount: 465000,
     returned_amount: 0,
     return_status: 'none',
     settlement_currency: 'iqd',
@@ -659,39 +686,20 @@ const SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE: Sale = {
     origin: 'pos',
     payment_method: 'cash',
     notes: 'This is a sample sale note.',
-    items: [{
-        id: 'sales-history-atlas-standard-item',
-        sale_id: 'sales-history-atlas-standard-sample',
-        product_id: 'sample-product',
-        product_name: 'Sample Product',
-        product_sku: '42432423423',
-        quantity: 1,
-        unit_price: 100000,
-        total_price: 100000,
-        original_currency: 'iqd',
-        original_unit_price: 100000,
-        converted_unit_price: 100000,
-        settlement_currency: 'iqd',
-        batch_allocations: [{
-            batch_id: 'sample-batch',
-            batch_number: 'B-2026-09',
-            quantity: 1,
-            expiry_date: '2027-09-05'
-        }]
-    }]
+    items: SAMPLE_SALES_HISTORY_ATLAS_STANDARD_ITEMS
 }
 
 const SAMPLE_SALES_HISTORY_ATLAS_STANDARD_RETURN_SALE: Sale = {
     ...SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE,
     id: 'sales-history-atlas-standard-return-sample',
     sequenceId: 637,
-    returned_amount: 100000,
+    returned_amount: 465000,
     return_status: 'full',
     is_returned: true,
     returned_at: '2026-09-05T10:30:00.000Z',
     items: SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE.items?.map((item) => ({
         ...item,
-        id: 'sales-history-atlas-standard-return-item',
+        id: item.id.replace('sales-history-atlas-standard-item', 'sales-history-atlas-standard-return-item'),
         sale_id: 'sales-history-atlas-standard-return-sample',
         returned_quantity: item.quantity,
         is_returned: true,

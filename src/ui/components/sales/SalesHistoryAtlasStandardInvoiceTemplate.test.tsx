@@ -107,7 +107,7 @@ describe('Sales History Atlas Standard template', () => {
         expect(chunks.map((chunk) => chunk.length)).toEqual([18, 30, 1])
     })
 
-    it('prints sales history fields and excludes the counterparty field', () => {
+    it('prints the compacted sales header and summary without counterparty or refund fields', () => {
         const html = renderToStaticMarkup(
             <SalesHistoryAtlasStandardInvoiceTemplate
                 workspaceName="Atlas"
@@ -118,9 +118,15 @@ describe('Sales History Atlas Standard template', () => {
 
         expect(html).toContain('Sale type')
         expect(html).toContain('Sale No.')
+        expect(html).toContain('Sale date')
+        expect(html).toContain('Time')
         expect(html).toContain('SKU-001')
-        expect(html).toContain('Refunded amount')
+        expect(html).toContain('Paid total')
+        expect(html).toContain('Net total')
         expect(html).not.toContain('Customer')
+        expect(html).not.toContain('Source reference')
+        expect(html).not.toContain('Refund status')
+        expect(html).not.toContain('Refunded amount')
     })
 
     it('renders only returned quantities and refund values for the return template', () => {
