@@ -46,5 +46,8 @@ jobs:
           VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_REQUIRE_BACKEND_CONFIGURATION: ${{ secrets.VITE_REQUIRE_BACKEND_CONFIGURATION }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # These are public browser-build values, but they must stay aligned
+          # with the Worker runtime bindings. Source both from the existing
+          # production Supabase secrets rather than requiring duplicate keys.
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
