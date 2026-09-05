@@ -666,6 +666,7 @@ export function mapSaleToSalesHistoryAtlasStandardOrder(sale: Sale): SalesOrder 
         workspaceId: sale.workspace_id,
         createdAt: sale.created_at,
         updatedAt: sale.updated_at || sale.created_at,
+        version: 1,
         isDeleted: false,
         syncStatus: 'synced',
         lastSyncedAt: null,

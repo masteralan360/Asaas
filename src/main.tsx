@@ -305,7 +305,6 @@ const init = async () => {
                     <AtlasSplashScreen />
                 </div>
                 <div id="atlas-app" style={{ display: 'none' }} />
-                <Analytics />
             </StrictMode>,
         )
 
@@ -324,7 +323,6 @@ const init = async () => {
                         <App />
                     </ThemeProvider>
                 </div>
-                <Analytics />
             </StrictMode>,
         )
 
@@ -347,7 +345,6 @@ const init = async () => {
                         <App />
                     </ThemeProvider>
                 </div>
-                <Analytics />
             </StrictMode>,
         )
 
