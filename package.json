@@ -35,7 +35,7 @@
     "dev": "vite --host",
     "build": "node scripts/build.mjs",
     "cf:dev": "wrangler dev --config cloudflare-web/wrangler.toml",
-    "cf:deploy": "npm run build && node scripts/deploy-cloudflare.mjs",
+    "cf:deploy": "node scripts/deploy-cloudflare.mjs",
     "lint": "eslint . && npm run lint:dialogs",
     "lint:dialogs": "node scripts/check-dialog-conventions.mjs",
     "preview": "vite preview",

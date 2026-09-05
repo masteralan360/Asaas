@@ -36,22 +36,10 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_WORKER_URL: ${{ secrets.R2_WORKER_URL }}
-          VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
-          VITE_ENCRYPTION_KEY: ${{ secrets.VITE_ENCRYPTION_KEY }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_VAPID_KEY: ${{ secrets.VITE_FIREBASE_VAPID_KEY }}
-          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
-          VITE_REQUIRE_BACKEND_CONFIGURATION: ${{ secrets.VITE_REQUIRE_BACKEND_CONFIGURATION }}
-          # These are public browser-build values, but they must stay aligned
-          # with the Worker runtime bindings. Source both from the existing
-          # production Supabase secrets rather than requiring duplicate keys.
-          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # A base64-encoded JSON object of the local .env contents. GitHub
+          # stores this as an encrypted production secret; the deployment
+          # script decodes it only in memory and applies it as Worker secrets.
+          CLOUDFLARE_WORKER_SECRETS_B64: ${{ secrets.CLOUDFLARE_WORKER_SECRETS_B64 }}
       - run: node scripts/verify-cloudflare-deployment.mjs
         env:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
