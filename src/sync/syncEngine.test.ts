@@ -94,7 +94,7 @@ const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
     const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
     const insert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: null }))
-    const rpc = vi.fn(async (..._args: unknown[]) => ({ data: null as any, error: null as any }))
+    const rpc = vi.fn<(...args: unknown[]) => any>(async (..._args: unknown[]) => ({ data: null as any, error: null as any }))
     const orderUpsert = vi.fn(() => ({
         select: vi.fn(async () => ({ data: [] as any[], error: null as any }))
     }))
@@ -181,7 +181,7 @@ const schemaRoutingMock = vi.hoisted(() => ({
     getPartnerSyncWriteRpc: vi.fn((tableName: string) => tableName === 'business_partners'
         ? 'sync_business_partner'
         : undefined),
-    getVisibilityScopedTableRpc: vi.fn(() => undefined)
+    getVisibilityScopedTableRpc: vi.fn<(tableName: string) => string | undefined>(() => undefined)
 }))
 
 vi.mock('@/auth/supabase', () => ({
@@ -717,7 +717,7 @@ describe('fullSync error reporting', () => {
         schemaRoutingMock.getVisibilityScopedTableRpc.mockImplementation((tableName: string) => tableName === 'business_partners'
             ? 'list_visible_business_partners'
             : undefined)
-        supabaseMock.rpc.mockImplementation((name: string) => name === 'list_visible_business_partners'
+        supabaseMock.rpc.mockImplementation((...args: unknown[]) => args[0] === 'list_visible_business_partners'
             ? rpcBuilder
             : Promise.resolve({ data: null, error: null }))
 
