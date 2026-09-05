@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isOnline } from '@/lib/network'
-import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
+import { getPartnerSyncWriteRpc, getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import {
     canSelectProductForExcludedCategories,
@@ -346,10 +346,25 @@ async function syncUpsertEntities(tableName: PartnerTableName, entities: SyncEnt
     try {
         const client = getSupabaseClientForTable(tableName)
         const payload = entities.map((entity) => sanitizeSyncPayload(tableName, entity))
+        const partnerSyncWriteRpc = getPartnerSyncWriteRpc(tableName)
 
-        const { error } = await runMutation(`${tableName}.sync`, () => client.from(tableName).upsert(payload))
-        if (error) {
-            throw error
+        if (partnerSyncWriteRpc) {
+            for (const entity of payload) {
+                const { error } = await runMutation(`${tableName}.sync`, () => client.rpc(partnerSyncWriteRpc, {
+                    p_operation: 'upsert',
+                    p_entity_id: entity.id,
+                    p_workspace_id: workspaceId,
+                    p_payload: entity
+                }))
+                if (error) {
+                    throw error
+                }
+            }
+        } else {
+            const { error } = await runMutation(`${tableName}.sync`, () => client.from(tableName).upsert(payload))
+            if (error) {
+                throw error
+            }
         }
 
         await markEntitiesSynced(tableName, entities.map((entity) => entity.id))
@@ -376,8 +391,15 @@ async function syncSoftDelete(
 
     try {
         const client = getSupabaseClientForTable(tableName)
-        const { error } = await runMutation(`${tableName}.delete`, () =>
-            client
+        const partnerSyncWriteRpc = getPartnerSyncWriteRpc(tableName)
+        const { error } = await runMutation(`${tableName}.delete`, () => partnerSyncWriteRpc
+            ? client.rpc(partnerSyncWriteRpc, {
+                p_operation: 'soft_delete',
+                p_entity_id: entityId,
+                p_workspace_id: workspaceId,
+                p_payload: { id: entityId }
+            })
+            : client
                 .from(tableName)
                 .update({ is_deleted: true, updated_at: new Date().toISOString() })
                 .eq('id', entityId)

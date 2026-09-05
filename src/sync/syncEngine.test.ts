@@ -144,7 +144,7 @@ const supabaseMock = vi.hoisted(() => {
     const from = vi.fn((tableName: string) => makeBuilder(tableName))
 
     return {
-        client: { from },
+        client: { from, rpc },
         from,
         mutationError,
         rpc,
@@ -175,6 +175,13 @@ const supabaseMock = vi.hoisted(() => {
 
 const workspaceModeMock = vi.hoisted(() => ({
     isLocalWorkspaceMode: vi.fn(() => false)
+}))
+
+const schemaRoutingMock = vi.hoisted(() => ({
+    getPartnerSyncWriteRpc: vi.fn((tableName: string) => tableName === 'business_partners'
+        ? 'sync_business_partner'
+        : undefined),
+    getVisibilityScopedTableRpc: vi.fn(() => undefined)
 }))
 
 vi.mock('@/auth/supabase', () => ({
@@ -217,7 +224,9 @@ vi.mock('@/lib/supabaseRequest', () => ({
 
 vi.mock('@/lib/supabaseSchema', () => ({
     getSupabaseClientForTable: vi.fn(() => supabaseMock.client),
-    getSupabaseRemoteTableName: vi.fn((tableName: string) => tableName)
+    getSupabaseRemoteTableName: vi.fn((tableName: string) => tableName),
+    getPartnerSyncWriteRpc: schemaRoutingMock.getPartnerSyncWriteRpc,
+    getVisibilityScopedTableRpc: schemaRoutingMock.getVisibilityScopedTableRpc
 }))
 
 vi.mock('@/workspace/workspaceMode', () => ({
@@ -230,6 +239,7 @@ import {
     isRecoverableCashierShiftTerminalReplayMutation,
     isRecoverablePriceBookMutation,
     orderMutationsForSync,
+    pullChanges,
     shouldApplyRemoteItem
 } from './syncEngine'
 
@@ -642,6 +652,12 @@ describe('fullSync error reporting', () => {
         supabaseMock.reset()
         workspaceModeMock.isLocalWorkspaceMode.mockReset()
         workspaceModeMock.isLocalWorkspaceMode.mockReturnValue(false)
+        schemaRoutingMock.getPartnerSyncWriteRpc.mockReset()
+        schemaRoutingMock.getPartnerSyncWriteRpc.mockImplementation((tableName: string) => tableName === 'business_partners'
+            ? 'sync_business_partner'
+            : undefined)
+        schemaRoutingMock.getVisibilityScopedTableRpc.mockReset()
+        schemaRoutingMock.getVisibilityScopedTableRpc.mockReturnValue(undefined)
     })
 
     it('retires legacy duplicate-candidate mutations without syncing or pulling them', async () => {
@@ -661,6 +677,56 @@ describe('fullSync error reporting', () => {
         expect(result).toMatchObject({ success: true, pushed: 1 })
         expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
         expect(supabaseMock.from).not.toHaveBeenCalledWith('business_partner_merge_candidates')
+    })
+
+    it('replays a queued business partner through its privacy-checked write RPC', async () => {
+        dbMock.rows.push({
+            id: 'partner-mutation',
+            workspaceId: 'workspace-1',
+            entityType: 'business_partners',
+            entityId: 'partner-1',
+            operation: 'update',
+            payload: {
+                id: 'partner-1',
+                workspaceId: 'workspace-1',
+                partnerName: 'NameNameName',
+                updatedAt: '2026-09-05T18:00:00.000Z'
+            },
+            createdAt: '2026-09-05T18:00:00.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result).toMatchObject({ success: true, pushed: 1 })
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
+        expect(supabaseMock.rpc).toHaveBeenCalledWith('sync_business_partner', expect.objectContaining({
+            p_operation: 'upsert',
+            p_entity_id: 'partner-1',
+            p_workspace_id: 'workspace-1',
+            p_payload: expect.objectContaining({ partner_name: 'NameNameName' })
+        }))
+    })
+
+    it('pulls business partners from the redacted directory RPC instead of the raw table', async () => {
+        const rpcBuilder = {
+            gt: vi.fn(() => rpcBuilder),
+            order: vi.fn(() => rpcBuilder),
+            range: vi.fn(async () => ({ data: [], error: null }))
+        }
+        schemaRoutingMock.getVisibilityScopedTableRpc.mockImplementation((tableName: string) => tableName === 'business_partners'
+            ? 'list_visible_business_partners'
+            : undefined)
+        supabaseMock.rpc.mockImplementation((name: string) => name === 'list_visible_business_partners'
+            ? rpcBuilder
+            : Promise.resolve({ data: null, error: null }))
+
+        await pullChanges('workspace-1', '1970-01-01T00:00:00.000Z')
+
+        expect(supabaseMock.rpc).toHaveBeenCalledWith('list_visible_business_partners', {
+            p_workspace_id: 'workspace-1'
+        })
+        expect(supabaseMock.from).not.toHaveBeenCalledWith('business_partners')
     })
 
     it('returns a failed result with the mutation error and leaves the queued mutation marked failed', async () => {

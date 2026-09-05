@@ -140,6 +140,14 @@ const visibilityScopedTableRpcs: Record<string, string> = {
     suppliers: 'list_visible_suppliers'
 }
 
+// These writes must not go through the raw REST tables: direct SELECT is
+// intentionally revoked so privacy-projected partner data cannot leak.
+const partnerSyncWriteRpcs: Record<string, string> = {
+    business_partners: 'sync_business_partner',
+    customers: 'sync_customer',
+    suppliers: 'sync_supplier'
+}
+
 export function isTravelTransportationTable(tableName: string): boolean {
     return travelTransportationTables.has(tableName)
 }
@@ -178,6 +186,10 @@ export function getSupabaseRemoteTableName(tableName: string): string {
 
 export function getVisibilityScopedTableRpc(tableName: string): string | undefined {
     return visibilityScopedTableRpcs[tableName]
+}
+
+export function getPartnerSyncWriteRpc(tableName: string): string | undefined {
+    return partnerSyncWriteRpcs[tableName]
 }
 
 export function getFleetSupabaseClient() {

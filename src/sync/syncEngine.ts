@@ -5,7 +5,7 @@ import type { Inventory } from "@/local-db/models";
 import { syncProductBarcodeCachesForWorkspace } from "@/local-db/productBarcodes";
 import { rekeyPriceBookItemReferences } from "@/local-db/priceBookReferences";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
-import { getSupabaseClientForTable, getSupabaseRemoteTableName } from "@/lib/supabaseSchema";
+import { getPartnerSyncWriteRpc, getSupabaseClientForTable, getSupabaseRemoteTableName, getVisibilityScopedTableRpc } from "@/lib/supabaseSchema";
 import {
   getSchemaMismatchError,
   getSyncIntegrityError,
@@ -615,6 +615,7 @@ async function fetchPullRows(
 ): Promise<Array<Record<string, unknown>>> {
   const client = getSupabaseClientForTable(table);
   const remoteTableName = getSupabaseRemoteTableName(table);
+  const visibilityScopedRpc = getVisibilityScopedTableRpc(table);
 
   if (table === "workspaces") {
     const { data, error } = (await withTimeout(
@@ -639,10 +640,12 @@ async function fetchPullRows(
   while (true) {
     const to = from + PULL_PAGE_SIZE - 1;
     const { data, error } = (await withTimeout(
-      (client
-        .from(remoteTableName)
-        .select("*")
-        .eq("workspace_id", workspaceId)
+      ((visibilityScopedRpc
+        ? client.rpc(visibilityScopedRpc, { p_workspace_id: workspaceId })
+        : client
+          .from(remoteTableName)
+          .select("*")
+          .eq("workspace_id", workspaceId))
         .gt("updated_at", since)
         .order("updated_at", { ascending: true })
         .range(from, to) as any),
@@ -968,6 +971,7 @@ export async function processMutationQueue(
       const tableName = getTableName(entityType);
       const client = getSupabaseClientForTable(tableName);
       const remoteTableName = getSupabaseRemoteTableName(tableName);
+      const partnerSyncWriteRpc = getPartnerSyncWriteRpc(entityType);
       let syncedEntityId = entityId;
       let entityHandledInline = false;
       const shouldHardDelete =
@@ -987,7 +991,15 @@ export async function processMutationQueue(
         dbPayload.workspace_id = workspaceId;
       }
 
-      if (operation === "create" || operation === "update") {
+      if (partnerSyncWriteRpc) {
+        const { error } = await client.rpc(partnerSyncWriteRpc, {
+          p_operation: operation === "delete" ? "soft_delete" : "upsert",
+          p_entity_id: entityId,
+          p_workspace_id: workspaceId,
+          p_payload: dbPayload,
+        });
+        if (error) throw error;
+      } else if (operation === "create" || operation === "update") {
         if (entityType === "sales") {
           const rpcAction =
             typeof dbPayload.__rpc_action === "string"

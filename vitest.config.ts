@@ -11,7 +11,8 @@ export default defineConfig({
         environment: 'node',
         include: [
             'src/**/*.{test,spec}.{ts,tsx}',
-            'cloudflare-web/src/**/*.{test,spec}.js'
+            'cloudflare-web/src/**/*.{test,spec}.js',
+            'scripts/**/*.{test,spec}.mjs'
         ]
     }
 })
