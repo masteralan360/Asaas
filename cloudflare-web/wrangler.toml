@@ -11,6 +11,10 @@ keep_vars = true
 directory = "../dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# The shop host internally selects marketplace.html. Disable Cloudflare's
+# default HTML-to-pretty-URL redirect, which would otherwise loop
+# marketplace.html -> /marketplace -> marketplace.html.
+html_handling = "none"
 run_worker_first = true
 
 [vars]
