@@ -27,6 +27,17 @@ import {
     type OrderPrintVersion
 } from '@/lib/orderPrintReturnState'
 import type { SalesOrderReturnPrintData } from '@/lib/orderReturnPrintData'
+import {
+    ATLAS_STANDARD_CONTINUATION_TABLE_DATA_AREA_MM,
+    ATLAS_STANDARD_FIRST_PAGE_TABLE_DATA_AREA_MM,
+    chunkAtlasStandardTableRows,
+    clampProductImageColumnWidth,
+    DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH,
+    getProductImageSizeMm,
+    MAX_PRODUCT_IMAGE_COLUMN_WIDTH,
+    MIN_PRODUCT_IMAGE_COLUMN_WIDTH,
+    resolveAtlasStandardTableCapacities
+} from '@/lib/atlasStandardOrderTablePagination'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeUnitCode } from '@/local-db/models'
 import { platformService } from '@/services/platformService'
@@ -98,12 +109,6 @@ export interface AtlasStandardOrderInvoiceTemplateProps {
 }
 
 const INK = '#1f2937'
-// The compact grid keeps an 8 mm A4 safety buffer for the financial section and fixed footer.
-const TABLE_DATA_AREA_MM = 145
-const TABLE_ITEM_ROW_MIN_MM = 8
-const DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH = 6
-const MIN_PRODUCT_IMAGE_COLUMN_WIDTH = 6
-const MAX_PRODUCT_IMAGE_COLUMN_WIDTH = 16
 
 export const ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS = {
     logo: 'atlasStandardWorkspaceLogo',
@@ -195,21 +200,6 @@ function resolveVisibleTableColumns(
     hiddenFields: Record<string, boolean>
 ): TableColumn[] {
     return resolveTitledTableColumns(columns, fieldLabelOverrides).filter((column) => !hiddenFields[column.key])
-}
-
-function clampProductImageColumnWidth(value: number) {
-    return Math.min(MAX_PRODUCT_IMAGE_COLUMN_WIDTH, Math.max(MIN_PRODUCT_IMAGE_COLUMN_WIDTH, value))
-}
-
-function getProductImageColumnWidth(value?: string) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed)
-        ? clampProductImageColumnWidth(parsed)
-        : DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH
-}
-
-function getProductImageSizeMm(columnWidth: number) {
-    return Math.min(16, Math.max(7, Number((7 + (columnWidth - DEFAULT_PRODUCT_IMAGE_COLUMN_WIDTH) * 1.1).toFixed(1))))
 }
 
 function getProductNameWeightKg(productName?: string | null) {
@@ -1142,9 +1132,13 @@ export function AtlasStandardOrderInvoiceTemplate({
     const fieldOrderKeys = ATLAS_STANDARD_ORDER_FIELD_ORDER_KEYS
     const tableSettingKeys = ATLAS_STANDARD_ORDER_TABLE_SETTING_KEYS
     const isInvoiceOrganizer = fieldDisplayModes[detailsKeys.salesPerson] === 'invoiceOrganizer'
-    const productImageColumnWidth = getProductImageColumnWidth(fieldDisplayModes[tableSettingKeys.productImageWidth])
-    const productImageSizeMm = getProductImageSizeMm(productImageColumnWidth)
-    const tableItemRowMm = Math.max(TABLE_ITEM_ROW_MIN_MM, productImageSizeMm + 1)
+    const {
+        productImageColumnWidth,
+        productImageSizeMm,
+        tableItemRowMm,
+        firstPageRows: maxFirstPageRows,
+        continuationRows: maxContinuationRows
+    } = resolveAtlasStandardTableCapacities(fieldDisplayModes[tableSettingKeys.productImageWidth])
     const returnLineByOrderItemId = new Map(returnPrintData?.lines.map((line) => [line.orderItemId, line]) || [])
     const currency = order.currency
     const noteValue = order.notes?.trim() || '-'
@@ -1185,15 +1179,11 @@ export function AtlasStandardOrderInvoiceTemplate({
         ...items.map((item) => ({ kind: 'item' as const, item })),
         ...orderAdjustments.map((adjustment) => ({ kind: 'adjustment' as const, adjustment }))
     ]
-    const maxItemRowsPerTable = Math.max(1, Math.floor(TABLE_DATA_AREA_MM / tableItemRowMm))
-    const itemChunks: typeof printableTableRows[] = []
-    if (printableTableRows.length === 0) {
-        itemChunks.push([])
-    } else {
-        for (let index = 0; index < printableTableRows.length; index += maxItemRowsPerTable) {
-            itemChunks.push(printableTableRows.slice(index, index + maxItemRowsPerTable))
-        }
-    }
+    const itemChunks = chunkAtlasStandardTableRows(
+        printableTableRows,
+        maxFirstPageRows,
+        maxContinuationRows
+    )
     const paidQuantityTotal = items.reduce((sum, item) => sum + (isReturnPrint
         ? returnLineByOrderItemId.get(item.id)?.returnedQuantity || 0
         : isSales && !isOriginalPrint
@@ -1267,8 +1257,14 @@ export function AtlasStandardOrderInvoiceTemplate({
         { key: tableKeys.note, label: labels.note, width: `${17 - productImageWidthDifference * 0.3}%` }
     ]
     const visibleTableColumns = resolveVisibleTableColumns(tableColumns, fieldLabelOverrides, hiddenFields)
-    const renderItemsTable = (tableItems: typeof printableTableRows, rowStartIndex: number, tableKey: string, centered = false) => {
-        const tableEmptyAreaMm = Math.max(0, TABLE_DATA_AREA_MM - (tableItems.length * tableItemRowMm))
+    const renderItemsTable = (
+        tableItems: typeof printableTableRows,
+        rowStartIndex: number,
+        tableKey: string,
+        tableDataAreaMm: number,
+        centered = false
+    ) => {
+        const tableEmptyAreaMm = Math.max(0, tableDataAreaMm - (tableItems.length * tableItemRowMm))
         return (
             <table
                 key={tableKey}
@@ -1759,7 +1755,12 @@ export function AtlasStandardOrderInvoiceTemplate({
                 cancelLabel={labels.cancel}
             >
                 {() => (
-                    renderItemsTable(itemChunks[0], 0, 'atlas-standard-order-items-page-1')
+                    renderItemsTable(
+                        itemChunks[0],
+                        0,
+                        'atlas-standard-order-items-page-1',
+                        ATLAS_STANDARD_FIRST_PAGE_TABLE_DATA_AREA_MM
+                    )
                 )}
             </HideableTable>
 
@@ -1807,8 +1808,9 @@ export function AtlasStandardOrderInvoiceTemplate({
                 ? itemChunks.slice(1).map((chunk, chunkIndex) => (
                     renderItemsTable(
                         chunk,
-                        (chunkIndex + 1) * maxItemRowsPerTable,
+                        maxFirstPageRows + (chunkIndex * maxContinuationRows),
                         `atlas-standard-order-items-page-${chunkIndex + 2}`,
+                        ATLAS_STANDARD_CONTINUATION_TABLE_DATA_AREA_MM,
                         true
                     )
                 ))
