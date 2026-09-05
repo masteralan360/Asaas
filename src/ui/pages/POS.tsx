@@ -3293,7 +3293,9 @@ export function POS() {
             const subtotal = roundOrderValue(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
             const paymentMethod = checkout.paymentMethod as SalesOrder['paymentMethod']
             const isFinanced = isOrderFinancingMethod(paymentMethod)
-            const sourceStorageIds = Array.from(new Set(orderItems.map((item) => item.storageId).filter(Boolean)))
+            const sourceStorageIds = Array.from(new Set(orderItems
+                .map((item) => item.storageId)
+                .filter((storageId): storageId is string => Boolean(storageId) && storageId !== SERVICES_VIRTUAL_STORAGE_ID)))
             const completedOrder = await createCompletedSalesOrder(user.workspaceId, {
                 businessPartnerId: checkout.customer.id,
                 customerId: checkout.customer.id,

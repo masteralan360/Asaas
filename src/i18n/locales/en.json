@@ -4159,7 +4159,41 @@
       "a4Refund": "Print Refund A4",
       "receiptdesc": "80mm Thermal Receipt",
       "a4desc": "Detailed full-page A4",
-      "a4RefundDesc": "Refund-focused full-page A4"
+      "a4RefundDesc": "Refund-focused full-page A4",
+      "atlasStandard": "Sales History Atlas Standard",
+      "atlasStandardDescription": "Atlas Standard detailed A4 sales document.",
+      "atlasStandardReturn": "Sales History Atlas Standard Return",
+      "atlasStandardReturnDescription": "Atlas Standard A4 document for returned items and refund amounts."
+    },
+    "atlasStandard": {
+      "saleType": "Sale type",
+      "saleNumber": "Sale No.",
+      "cashier": "Cashier",
+      "sourceReference": "Source reference",
+      "refundStatus": "Refund status",
+      "saleStatus": "Sale status",
+      "saleDate": "Sale date",
+      "salesItemsTable": "Sale items table",
+      "salesSummary": "Sales summary",
+      "sku": "SKU",
+      "paidTotal": "Paid total",
+      "refundedAmount": "Refunded amount",
+      "netTotal": "Net total",
+      "paid": "Paid",
+      "noRefund": "No refund",
+      "origins": {
+        "pos": "POS",
+        "manual": "Manual sale",
+        "instant_pos": "Instant POS",
+        "sales_order": "Sales order",
+        "exchange": "Currency exchange",
+        "real_estate": "Real estate",
+        "activities": "Activities",
+        "clinical_appointment": "Clinical appointment",
+        "post_service": "Post service",
+        "car_rental": "Car rental",
+        "travel_transportation": "Travel & transportation"
+      }
     },
     "receipt": {
       "thankYou": "Thank you for shopping with us!",

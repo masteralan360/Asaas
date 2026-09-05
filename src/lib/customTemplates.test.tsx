@@ -101,10 +101,12 @@ beforeAll(async () => {
 }, 30_000)
 
 describe('Sales History custom A4 templates', () => {
-    it('registers modern and professional A4 sales history targets', () => {
+    it('registers every native A4 sales history target, including Atlas Standard and its return version', () => {
         expect(customTemplates.SALES_HISTORY_A4_TEMPLATE_KEYS).toEqual([
             customTemplates.SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
-            customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY
+            customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY,
+            customTemplates.SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY,
+            customTemplates.SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
         ])
 
         const professionalTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY)
@@ -1309,6 +1311,22 @@ describe('Atlas Standard return custom print template', () => {
             fieldDisplayModes: { 'atlasStandard.table.productImage.width': '12' },
             hiddenFields: { 'atlasStandard.table.note': true },
             texts: [{ text: 'Thank you' }]
+        })
+    })
+
+    it('registers independent Atlas Standard sale and return A4 targets', () => {
+        const standardTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY)
+        const returnTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY)
+
+        expect(standardTarget).toMatchObject({
+            workspaceModuleKey: 'sales_history',
+            typeLabel: 'Atlas Standard Print',
+            printFormat: 'a4'
+        })
+        expect(returnTarget).toMatchObject({
+            workspaceModuleKey: 'sales_history',
+            typeLabel: 'Atlas Standard Return Print',
+            printFormat: 'a4'
         })
     })
 })

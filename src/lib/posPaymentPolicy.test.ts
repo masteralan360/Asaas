@@ -11,13 +11,21 @@ describe('POS payment policy', () => {
         })).toBe(true)
     })
 
-    it('continues to exclude quick orders from services and financing from activities', () => {
+    it('allows service sales to use the existing Sales Order quick-order flow', () => {
         expect(isPosPaymentTypeAllowed('order', {
             isActivitiesStorage: false,
             isServicesStorage: true,
             quickOrderEnabled: true
-        })).toBe(false)
+        })).toBe(true)
+    })
+
+    it('continues to exclude financing and quick orders from activities', () => {
         expect(isPosPaymentTypeAllowed('loan', {
+            isActivitiesStorage: true,
+            isServicesStorage: false,
+            quickOrderEnabled: true
+        })).toBe(false)
+        expect(isPosPaymentTypeAllowed('order', {
             isActivitiesStorage: true,
             isServicesStorage: false,
             quickOrderEnabled: true

@@ -2853,7 +2853,41 @@
       "a4Refund": "طباعة استرداد A4",
       "receiptdesc": "إيصال حراري 80 مم",
       "a4desc": "تفاصيل صفحة A4 كاملة",
-      "a4RefundDesc": "صفحة A4 كاملة تركز على الاسترداد"
+      "a4RefundDesc": "صفحة A4 كاملة تركز على الاسترداد",
+      "atlasStandard": "معيار أطلس لسجل المبيعات",
+      "atlasStandardDescription": "مستند مبيعات مفصل بمعيار أطلس بحجم A4.",
+      "atlasStandardReturn": "معيار أطلس لمرتجع سجل المبيعات",
+      "atlasStandardReturnDescription": "مستند A4 بمعيار أطلس للأصناف المرتجعة ومبالغ الاسترداد."
+    },
+    "atlasStandard": {
+      "saleType": "نوع البيع",
+      "saleNumber": "رقم البيع",
+      "cashier": "أمين الصندوق",
+      "sourceReference": "مرجع المصدر",
+      "refundStatus": "حالة الاسترداد",
+      "saleStatus": "حالة البيع",
+      "saleDate": "تاريخ البيع",
+      "salesItemsTable": "جدول أصناف البيع",
+      "salesSummary": "ملخص المبيعات",
+      "sku": "رمز المنتج",
+      "paidTotal": "إجمالي المدفوع",
+      "refundedAmount": "المبلغ المسترد",
+      "netTotal": "الصافي",
+      "paid": "مدفوع",
+      "noRefund": "لا يوجد استرداد",
+      "origins": {
+        "pos": "نقطة البيع",
+        "manual": "بيع يدوي",
+        "instant_pos": "نقطة البيع السريع",
+        "sales_order": "طلب مبيعات",
+        "exchange": "صرف العملات",
+        "real_estate": "عقارات",
+        "activities": "أنشطة",
+        "clinical_appointment": "موعد طبي",
+        "post_service": "خدمة لاحقة",
+        "car_rental": "تأجير سيارات",
+        "travel_transportation": "السفر والنقل"
+      }
     },
     "receipt": {
       "thankYou": "شكراً لتسوقكم معنا!",

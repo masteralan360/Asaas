@@ -90,6 +90,7 @@ vi.mock('@/lib/supabaseRequest', () => ({
 }))
 
 import { setNetworkStatus } from '@/lib/network'
+import { SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
@@ -100,6 +101,7 @@ const USER_ID = '10000000-0000-4000-8000-000000000002'
 const PARTNER_ID = '10000000-0000-4000-8000-000000000003'
 const CUSTOMER_ID = '10000000-0000-4000-8000-000000000004'
 const PRODUCT_ID = '10000000-0000-4000-8000-000000000005'
+const SERVICE_ID = '10000000-0000-4000-8000-000000000008'
 const STORAGE_ID = '10000000-0000-4000-8000-000000000006'
 const INVENTORY_ID = '10000000-0000-4000-8000-000000000007'
 
@@ -185,6 +187,25 @@ function quickOrderInput(paidAmount = 100): SalesOrderCreateInput {
     }
 }
 
+function serviceQuickOrderInput(): SalesOrderCreateInput {
+    const input = quickOrderInput()
+    return {
+        ...input,
+        sourceStorageId: null,
+        items: [{
+            ...input.items[0],
+            id: crypto.randomUUID(),
+            productId: SERVICE_ID,
+            storageId: SERVICES_VIRTUAL_STORAGE_ID,
+            productName: 'Fast Checkout Service',
+            productSku: '',
+            unit: 'service',
+            costPrice: 0,
+            convertedCostPrice: 0
+        }]
+    }
+}
+
 function installSuccessfulRpcResponse() {
     supabaseMock.rpc.mockImplementationOnce(async (_name: string, args: { payload: any }) => {
         const orderPayload = args.payload.order
@@ -237,6 +258,50 @@ function installSuccessfulRpcResponse() {
                     version: 2,
                     is_deleted: false
                 }],
+                stock_batches: [],
+                replayed: false
+            },
+            error: null
+        }
+    })
+}
+
+function installSuccessfulServiceRpcResponse() {
+    supabaseMock.rpc.mockImplementationOnce(async (_name: string, args: { payload: any }) => {
+        const orderPayload = args.payload.order
+        const paymentPayload = args.payload.payment
+        const completedAt = '2026-08-31T09:00:01.000Z'
+        return {
+            data: {
+                order: {
+                    ...orderPayload,
+                    order_number: 'SO-2026-01000',
+                    status: 'completed',
+                    actual_delivery_date: completedAt,
+                    reserved_at: completedAt,
+                    updated_at: completedAt,
+                    sync_status: 'synced'
+                },
+                payment: {
+                    ...paymentPayload,
+                    workspace_id: WORKSPACE_ID,
+                    source_module: 'orders',
+                    source_type: 'sales_order',
+                    source_subrecord_id: null,
+                    payment_method: 'cash',
+                    paid_at: completedAt,
+                    counterparty_name: 'Fast Checkout Customer',
+                    reference_label: 'SO-2026-01000',
+                    note: null,
+                    created_by: USER_ID,
+                    reversal_of_transaction_id: null,
+                    metadata: { orderStatus: 'completed' },
+                    created_at: completedAt,
+                    updated_at: completedAt,
+                    version: 1,
+                    is_deleted: false
+                },
+                inventory: [],
                 stock_batches: [],
                 replayed: false
             },
@@ -348,6 +413,80 @@ describe('atomic POS Quick Order completion', () => {
         expect(await db.sales_orders.get(completed.id)).toMatchObject({ status: 'completed' })
         expect(await db.payment_transactions.where('sourceRecordId').equals(completed.id).count()).toBe(1)
         expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(4)
+    })
+
+    it('uses the same atomic order flow for services without inventory movement', async () => {
+        await db.products.put({
+            ...baseEntity(SERVICE_ID),
+            sku: '',
+            name: 'Fast Checkout Service',
+            unit: 'service',
+            currency: 'usd',
+            price: 100,
+            costPrice: 0,
+            quantity: 0,
+            minStockLevel: 0,
+            storageId: null,
+            isService: true
+        } as never)
+        installSuccessfulServiceRpcResponse()
+
+        const completed = await createCompletedSalesOrder(
+            WORKSPACE_ID,
+            serviceQuickOrderInput(),
+            USER_ID
+        )
+
+        expect(supabaseMock.rpc).toHaveBeenCalledWith(
+            'complete_quick_sales_order',
+            expect.objectContaining({
+                payload: expect.objectContaining({
+                    order: expect.objectContaining({
+                        source_storage_id: null,
+                        items: [expect.objectContaining({
+                            productId: SERVICE_ID,
+                            storageId: SERVICES_VIRTUAL_STORAGE_ID
+                        })]
+                    })
+                })
+            })
+        )
+        expect(completed.items).toMatchObject([{
+            productId: SERVICE_ID,
+            storageId: SERVICES_VIRTUAL_STORAGE_ID
+        }])
+        expect(await db.payment_transactions.where('sourceRecordId').equals(completed.id).count()).toBe(1)
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(5)
+    })
+
+    it('does not record a service order or payment when its atomic completion fails', async () => {
+        await db.products.put({
+            ...baseEntity(SERVICE_ID),
+            sku: '',
+            name: 'Fast Checkout Service',
+            unit: 'service',
+            currency: 'usd',
+            price: 100,
+            costPrice: 0,
+            quantity: 0,
+            minStockLevel: 0,
+            storageId: null,
+            isService: true
+        } as never)
+        supabaseMock.rpc.mockResolvedValueOnce({
+            data: null,
+            error: new Error('Quick Order service completion failed')
+        })
+
+        await expect(createCompletedSalesOrder(
+            WORKSPACE_ID,
+            serviceQuickOrderInput(),
+            USER_ID
+        )).rejects.toThrow('Quick Order service completion failed')
+
+        expect(await db.sales_orders.count()).toBe(0)
+        expect(await db.payment_transactions.count()).toBe(0)
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(5)
     })
 
     it('does not mutate local order, payment, or stock state when the RPC fails', async () => {

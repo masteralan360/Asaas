@@ -2849,7 +2849,41 @@
       "a4Refund": "چاپی A4 پارەدانەوە",
       "receiptdesc": "پسوڵەی گەرمی ٨٠مم",
       "a4desc": "پەڕەی تەواوی A4 بە وردەکارییەوە",
-      "a4RefundDesc": "پەڕەی تەواوی A4 تایبەت بە پارەدانەوە"
+      "a4RefundDesc": "پەڕەی تەواوی A4 تایبەت بە پارەدانەوە",
+      "atlasStandard": "مێژووی فرۆشتن بە ستانداردی Atlas",
+      "atlasStandardDescription": "بەڵگەی فرۆشتنی ورد بە قەبارەی A4 بە ستانداردی Atlas.",
+      "atlasStandardReturn": "گەڕاندنەوەی مێژووی فرۆشتن بە ستانداردی Atlas",
+      "atlasStandardReturnDescription": "بەڵگەی A4 بە ستانداردی Atlas بۆ کاڵاکانی گەڕێندراوە و بڕی پارەدانەوە."
+    },
+    "atlasStandard": {
+      "saleType": "جۆری فرۆشتن",
+      "saleNumber": "ژمارەی فرۆشتن",
+      "cashier": "کاشێر",
+      "sourceReference": "سەرچاوەی بەڵگە",
+      "refundStatus": "دۆخی گەڕاندنەوەی پارە",
+      "saleStatus": "دۆخی فرۆشتن",
+      "saleDate": "بەرواری فرۆشتن",
+      "salesItemsTable": "خشتەی کاڵاکانی فرۆشتن",
+      "salesSummary": "پوختەی فرۆشتنەکان",
+      "sku": "کۆدی کاڵا",
+      "paidTotal": "کۆی دراو",
+      "refundedAmount": "بڕی گەڕێندراوە",
+      "netTotal": "کۆی پاک",
+      "paid": "پارەدراو",
+      "noRefund": "هیچ گەڕاندنەوەیەک نییە",
+      "origins": {
+        "pos": "فرۆشگای فرۆشتن",
+        "manual": "فرۆشتنی دەستی",
+        "instant_pos": "فرۆشگای خێرا",
+        "sales_order": "داواکاری فرۆشتن",
+        "exchange": "گۆڕینی دراو",
+        "real_estate": "خانووبەرە",
+        "activities": "چالاکییەکان",
+        "clinical_appointment": "وعدەی پزیشکی",
+        "post_service": "خزمەتگوزاری دواتر",
+        "car_rental": "بەکرێدانی ئۆتۆمبێل",
+        "travel_transportation": "گەشت و گواستنەوە"
+      }
     },
     "receipt": {
       "thankYou": "سوپاس بۆ بازاڕیکردنتان لەگەڵمان!",

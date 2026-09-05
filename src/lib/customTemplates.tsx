@@ -34,7 +34,7 @@ import type {
     SalesOrder
 } from '@/local-db'
 import type { WorkspaceFeatures } from '@/workspace'
-import type { UniversalInvoice } from '@/types'
+import type { Sale, UniversalInvoice } from '@/types'
 import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import {
     SaleReceiptBase,
@@ -70,6 +70,10 @@ import {
     ATLAS_STANDARD_ORDER_MOVABLE_COMPONENT_KEYS,
     ATLAS_STANDARD_ORDER_TEMPLATE_FIELD_KEYS
 } from '@/ui/components/orders/AtlasStandardOrderInvoiceTemplate'
+import {
+    SalesHistoryAtlasStandardInvoiceTemplate,
+    SALES_HISTORY_ATLAS_STANDARD_MOVABLE_COMPONENT_KEYS
+} from '@/ui/components/sales/SalesHistoryAtlasStandardInvoiceTemplate'
 import type { PartnerAccountStatementClosingBalance } from '@/lib/partnerAccountStatement'
 import {
     createSampleSalesOrderReturnPrintData,
@@ -88,9 +92,13 @@ export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
 export const INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY = 'instantHistory.Receipt'
 export const SALES_HISTORY_MODERN_A4_TEMPLATE_KEY = 'salesHistory.ModernA4'
 export const SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY = 'salesHistory.ProfessionalA4'
+export const SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY = 'salesHistory.AtlasStandard'
+export const SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY = 'salesHistory.AtlasStandardReturn'
 export const SALES_HISTORY_A4_TEMPLATE_KEYS = [
     SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
-    SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY
+    SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY,
+    SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY,
+    SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
 ] as const
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
 export const PARTNER_ORDER_ITEMS_TEMPLATE_KEY = 'businessPartners.OrderItems'
@@ -225,6 +233,28 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         typeLabel: 'Professional A4 Print',
         description: 'Sales History professional A4 print layout.',
         nativeTemplateKey: SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY,
+        workspaceModuleKey: 'sales_history',
+        moduleLabel: 'Sales History',
+        typeLabel: 'Atlas Standard Print',
+        description: 'Sales History Atlas Standard A4 sale print layout.',
+        nativeTemplateKey: SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+        workspaceModuleKey: 'sales_history',
+        moduleLabel: 'Sales History',
+        typeLabel: 'Atlas Standard Return Print',
+        description: 'Sales History Atlas Standard A4 return-only print layout.',
+        nativeTemplateKey: SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'a4',
         page: { widthMm: 210, heightMm: 297 }
@@ -559,6 +589,8 @@ export type CustomTemplatePreviewOptions = {
     features?: WorkspaceFeatures
     workspaceFooterContacts?: WorkspaceFooterContacts
     receiptData?: UniversalInvoice
+    sale?: Sale
+    salesHistoryPrintVersion?: OrderPrintVersion
     partnerDetailsData?: PartnerDetailsPrintData
     partnerOrderItemsData?: PartnerOrderItemsPrintData
     partnerAccountStatementData?: PartnerAccountStatementPrintData
@@ -610,6 +642,61 @@ const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
     ],
     status: 'paid',
     notes: 'This is a sample sale note. It will appear when "Show notes" is enabled.'
+}
+
+const SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE: Sale = {
+    id: 'sales-history-atlas-standard-sample',
+    workspace_id: 'sample-workspace',
+    cashier_id: 'sample-cashier',
+    cashier_name: 'Demo Cashier',
+    sequenceId: 636,
+    total_amount: 100000,
+    original_total_amount: 100000,
+    returned_amount: 0,
+    return_status: 'none',
+    settlement_currency: 'iqd',
+    created_at: '2026-09-05T09:30:00.000Z',
+    origin: 'pos',
+    payment_method: 'cash',
+    notes: 'This is a sample sale note.',
+    items: [{
+        id: 'sales-history-atlas-standard-item',
+        sale_id: 'sales-history-atlas-standard-sample',
+        product_id: 'sample-product',
+        product_name: 'Sample Product',
+        product_sku: '42432423423',
+        quantity: 1,
+        unit_price: 100000,
+        total_price: 100000,
+        original_currency: 'iqd',
+        original_unit_price: 100000,
+        converted_unit_price: 100000,
+        settlement_currency: 'iqd',
+        batch_allocations: [{
+            batch_id: 'sample-batch',
+            batch_number: 'B-2026-09',
+            quantity: 1,
+            expiry_date: '2027-09-05'
+        }]
+    }]
+}
+
+const SAMPLE_SALES_HISTORY_ATLAS_STANDARD_RETURN_SALE: Sale = {
+    ...SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE,
+    id: 'sales-history-atlas-standard-return-sample',
+    sequenceId: 637,
+    returned_amount: 100000,
+    return_status: 'full',
+    is_returned: true,
+    returned_at: '2026-09-05T10:30:00.000Z',
+    items: SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE.items?.map((item) => ({
+        ...item,
+        id: 'sales-history-atlas-standard-return-item',
+        sale_id: 'sales-history-atlas-standard-return-sample',
+        returned_quantity: item.quantity,
+        is_returned: true,
+        returned_at: '2026-09-05T10:30:00.000Z'
+    }))
 }
 
 const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
@@ -1402,6 +1489,68 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
     }
 }
 
+function createSalesHistoryAtlasStandardPreview(
+    options: CustomTemplatePreviewOptions,
+    printMode: 'sale' | 'return' = 'sale'
+): TemplatePreview {
+    const sale = options.sale || (printMode === 'return'
+        ? SAMPLE_SALES_HISTORY_ATLAS_STANDARD_RETURN_SALE
+        : SAMPLE_SALES_HISTORY_ATLAS_STANDARD_SALE)
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+    const printVersion: OrderPrintVersion = printMode === 'return'
+        ? 'returned'
+        : options.salesHistoryPrintVersion || 'adjusted'
+
+    return {
+        fields: [],
+        reflowLowerPageText: true,
+        supportsBackgroundEdit: true,
+        movableComponents: [
+            { key: SALES_HISTORY_ATLAS_STANDARD_MOVABLE_COMPONENT_KEYS.logo, label: 'Workspace Logo' },
+            { key: SALES_HISTORY_ATLAS_STANDARD_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' }
+        ],
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (_data, _effectiveId, printLangOverride, renderOptions) => (
+            <SalesHistoryAtlasStandardInvoiceTemplate
+                workspaceName={options.workspaceName}
+                printLang={printLangOverride || fixedPrintLang}
+                sale={sale}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+                workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
+                printedBy={options.printedBy}
+                productImageUrls={options.productImageUrls}
+                componentPositions={renderOptions?.componentPositions}
+                editableComponents={renderOptions?.editableComponents}
+                onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                hiddenFields={renderOptions?.hiddenFields}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
+                fieldOrders={renderOptions?.fieldOrders}
+                onFieldOrderChange={renderOptions?.onFieldOrderChange}
+                fieldLabelOverrides={renderOptions?.fieldLabelOverrides}
+                onFieldLabelChange={renderOptions?.onFieldLabelChange}
+                fieldDisplayModes={renderOptions?.fieldDisplayModes}
+                onFieldDisplayModeChange={renderOptions?.onFieldDisplayModeChange}
+                background={renderOptions?.background}
+                printVersion={printVersion}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions, includeTableNumber = false): TemplatePreview {
     const receiptData = options.receiptData || (includeTableNumber
         ? { ...SAMPLE_RECEIPT_DATA, origin: 'instant_pos', table_number: '12' }
@@ -1848,6 +1997,14 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY) {
         return createSalesHistoryProfessionalA4Preview(options)
+    }
+
+    if (target.moduleTypeKey === SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY) {
+        return createSalesHistoryAtlasStandardPreview(options)
+    }
+
+    if (target.moduleTypeKey === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY) {
+        return createSalesHistoryAtlasStandardPreview(options, 'return')
     }
 
     if (target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY) {

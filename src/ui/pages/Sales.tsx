@@ -80,6 +80,8 @@ import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
     SALES_HISTORY_A4_TEMPLATE_KEYS,
+    SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY,
+    SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
     getCustomTemplatePrintLanguageWarning,
@@ -91,6 +93,7 @@ import {
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
 import type { CustomTemplateLayout } from '@/lib/printPreviewEditorStore'
+import type { OrderPrintVersion } from '@/lib/orderPrintReturnState'
 import {
     Receipt,
     Eye,
@@ -815,6 +818,7 @@ export function Sales() {
         return (localStorage.getItem('sales_print_format') as 'receipt' | 'a4') || 'receipt'
     })
     const [a4Variant, setA4Variant] = useState<'standard' | 'refund'>('standard')
+    const [salesHistoryPrintVersion, setSalesHistoryPrintVersion] = useState<OrderPrintVersion>('adjusted')
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(printLang)
     const loanForPrint = useLoanBySaleId(printingSale?.id, user?.workspaceId)
@@ -905,6 +909,9 @@ export function Sales() {
     const [selectedCustomReceiptTemplate, setSelectedCustomReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [customA4Templates, setCustomA4Templates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedCustomA4Template, setSelectedCustomA4Template] = useState<StoredCustomTemplateRow | null>(null)
+    const [selectedNativeA4TemplateKey, setSelectedNativeA4TemplateKey] = useState<
+        typeof SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY | typeof SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY | null
+    >(null)
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
     const [selectedSaleForNote, setSelectedSaleForNote] = useState<Sale | null>(null)
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
@@ -956,12 +963,19 @@ export function Sales() {
     const onPrintClick = (sale: Sale) => {
         setSelectedCustomReceiptTemplate(null)
         setSelectedCustomA4Template(null)
+        setSelectedNativeA4TemplateKey(null)
+        setSalesHistoryPrintVersion('adjusted')
         setSaleToPrintSelection(sale)
         setPrintingSale(sale)
         setShowPrintPreview(true)
     }
 
-    const handlePrintSelection = (format: PrintFormat, template?: StoredCustomTemplateRow) => {
+    const handlePrintSelection = (
+        format: PrintFormat,
+        template?: StoredCustomTemplateRow,
+        nativeTemplateKey?: string,
+        printVersion: OrderPrintVersion = 'adjusted'
+    ) => {
         if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) {
             return
         }
@@ -970,25 +984,55 @@ export function Sales() {
         setPrintFormat(format)
         setSelectedCustomReceiptTemplate(format === 'receipt' ? template || null : null)
         setSelectedCustomA4Template(format === 'a4' ? template || null : null)
-        if (format === 'a4' && saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)) {
+        const selectedNativeA4Key = nativeTemplateKey === SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY
+            ? SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY
+            : nativeTemplateKey === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                ? SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                : null
+        const isAtlasStandardNative = selectedNativeA4Key !== null
+        const selectedTemplateIsReturn = template?.module_type_key === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+        setSelectedNativeA4TemplateKey(format === 'a4' ? selectedNativeA4Key : null)
+        const resolvedPrintVersion = selectedNativeA4Key === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY || selectedTemplateIsReturn
+            ? 'returned'
+            : printVersion === 'returned' ? 'adjusted' : printVersion
+        setSalesHistoryPrintVersion(resolvedPrintVersion)
+        if (format === 'a4' && (nativeTemplateKey === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+            || selectedTemplateIsReturn
+            || (saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection) && !isAtlasStandardNative))) {
             setA4Variant('refund')
         } else {
             setA4Variant('standard')
         }
     }
-    const salesPrintSelectionOptions = useMemo(() => [{
-        format: 'receipt' as const,
-        label: t('sales.print.receipt', { defaultValue: 'Thermal Receipt' }),
-        description: t('sales.print.receiptdesc', { defaultValue: 'Thermal receipt document' })
-    }, {
-        format: 'a4' as const,
-        label: saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)
-            ? t('sales.print.a4Refund', { defaultValue: 'A4 Refund Invoice' })
-            : t('sales.print.a4', { defaultValue: 'A4 Invoice' }),
-        description: saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)
-            ? t('sales.print.a4RefundDesc', { defaultValue: 'Refund-focused full-page A4' })
-            : t('sales.print.a4desc', { defaultValue: 'Detailed full-page document' })
-    }], [saleToPrintSelection, t])
+    const salesPrintSelectionOptions = useMemo(() => {
+        const hasReturnActivity = Boolean(saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection))
+        return [{
+            format: 'receipt' as const,
+            label: t('sales.print.receipt', { defaultValue: 'Thermal Receipt' }),
+            description: t('sales.print.receiptdesc', { defaultValue: 'Thermal receipt document' })
+        }, {
+            format: 'a4' as const,
+            label: hasReturnActivity
+                ? t('sales.print.a4Refund', { defaultValue: 'A4 Refund Invoice' })
+                : t('sales.print.a4', { defaultValue: 'A4 Invoice' }),
+            description: hasReturnActivity
+                ? t('sales.print.a4RefundDesc', { defaultValue: 'Refund-focused full-page A4' })
+                : t('sales.print.a4desc', { defaultValue: 'Detailed full-page document' }),
+            returnsReflected: hasReturnActivity
+        }, {
+            format: 'a4' as const,
+            nativeTemplateKey: SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY,
+            label: t('sales.print.atlasStandard', { defaultValue: 'Sales History Atlas Standard' }),
+            description: t('sales.print.atlasStandardDescription', { defaultValue: 'Atlas Standard detailed A4 sales document.' }),
+            returnsReflected: hasReturnActivity
+        }, ...(hasReturnActivity ? [{
+            format: 'a4' as const,
+            nativeTemplateKey: SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+            returned: true,
+            label: t('sales.print.atlasStandardReturn', { defaultValue: 'Sales History Atlas Standard Return' }),
+            description: t('sales.print.atlasStandardReturnDescription', { defaultValue: 'Atlas Standard A4 document for returned items and refund amounts.' })
+        }] : [])]
+    }, [saleToPrintSelection, t])
     const salesCustomPrintOptions = useMemo(
         () => [
             ...customReceiptTemplates.map((template) => ({
@@ -1000,17 +1044,23 @@ export function Sales() {
                 disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
                 warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
             })),
-            ...customA4Templates.map((template) => ({
+            ...customA4Templates
+                .filter((template) => template.module_type_key !== SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                    || Boolean(saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)))
+                .map((template) => ({
                 format: 'a4' as const,
                 template,
                 label: getStoredCustomTemplateLabel(template),
                 description: t('customTemplates.customA4', { defaultValue: 'Custom A4' }),
                 primary: template.primary,
+                returned: template.module_type_key === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
+                returnsReflected: Boolean(saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection))
+                    && template.module_type_key !== SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY,
                 disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
                 warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
             }))
         ],
-        [currentTemplatePrintLanguage, customReceiptTemplates, customA4Templates, t]
+        [currentTemplatePrintLanguage, customReceiptTemplates, customA4Templates, saleToPrintSelection, t]
     )
 
     const handleConfirmPrint = () => {
@@ -1019,8 +1069,10 @@ export function Sales() {
         setPrintingSale(null)
         setSaleToPrintSelection(null)
         setA4Variant('standard')
+        setSalesHistoryPrintVersion('adjusted')
         setSelectedCustomReceiptTemplate(null)
         setSelectedCustomA4Template(null)
+        setSelectedNativeA4TemplateKey(null)
     }
 
     const customReceiptTarget = useMemo(
@@ -1120,10 +1172,14 @@ export function Sales() {
                 workspaceName,
                 features,
                 receiptData: customReceiptData,
+                sale: printingSale || undefined,
+                salesHistoryPrintVersion: selectedCustomA4Template?.module_type_key === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                    ? 'returned'
+                    : salesHistoryPrintVersion,
                 productImageUrls
             })
             : undefined,
-        [customReceiptData, customA4Target, features, productImageUrls, user?.workspaceId, workspaceName]
+        [customReceiptData, customA4Target, features, printingSale, productImageUrls, salesHistoryPrintVersion, selectedCustomA4Template?.module_type_key, user?.workspaceId, workspaceName]
     )
     const buildCustomA4Pdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
         if (!customA4Target || !selectedCustomA4Layout || !customReceiptData) {
@@ -1139,11 +1195,15 @@ export function Sales() {
                 workspaceName,
                 features,
                 receiptData: customReceiptData,
+                sale: printingSale || undefined,
+                salesHistoryPrintVersion: selectedCustomA4Template?.module_type_key === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                    ? 'returned'
+                    : salesHistoryPrintVersion,
                 productImageUrls
             },
             effectiveId
         })
-    }, [customReceiptData, customA4Target, features, productImageUrls, selectedCustomA4Layout, user?.workspaceId, workspaceName])
+    }, [customReceiptData, customA4Target, features, printingSale, productImageUrls, salesHistoryPrintVersion, selectedCustomA4Layout, selectedCustomA4Template?.module_type_key, user?.workspaceId, workspaceName])
     const buildEditableCustomA4Pdf = useCallback(async (
         layout: CustomTemplateLayout,
         _printLangOverride?: string,
@@ -1162,12 +1222,46 @@ export function Sales() {
                 workspaceName,
                 features,
                 receiptData: customReceiptData,
+                sale: printingSale || undefined,
+                salesHistoryPrintVersion: selectedCustomA4Template?.module_type_key === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                    ? 'returned'
+                    : salesHistoryPrintVersion,
                 productImageUrls
             },
             effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [customReceiptData, customA4Target, features, productImageUrls, user?.workspaceId, workspaceName])
+    }, [customReceiptData, customA4Target, features, printingSale, productImageUrls, salesHistoryPrintVersion, selectedCustomA4Template?.module_type_key, user?.workspaceId, workspaceName])
+
+    const nativeAtlasStandardA4Target = useMemo(
+        () => selectedNativeA4TemplateKey ? getCustomTemplateTarget(selectedNativeA4TemplateKey) : undefined,
+        [selectedNativeA4TemplateKey]
+    )
+    const nativeAtlasStandardA4Preview = useMemo(
+        () => nativeAtlasStandardA4Target && printingSale
+            ? createCustomTemplatePreview(nativeAtlasStandardA4Target, {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                sale: printingSale,
+                salesHistoryPrintVersion,
+                productImageUrls,
+                printedBy: user?.name || undefined
+            })
+            : undefined,
+        [features, nativeAtlasStandardA4Target, printingSale, productImageUrls, salesHistoryPrintVersion, user?.name, user?.workspaceId, workspaceName]
+    )
+    const buildNativeAtlasStandardA4Pdf = useCallback(async ({ effectiveId, printLangOverride }: {
+        format: PrintFormat
+        effectiveId: string
+        printLangOverride?: string
+    }) => {
+        if (!nativeAtlasStandardA4Preview) {
+            throw new Error('Sales History Atlas Standard template is not available.')
+        }
+        const element = nativeAtlasStandardA4Preview.createElement({}, effectiveId, printLangOverride)
+        return nativeAtlasStandardA4Preview.buildPdf(element, printLangOverride)
+    }, [nativeAtlasStandardA4Preview])
 
     const activeCustomTemplate = printFormat === 'a4' ? selectedCustomA4Template : selectedCustomReceiptTemplate
     const hasActiveCustomTemplate = printFormat === 'a4' ? hasCompatibleSelectedCustomA4 : hasCompatibleSelectedCustomReceipt
@@ -1176,6 +1270,17 @@ export function Sales() {
     const activeCustomPreview = printFormat === 'a4' ? customA4Preview : customReceiptPreview
     const activeBuildCustomPdf = printFormat === 'a4' ? buildCustomA4Pdf : buildCustomReceiptPdf
     const activeBuildEditableCustomPdf = printFormat === 'a4' ? buildEditableCustomA4Pdf : buildEditableCustomReceiptPdf
+    const hasActiveNativeAtlasStandardTemplate = printFormat === 'a4' && Boolean(nativeAtlasStandardA4Preview)
+    const activeTemplatePreview = hasActiveCustomTemplate
+        ? activeCustomPreview
+        : hasActiveNativeAtlasStandardTemplate
+            ? nativeAtlasStandardA4Preview
+            : undefined
+    const activePdfBuilder = hasActiveCustomTemplate
+        ? activeBuildCustomPdf
+        : hasActiveNativeAtlasStandardTemplate
+            ? buildNativeAtlasStandardA4Pdf
+            : undefined
 
     const [isWholeSaleReturn, setIsWholeSaleReturn] = useState(false)
 
@@ -3269,12 +3374,18 @@ export function Sales() {
                         setPrintingSale(null)
                         setSaleToPrintSelection(null)
                         setA4Variant('standard')
+                        setSalesHistoryPrintVersion('adjusted')
                         setSelectedCustomReceiptTemplate(null)
                         setSelectedCustomA4Template(null)
+                        setSelectedNativeA4TemplateKey(null)
                     }}
                     onConfirm={handleConfirmPrint}
                     title={activeCustomTemplate
                         ? getStoredCustomTemplateLabel(activeCustomTemplate)
+                        : selectedNativeA4TemplateKey === SALES_HISTORY_ATLAS_STANDARD_RETURN_TEMPLATE_KEY
+                            ? t('sales.print.atlasStandardReturn', { defaultValue: 'Sales History Atlas Standard Return' })
+                            : selectedNativeA4TemplateKey === SALES_HISTORY_ATLAS_STANDARD_TEMPLATE_KEY
+                                ? t('sales.print.atlasStandard', { defaultValue: 'Sales History Atlas Standard' })
                         : shouldUseLoanPrint
                         ? (printFormat === 'receipt'
                             ? (t('sales.print.receipt') || 'Receipt')
@@ -3288,7 +3399,7 @@ export function Sales() {
                     workspaceName={workspaceName}
                     module="sales"
                     originId={printingSale?.id}
-                    pdfData={!shouldUseLoanPrint && !hasActiveCustomTemplate && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
+                    pdfData={!shouldUseLoanPrint && !hasActiveCustomTemplate && !hasActiveNativeAtlasStandardTemplate && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,
                         totalAmount: printingSale.total_amount,
@@ -3300,15 +3411,15 @@ export function Sales() {
                     } : undefined}
                     pdfBuilder={shouldUseLoanPrint
                         ? buildLoanPrintPdf
-                        : hasActiveCustomTemplate
-                            ? activeBuildCustomPdf
+                        : activePdfBuilder
+                            ? activePdfBuilder
                             : undefined}
                     printTemplate={shouldUseLoanPrint
                         ? ({ effectiveId }) => (printFormat === 'receipt'
                             ? renderLoanReceiptTemplate(effectiveId)
                             : renderLoanPrintTemplate(effectiveId))
                         : undefined}
-                    templatePreview={hasActiveCustomTemplate ? activeCustomPreview : undefined}
+                    templatePreview={activeTemplatePreview}
                     customTemplate={hasActiveCustomTemplate && activeCustomTemplate && activeCustomTarget ? {
                         moduleTypeKey: activeCustomTarget.moduleTypeKey,
                         nativeTemplateKey: activeCustomTarget.nativeTemplateKey,
