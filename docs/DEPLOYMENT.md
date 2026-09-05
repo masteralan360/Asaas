@@ -253,7 +253,7 @@ same-origin usage gateways. It does not replace Supabase or the existing
 ### 1. Configure Cloudflare
 
 1. Upgrade the Cloudflare account to Workers Paid.
-2. Create a Worker named `erp-system`, or allow `wrangler deploy` to create it.
+2. Create a Worker named `atlas`, or allow `wrangler deploy` to create it.
 3. Bind the production app domain and `shop.atlaserp.dev` to that Worker.
 4. Keep the Vercel project attached until the production cutover has been
    validated; it is the rollback target.

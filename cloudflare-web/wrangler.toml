@@ -1,4 +1,4 @@
-name = "erp-system"
+name = "atlas"
 main = "src/index.js"
 compatibility_date = "2026-09-05"
 
