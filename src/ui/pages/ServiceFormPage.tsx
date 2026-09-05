@@ -33,6 +33,7 @@ import {
 import type { CurrencyCode } from '@/local-db/models'
 import { isService } from '@/lib/catalogItem'
 import { assetManager } from '@/lib/assetManager'
+import { getClipboardImageFile } from '@/lib/clipboardImage'
 import { storeProductImageFile } from '@/lib/productImageStorage'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -380,6 +381,16 @@ function ServiceEditor({ mode, serviceId }: { mode: ServiceFormMode; serviceId?:
         if (imageUploadInputRef.current) {
             imageUploadInputRef.current.value = ''
         }
+    }
+
+    const handleVisualsPaste = async (event: React.ClipboardEvent<HTMLDivElement>) => {
+        if (!canEdit) return
+
+        const file = getClipboardImageFile(event.clipboardData)
+        if (!file) return
+
+        event.preventDefault()
+        await handleFileSelected(file)
     }
 
     const handleRemoveImage = async () => {
@@ -911,7 +922,10 @@ function ServiceEditor({ mode, serviceId }: { mode: ServiceFormMode; serviceId?:
                     </Card>
 
                     <Dialog open={visualsModalOpen} onOpenChange={setVisualsModalOpen}>
-                        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-2xl border-border/60 p-0 sm:w-[calc(100vw-2rem)]">
+                        <DialogContent
+                            className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] max-w-3xl overflow-y-auto rounded-2xl border-border/60 p-0 sm:w-[calc(100vw-2rem)]"
+                            onPaste={handleVisualsPaste}
+                        >
                             <DialogHeader className="border-b border-border/50 bg-muted/10 px-5 py-4 sm:px-6">
                                 <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                                     <div>
@@ -1025,11 +1039,14 @@ function ServiceEditor({ mode, serviceId }: { mode: ServiceFormMode; serviceId?:
 
                                             <div className="flex items-start gap-3 rounded-xl border border-border/40 bg-muted/30 p-4">
                                                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                                                <p className="text-[11px] font-medium leading-relaxed text-muted-foreground/80">
-                                                    {isDesktopShell
-                                                        ? (t('products.form.localPathDesc') || 'Image will be stored locally on this device and synced to other devices in your workspace.')
-                                                        : (t('products.form.webUploadDesc') || 'Image will be securely uploaded and synced via cloud storage.')}
-                                                </p>
+                                                <div className="space-y-1 text-[11px] font-medium leading-relaxed text-muted-foreground/80">
+                                                    <p>
+                                                        {isDesktopShell
+                                                            ? (t('products.form.localPathDesc') || 'Image will be stored locally on this device and synced to other devices in your workspace.')
+                                                            : (t('products.form.webUploadDesc') || 'Image will be securely uploaded and synced via cloud storage.')}
+                                                    </p>
+                                                    {!isReadOnly && <p>{t('services.form.pasteImageHint')}</p>}
+                                                </div>
                                             </div>
 
                                             <input
