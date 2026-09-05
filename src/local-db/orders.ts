@@ -15,7 +15,7 @@ import { getOrderLineInventoryQuantity } from '@/lib/orderLineItems'
 import { isPositiveQuantity, roundQuantity } from '@/lib/quantity'
 import { getMissingPriceBookCostMessage, hasValidProductCost } from '@/lib/productCost'
 import { canBePurchased, isService } from '@/lib/catalogItem'
-import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
+import { getPartnerSyncWriteRpc, getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId, toCamelCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -233,6 +233,13 @@ function sanitizeSyncPayload(tableName: SyncableTableName, entity: Record<string
 
     if (tableName === 'customers' || tableName === 'suppliers') {
         delete snakePayload.is_locked
+        // `partner_name` is the canonical identity. These retired fields may
+        // survive in a local cache from an older app version, but must never
+        // become part of a facet-summary sync.
+        delete snakePayload.name
+        delete snakePayload.contact_name
+        delete snakePayload.email
+        delete snakePayload.country
     }
 
     return snakePayload
@@ -284,6 +291,25 @@ async function syncUpsertEntities(
     try {
         const client = getSupabaseClientForTable(tableName)
         const payload = entities.map((entity) => sanitizeSyncPayload(tableName, entity))
+        const partnerSyncWriteRpc = getPartnerSyncWriteRpc(tableName)
+
+        if (partnerSyncWriteRpc) {
+            for (const entity of payload) {
+                const { error } = await runMutation(`${tableName}.sync`, () => client.rpc(partnerSyncWriteRpc, {
+                    p_operation: 'upsert',
+                    p_entity_id: entity.id,
+                    p_workspace_id: workspaceId,
+                    p_payload: entity
+                }))
+                if (error) {
+                    throw error
+                }
+            }
+
+            await markEntitiesSynced(tableName, entities.map((entity) => entity.id))
+            return
+        }
+
         const shouldReceiveOrderNumber = tableName === 'sales_orders' || tableName === 'purchase_orders'
         const result = shouldReceiveOrderNumber
             ? await runMutation(`${tableName}.sync`, () =>
@@ -353,8 +379,15 @@ async function syncSoftDelete(tableName: SimpleEntityTableName | OrderTableName 
 
     try {
         const client = getSupabaseClientForTable(tableName)
-        const { error } = await runMutation(`${tableName}.delete`, () =>
-            client
+        const partnerSyncWriteRpc = getPartnerSyncWriteRpc(tableName)
+        const { error } = await runMutation(`${tableName}.delete`, () => partnerSyncWriteRpc
+            ? client.rpc(partnerSyncWriteRpc, {
+                p_operation: 'soft_delete',
+                p_entity_id: entityId,
+                p_workspace_id: workspaceId,
+                p_payload: { id: entityId }
+            })
+            : client
                 .from(tableName)
                 .update({ is_deleted: true, updated_at: new Date().toISOString() })
                 .eq('id', entityId)
@@ -412,7 +445,7 @@ async function getInitialOrderNumber(tableName: OrderTableName, workspaceId: str
     return `${prefix}-PENDING-${generateId().toUpperCase()}`
 }
 
-async function recalculateCustomerSummary(workspaceId: string, customerId: string) {
+export async function recalculateCustomerSummary(workspaceId: string, customerId: string) {
     const customer = await db.customers.get(customerId)
     if (!customer || customer.isDeleted) {
         return customer
