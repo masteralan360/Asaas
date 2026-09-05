@@ -10,7 +10,8 @@ permissions:
 
 concurrency:
   group: cloudflare-production
-  cancel-in-progress: false
+  # Never let an older queued build deploy after a newer release.
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -51,3 +52,6 @@ jobs:
           # production Supabase secrets rather than requiring duplicate keys.
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      - run: node scripts/verify-cloudflare-deployment.mjs
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}

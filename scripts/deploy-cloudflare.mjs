@@ -21,9 +21,9 @@ const requiredSecrets = [
 ]
 
 // Local deployments source the complete Worker-secret inventory from `.env`.
-// CI has no `.env`, so it must supply the four runtime secrets explicitly.
-// Never fall back to an ordinary Wrangler deploy in that case: doing so can
-// publish a Worker version without the runtime bindings it needs.
+// CI has no `.env`, so it supplies the required runtime secrets explicitly.
+// This wrapper always deploys the Worker configuration rather than a bare
+// assets directory; a bare assets deployment would remove the API handler.
 const secrets = existsSync(environmentPath)
     ? dotenv.parse(readFileSync(environmentPath))
     : Object.fromEntries(requiredSecrets.map((name) => [name, process.env[name]]))
@@ -47,7 +47,7 @@ let exitCode = 1
 try {
     // JSON avoids shell interpolation. Wrangler sends these values as
     // encrypted secret bindings; neither values nor the temporary file
-    // are committed. Secrets not included by CI remain preserved remotely.
+    // are committed.
     writeFileSync(secretsFile, JSON.stringify(secrets), { encoding: 'utf8', mode: 0o600 })
 
     const args = [
