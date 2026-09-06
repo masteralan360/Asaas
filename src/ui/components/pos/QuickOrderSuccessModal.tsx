@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { ArrowRight, CheckCircle2, ClipboardCheck, X } from 'lucide-react'
 
-import type { CurrencyCode } from '@/local-db'
+import type { CurrencyCode, SalesOrder } from '@/local-db'
 import { formatCurrency } from '@/lib/utils'
 import type { WorkspaceFeatures } from '@/workspace'
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from '@/ui/components'
@@ -11,6 +11,7 @@ export interface CompletedQuickOrder {
     orderNumber: string
     total: number
     currency: CurrencyCode
+    status: Extract<SalesOrder['status'], 'draft' | 'pending' | 'completed'>
 }
 
 interface QuickOrderSuccessModalProps {
@@ -34,6 +35,9 @@ export function QuickOrderSuccessModal({
     onOpenOrderDetails
 }: QuickOrderSuccessModalProps) {
     const { t } = useTranslation()
+    const successTitle = order?.status === 'completed'
+        ? t('pos.quickOrder.completedTitle', { defaultValue: 'Order Completed' })
+        : t('pos.quickOrder.savedTitle', { defaultValue: 'Order Saved' })
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -43,7 +47,7 @@ export function QuickOrderSuccessModal({
                 className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-sm gap-0 overflow-y-auto rounded-[2.5rem] border-none p-0 shadow-2xl animate-in fade-in zoom-in duration-300"
             >
                 <DialogTitle className="sr-only">
-                    {t('pos.quickOrder.completedTitle', { defaultValue: 'Order Completed' })}
+                    {successTitle}
                 </DialogTitle>
 
                 <div className="relative flex flex-col items-center justify-center gap-3 overflow-hidden bg-primary p-5 text-primary-foreground sm:p-6">
@@ -63,11 +67,18 @@ export function QuickOrderSuccessModal({
                     </div>
                     <div className="space-y-0.5 text-center">
                         <h2 className="text-xl font-black tracking-tight">
-                            {t('pos.quickOrder.completedTitle', { defaultValue: 'Order Completed' })}
+                            {successTitle}
                         </h2>
                         <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
                             {order?.orderNumber}
                         </p>
+                        {order ? (
+                            <p className="text-xs font-semibold text-white/80">
+                                {t('pos.quickOrder.savedWithStatus', {
+                                    status: t(`orders.status.${order.status}`)
+                                })}
+                            </p>
+                        ) : null}
                     </div>
                 </div>
 

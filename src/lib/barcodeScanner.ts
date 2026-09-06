@@ -113,18 +113,18 @@ export function classifyBarcodeScannerKeyTiming(
     }
 }
 
-export function normalizeBarcodeDigits(value: string): string {
-    return value
+export function normalizeBarcodeDigits(value: string | null | undefined): string {
+    return (value ?? '')
         .replace(BIDI_CONTROL_CHARACTERS_PATTERN, '')
         .replace(ARABIC_INDIC_DIGITS_PATTERN, (char) => String(char.charCodeAt(0) - ARABIC_INDIC_ZERO_CODE))
         .replace(EASTERN_ARABIC_INDIC_DIGITS_PATTERN, (char) => String(char.charCodeAt(0) - EASTERN_ARABIC_INDIC_ZERO_CODE))
 }
 
-export function normalizeBarcodeScannerText(value: string): string {
+export function normalizeBarcodeScannerText(value: string | null | undefined): string {
     return normalizeBarcodeDigits(value).trim()
 }
 
-export function normalizeBarcodeScannerKey(key: string): string {
+export function normalizeBarcodeScannerKey(key: string | null | undefined): string {
     return normalizeBarcodeDigits(key)
 }
 
@@ -168,7 +168,9 @@ export function getBarcodeScannerEventKey(event: BarcodeScannerKeyboardEvent): s
     return normalizeBarcodeScannerKey(event.key)
 }
 
-export function createBarcodeScannerCodeIndex(values: Iterable<string>): BarcodeScannerCodeIndex {
+export function createBarcodeScannerCodeIndex(
+    values: Iterable<string | null | undefined>
+): BarcodeScannerCodeIndex {
     const exact = new Set<string>()
     const prefixes = new Set<string>()
 

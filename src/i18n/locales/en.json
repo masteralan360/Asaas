@@ -3838,7 +3838,10 @@
   "pos": {
     "quickOrder": {
       "title": "Quick Order",
-      "description": "Select the customer and payment method to complete this sales order.",
+      "description": "Select the customer, order status, and payment details for this sales order.",
+      "orderStatusOnSave": "Order status upon save",
+      "paymentStatusOnSave": "Payment status upon save",
+      "paidFinanceMethodsUnavailable": "Loans and installments are unavailable when the order is paid on save.",
       "installmentHint": "This uses the normal monthly installment schedule.",
       "summary": "Order Summary",
       "itemCount": "{{count}} cart items",
@@ -3849,6 +3852,8 @@
       "backToQuickOrder": "Back to Quick Order",
       "save": "Save Order",
       "completedTitle": "Order Completed",
+      "savedTitle": "Order Saved",
+      "savedWithStatus": "Saved as {{status}}",
       "openDetails": "Open Order Details",
       "progress": {
         "preparing": "Preparing order details",

@@ -22,6 +22,8 @@ import { PaymentAccountIcon } from './PaymentAccountIcon'
 interface SharedPaymentMethodSelectProps {
     value: PaymentMethodOption
     methods?: readonly PaymentMethodOption[]
+    /** Methods that remain visible but cannot be selected in the current workflow. */
+    disabledMethods?: readonly PaymentMethodOption[]
     id?: string
     disabled?: boolean
     placeholder?: string
@@ -92,6 +94,7 @@ export function PaymentMethodSelect({
     value,
     onValueChange,
     methods = STANDARD_PAYMENT_METHODS,
+    disabledMethods = [],
     id,
     disabled = false,
     placeholder,
@@ -153,6 +156,7 @@ export function PaymentMethodSelect({
                         <SelectItem
                             key={method}
                             value={method}
+                            disabled={disabledMethods.includes(method)}
                             onPointerDown={(event) => onOptionPointerDown?.(event, method)}
                         >
                             <span className="flex min-w-0 items-center gap-1.5">

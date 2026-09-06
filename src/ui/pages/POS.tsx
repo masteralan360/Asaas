@@ -19,7 +19,7 @@ import {
     useWorkspaceProductBarcodes,
     useStorages,
     createActivityTransaction,
-    createCompletedSalesOrder,
+    createQuickSalesOrder,
     appendPaymentTransaction,
     isOrderFinancingMethod,
     updateActivityTransactionNotes,
@@ -3220,7 +3220,7 @@ export function POS() {
 
         setQuickOrderProgressStage('preparing')
         setIsLoading(true)
-        let orderCompleted = false
+        let orderSaved = false
         try {
             const checkoutTimestamp = new Date().toISOString()
             const usedCurrencies = new Set(cart.map((item) =>
@@ -3296,7 +3296,7 @@ export function POS() {
             const sourceStorageIds = Array.from(new Set(orderItems
                 .map((item) => item.storageId)
                 .filter((storageId): storageId is string => Boolean(storageId) && storageId !== SERVICES_VIRTUAL_STORAGE_ID)))
-            const completedOrder = await createCompletedSalesOrder(user.workspaceId, {
+            const savedOrder = await createQuickSalesOrder(user.workspaceId, {
                 businessPartnerId: checkout.customer.id,
                 customerId: checkout.customer.id,
                 customerName: checkout.customer.partnerName,
@@ -3313,14 +3313,14 @@ export function POS() {
                 exchangeRateSource: primaryRate?.source ?? null,
                 exchangeRateTimestamp: primaryRate?.timestamp ?? null,
                 exchangeRates: exchangeRates.length > 0 ? exchangeRates : null,
-                status: 'draft',
+                status: checkout.orderStatus,
                 expectedDeliveryDate: null,
                 actualDeliveryDate: null,
-                isPaid: !isFinanced,
-                paymentStatus: isFinanced ? 'unpaid' : 'paid',
-                paidAmount: isFinanced ? 0 : subtotal,
-                balanceAmount: isFinanced ? subtotal : 0,
-                paidAt: isFinanced ? null : checkoutTimestamp,
+                isPaid: checkout.paymentStatus === 'paid',
+                paymentStatus: checkout.paymentStatus,
+                paidAmount: checkout.paymentStatus === 'paid' ? subtotal : 0,
+                balanceAmount: checkout.paymentStatus === 'paid' ? 0 : subtotal,
+                paidAt: checkout.paymentStatus === 'paid' ? checkoutTimestamp : null,
                 paymentMethod,
                 initialPaymentAmount: 0,
                 initialPaymentAccountId: checkout.paymentAccountId ?? null,
@@ -3342,29 +3342,32 @@ export function POS() {
 
             let commissionAssignmentError: unknown = null
             try {
-                await options?.onOrderCreated?.(completedOrder)
+                await options?.onOrderCreated?.(savedOrder)
             } catch (error) {
                 commissionAssignmentError = error
             }
 
-            orderCompleted = true
+            orderSaved = true
             setCart([])
             setDiscountValue('')
             setIsQuickOrderModalOpen(false)
             resetCheckoutPaymentType()
             setCompletedActivityCheckout(null)
             setCompletedQuickOrder({
-                id: completedOrder.id,
-                orderNumber: completedOrder.orderNumber,
-                total: completedOrder.total,
-                currency: completedOrder.currency
+                id: savedOrder.id,
+                orderNumber: savedOrder.orderNumber,
+                total: savedOrder.total,
+                currency: savedOrder.currency,
+                // createQuickSalesOrder preserves the submitted Quick Order
+                // lifecycle status; retain the narrowed modal contract here.
+                status: checkout.orderStatus
             })
             setIsQuickOrderSuccessModalOpen(true)
             hapticTrigger('success')
             playCheckoutSound()
             refreshExchangeRate()
             if (commissionAssignmentError) {
-                console.error('[POS] Commission attribution needs attention for completed quick order:', commissionAssignmentError)
+                console.error('[POS] Commission attribution needs attention for saved quick order:', commissionAssignmentError)
                 toast({
                     title: t('salesAgentCommissions.assignmentNeedsAttention'),
                     description: t('salesAgentCommissions.assignmentNeedsAttentionDescription'),
@@ -3373,7 +3376,7 @@ export function POS() {
             }
         } finally {
             setIsLoading(false)
-            if (!orderCompleted) {
+            if (!orderSaved) {
                 setQuickOrderProgressStage(null)
             }
         }

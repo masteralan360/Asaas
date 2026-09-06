@@ -94,7 +94,7 @@ import { SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
-import { createCompletedSalesOrder } from './orders'
+import { createCompletedSalesOrder, createQuickSalesOrder } from './orders'
 
 const WORKSPACE_ID = '10000000-0000-4000-8000-000000000001'
 const USER_ID = '10000000-0000-4000-8000-000000000002'
@@ -104,6 +104,7 @@ const PRODUCT_ID = '10000000-0000-4000-8000-000000000005'
 const SERVICE_ID = '10000000-0000-4000-8000-000000000008'
 const STORAGE_ID = '10000000-0000-4000-8000-000000000006'
 const INVENTORY_ID = '10000000-0000-4000-8000-000000000007'
+const PAYMENT_ACCOUNT_ID = '10000000-0000-4000-8000-000000000009'
 
 type SalesOrderCreateInput = Parameters<typeof createCompletedSalesOrder>[1]
 
@@ -184,6 +185,19 @@ function quickOrderInput(paidAmount = 100): SalesOrderCreateInput {
         sourceChannel: 'manual',
         marketplaceOrderId: null,
         createdBy: USER_ID
+    }
+}
+
+function unpaidQuickOrderInput(status: 'draft' | 'pending' | 'completed'): SalesOrderCreateInput {
+    const input = quickOrderInput()
+    return {
+        ...input,
+        status,
+        isPaid: false,
+        paymentStatus: 'unpaid',
+        paidAmount: 0,
+        balanceAmount: input.total,
+        paidAt: null
     }
 }
 
@@ -531,5 +545,131 @@ describe('atomic POS Quick Order completion', () => {
         expect(completed.status).toBe('completed')
         expect(await db.payment_transactions.where('sourceRecordId').equals(completed.id).count()).toBe(1)
         expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(4)
+    })
+
+    it('saves unpaid Quick Orders at each selected lifecycle status without recording a payment', async () => {
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
+
+        const draft = await createQuickSalesOrder(
+            WORKSPACE_ID,
+            unpaidQuickOrderInput('draft'),
+            USER_ID
+        )
+
+        expect(draft).toMatchObject({
+            status: 'draft',
+            paymentStatus: 'unpaid',
+            paidAmount: 0,
+            balanceAmount: 100
+        })
+        expect(await db.payment_transactions.where('sourceRecordId').equals(draft.id).count()).toBe(0)
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(5)
+
+        const pending = await createQuickSalesOrder(
+            WORKSPACE_ID,
+            unpaidQuickOrderInput('pending'),
+            USER_ID
+        )
+
+        expect(pending).toMatchObject({
+            status: 'pending',
+            paymentStatus: 'unpaid',
+            paidAmount: 0,
+            balanceAmount: 100
+        })
+        expect(pending.reservedAt).toBeTruthy()
+        expect(await db.payment_transactions.where('sourceRecordId').equals(pending.id).count()).toBe(0)
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(5)
+
+        const completed = await createQuickSalesOrder(
+            WORKSPACE_ID,
+            unpaidQuickOrderInput('completed'),
+            USER_ID
+        )
+
+        expect(completed).toMatchObject({
+            status: 'completed',
+            paymentStatus: 'unpaid',
+            paidAmount: 0,
+            balanceAmount: 100
+        })
+        expect(await db.payment_transactions.where('sourceRecordId').equals(completed.id).count()).toBe(0)
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(4)
+    })
+
+    it('records the full payment for a paid Quick Order even when it is saved as a draft', async () => {
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
+        await db.payment_accounts.put({
+            ...baseEntity(PAYMENT_ACCOUNT_ID),
+            name: 'Main cash drawer',
+            accountType: 'cash_drawer',
+            linkedPaymentMethod: null,
+            iconKey: 'cash_drawer',
+            notes: null,
+            isActive: true,
+            isPrimary: true,
+            isDefaultForPaymentSelector: true,
+            createdBy: USER_ID
+        })
+        const input = {
+            ...quickOrderInput(),
+            initialPaymentAccountId: PAYMENT_ACCOUNT_ID,
+            initialPaymentAccountNameSnapshot: 'Main cash drawer'
+        }
+
+        const paidDraft = await createQuickSalesOrder(
+            WORKSPACE_ID,
+            input,
+            USER_ID
+        )
+
+        expect(paidDraft).toMatchObject({
+            status: 'draft',
+            paymentStatus: 'paid',
+            paidAmount: 100,
+            balanceAmount: 0
+        })
+        expect(await db.payment_transactions.where('sourceRecordId').equals(paidDraft.id).toArray()).toEqual([
+            expect.objectContaining({
+                sourceType: 'sales_order',
+                direction: 'incoming',
+                amount: 100,
+                paymentMethod: 'cash',
+                accountId: PAYMENT_ACCOUNT_ID
+            })
+        ])
+        expect(await db.payment_account_movements.toArray()).toEqual([
+            expect.objectContaining({
+                paymentTransactionId: expect.any(String),
+                accountId: PAYMENT_ACCOUNT_ID,
+                direction: 'incoming',
+                amount: 100,
+                deltaAmount: 100
+            })
+        ])
+        expect(await db.payment_account_balances
+            .where('[accountId+currency]')
+            .equals([PAYMENT_ACCOUNT_ID, 'usd'])
+            .first()).toMatchObject({ balanceAmount: 100 })
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(5)
+    })
+
+    it('rejects a paid Quick Order with a financing payment method before records are created', async () => {
+        const invalid = {
+            ...quickOrderInput(),
+            paymentMethod: 'installments' as const,
+            isInstallmentBased: true,
+            installmentCount: 3,
+            installmentFrequency: 'monthly' as const,
+            firstDueDate: '2026-09-01',
+            nextDueDate: '2026-09-01'
+        }
+
+        await expect(createQuickSalesOrder(WORKSPACE_ID, invalid, USER_ID))
+            .rejects.toThrow('Financed Quick Orders cannot be paid on save')
+
+        expect(await db.sales_orders.count()).toBe(0)
+        expect(await db.payment_transactions.count()).toBe(0)
+        expect((await db.inventory.get(INVENTORY_ID))?.quantity).toBe(5)
     })
 })

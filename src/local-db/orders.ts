@@ -2487,15 +2487,17 @@ async function completePaidQuickSalesOrderAtomically(
     return completedOrder
 }
 
-/**
- * Completes an immediately-paid online Quick Order through one atomic RPC.
- * Financed, offline, and Local Mode orders retain the normal
- * draft -> pending -> completed lifecycle because their financing/offline
- * transitions have different durability requirements.
- */
+export type QuickSalesOrderStatus = Extract<SalesOrderStatus, 'draft' | 'pending' | 'completed'>
 export type CompletedSalesOrderProgressStage = 'creating' | 'reserving' | 'completing'
 
-export async function createCompletedSalesOrder(
+/**
+ * Creates a POS Quick Order at its selected sales-order lifecycle stage.
+ * Only an immediately-paid online completed order uses the atomic RPC.
+ * Every other combination starts as a draft and follows the regular
+ * lifecycle so payment, financing, reservations, and fulfillment preserve
+ * their established effects.
+ */
+export async function createQuickSalesOrder(
     workspaceId: string,
     data: CreateOrderInput<SalesOrder>,
     createdBy?: string | null,
@@ -2504,8 +2506,17 @@ export async function createCompletedSalesOrder(
     }
 ) {
     options?.onProgress?.('creating')
+    const targetStatus = data.status as QuickSalesOrderStatus
 
-    const canUseAtomicPaidCheckout = shouldUseCloudBusinessData(workspaceId)
+    if (targetStatus !== 'draft' && targetStatus !== 'pending' && targetStatus !== 'completed') {
+        throw new Error('Quick orders must be saved as draft, pending, or completed')
+    }
+    if (isOrderFinancingMethod(data.paymentMethod) && (data.isPaid || data.paymentStatus === 'paid')) {
+        throw new Error('Financed Quick Orders cannot be paid on save')
+    }
+
+    const canUseAtomicPaidCheckout = targetStatus === 'completed'
+        && shouldUseCloudBusinessData(workspaceId)
         && isOnline(workspaceId)
         && !isOrderFinancingMethod(data.paymentMethod)
         && data.isPaid === true
@@ -2529,10 +2540,42 @@ export async function createCompletedSalesOrder(
         actualDeliveryDate: null,
         reservedAt: null
     }, createdBy)
+
+    if (targetStatus === 'draft') {
+        return draft
+    }
+
     options?.onProgress?.('reserving')
-    const pending = await updateSalesOrderStatus(draft.id, 'pending')
+    const pending = await updateSalesOrderStatus(draft.id, 'pending', {
+        // Quick Orders explicitly allow an unpaid sales order to reserve stock
+        // or be completed. The regular Order workflow retains its stricter
+        // paid-before-reservation rule.
+        allowUnpaidNonFinanced: true
+    })
+
+    if (targetStatus === 'pending') {
+        return pending
+    }
+
     options?.onProgress?.('completing')
     return updateSalesOrderStatus(pending.id, 'completed')
+}
+
+/**
+ * Backwards-compatible completed Quick Order entrypoint.
+ */
+export async function createCompletedSalesOrder(
+    workspaceId: string,
+    data: CreateOrderInput<SalesOrder>,
+    createdBy?: string | null,
+    options?: {
+        onProgress?: (stage: CompletedSalesOrderProgressStage) => void
+    }
+) {
+    return createQuickSalesOrder(workspaceId, {
+        ...data,
+        status: 'completed'
+    }, createdBy, options)
 }
 
 export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
@@ -2639,9 +2682,13 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     return updated
 }
 
-async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+async function activateOrderFinancing(
+    orderType: OrderType,
+    order: SalesOrder | PurchaseOrder,
+    options?: { allowUnpaidNonFinanced?: boolean }
+) {
     if (!isOrderFinancingMethod(order.paymentMethod)) {
-        if (!order.isPaid) {
+        if (!order.isPaid && !options?.allowUnpaidNonFinanced) {
             throw new Error('non_financed_order_must_be_paid')
         }
         return null
@@ -2832,7 +2879,11 @@ async function cancelOrderFinancialRecords(orderType: OrderType, order: SalesOrd
     }
 }
 
-export async function updateSalesOrderStatus(id: string, status: SalesOrderStatus) {
+export async function updateSalesOrderStatus(
+    id: string,
+    status: SalesOrderStatus,
+    options?: { allowUnpaidNonFinanced?: boolean }
+) {
     const existing = await db.sales_orders.get(id)
     if (!existing || existing.isDeleted) {
         throw new Error('Sales order not found')
@@ -2857,7 +2908,7 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     if (status === 'pending') {
         await assertSalesProductsHaveCosts(existing)
         await assertSalesStockAvailable(existing, existing.id)
-        linkedLoanId = await activateOrderFinancing('sales', existing)
+        linkedLoanId = await activateOrderFinancing('sales', existing, options)
     }
     if (status === 'cancelled') {
         await cancelOrderFinancialRecords('sales', existing)

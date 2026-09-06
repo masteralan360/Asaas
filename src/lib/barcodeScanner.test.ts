@@ -102,6 +102,19 @@ describe('barcode scanner utilities', () => {
         expect(normalizeBarcodeScannerText('\u200f١٢٣۴۵۶\u200e')).toBe('123456')
     })
 
+    it('ignores nullish stored barcode values while building the known-code index', () => {
+        expect(normalizeBarcodeScannerText(null)).toBe('')
+
+        const index = createBarcodeScannerCodeIndex([
+            null,
+            undefined,
+            '1234567890123'
+        ])
+
+        expect(index.exact).not.toContain('')
+        expect(shouldCommitBarcodeScannerValue('1234567890123', index)).toBe(true)
+    })
+
     it('decodes scanner keys from physical keyboard codes', () => {
         expect(getBarcodeScannerEventKey(keyboardEvent({ key: 'ش', code: 'KeyA' }))).toBe('a')
         expect(getBarcodeScannerEventKey(keyboardEvent({ key: '!', code: 'Digit1', shiftKey: true }))).toBe('!')

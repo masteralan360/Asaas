@@ -2527,7 +2527,10 @@
   "pos": {
     "quickOrder": {
       "title": "طلب سريع",
-      "description": "اختر العميل وطريقة الدفع لإتمام طلب المبيعات هذا.",
+      "description": "اختر العميل وحالة الطلب وتفاصيل الدفع لطلب المبيعات هذا.",
+      "orderStatusOnSave": "حالة الطلب عند الحفظ",
+      "paymentStatusOnSave": "حالة الدفع عند الحفظ",
+      "paidFinanceMethodsUnavailable": "القروض والأقساط غير متاحة عند تحديد الطلب كمدفوع عند الحفظ.",
       "installmentHint": "يستخدم هذا جدول الأقساط الشهرية المعتاد.",
       "summary": "ملخص الطلب",
       "itemCount": "{{count}} عناصر في السلة",
@@ -2538,6 +2541,8 @@
       "backToQuickOrder": "العودة إلى الطلب السريع",
       "save": "حفظ الطلب",
       "completedTitle": "اكتمل الطلب",
+      "savedTitle": "تم حفظ الطلب",
+      "savedWithStatus": "تم الحفظ بحالة: {{status}}",
       "openDetails": "فتح تفاصيل الطلب",
       "progress": {
         "preparing": "يجري إعداد تفاصيل الطلب",
