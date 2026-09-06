@@ -118,7 +118,7 @@ export function Settings() {
     const [hasFxAccountingData, setHasFxAccountingData] = useState(false)
     const [isClinicalRegistrySaving, setIsClinicalRegistrySaving] = useState(false)
     const [partnerPrivacySaving, setPartnerPrivacySaving] = useState<
-        'private_staff_customers' | 'suppliers_admin_only' | null
+        'private_staff_customers' | 'private_staff_suppliers' | 'suppliers_admin_only' | null
     >(null)
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const canManageClinicalRegistry = canManageClinicalRegistryType(
@@ -269,7 +269,7 @@ export function Settings() {
     }
 
     const handlePartnerPrivacyChange = async (
-        key: 'private_staff_customers' | 'suppliers_admin_only',
+        key: 'private_staff_customers' | 'private_staff_suppliers' | 'suppliers_admin_only',
         value: boolean
     ) => {
         if (partnerPrivacySaving) return
@@ -2825,7 +2825,7 @@ export function Settings() {
                                             </div>
                                         </div>
 
-                                        <div className="grid gap-4 lg:grid-cols-2">
+                                        <div className="grid gap-4 lg:grid-cols-3">
                                             <div className="flex items-start justify-between gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
                                                 <div className="space-y-1.5">
                                                     <div className="flex items-center gap-2 font-semibold">
@@ -2841,6 +2841,24 @@ export function Settings() {
                                                     disabled={partnerPrivacySaving !== null}
                                                     onCheckedChange={(value) => void handlePartnerPrivacyChange('private_staff_customers', value)}
                                                     aria-label={t('settings.partnerPrivacy.privateStaffCustomers')}
+                                                />
+                                            </div>
+
+                                            <div className="flex items-start justify-between gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center gap-2 font-semibold">
+                                                        <UsersRound className="h-4 w-4 text-primary" />
+                                                        {t('settings.partnerPrivacy.privateStaffSuppliers')}
+                                                    </div>
+                                                    <p className="text-sm leading-5 text-muted-foreground">
+                                                        {t('settings.partnerPrivacy.privateStaffSuppliersDescription')}
+                                                    </p>
+                                                </div>
+                                                <Switch
+                                                    checked={features.private_staff_suppliers}
+                                                    disabled={partnerPrivacySaving !== null}
+                                                    onCheckedChange={(value) => void handlePartnerPrivacyChange('private_staff_suppliers', value)}
+                                                    aria-label={t('settings.partnerPrivacy.privateStaffSuppliers')}
                                                 />
                                             </div>
 

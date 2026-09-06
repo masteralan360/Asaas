@@ -320,7 +320,7 @@ export function BusinessPartnerFormDialog({
             payableCreditLimit,
             ...(priceBooksEnabled ? { priceBookId: formState.priceBookId || null } : {}),
             role: effectiveRole,
-            ...(user?.role === 'admin' && (effectiveRole === 'customer' || effectiveRole === 'both')
+            ...(user?.role === 'admin' && (effectiveRole === 'customer' || effectiveRole === 'supplier' || effectiveRole === 'both')
                 ? {
                     staffVisibility: formState.staffVisibility,
                     ownerUserId: formState.staffVisibility === 'owner_private'
@@ -347,7 +347,7 @@ export function BusinessPartnerFormDialog({
 
     const isAgentRole = isAgentBusinessPartnerRole(formState.role)
     const canManageStaffVisibility = user?.role === 'admin'
-        && (formState.role === 'customer' || formState.role === 'both')
+        && (formState.role === 'customer' || formState.role === 'supplier' || formState.role === 'both')
     const canSubmit = formState.partnerName.trim().length > 0
         && (!canManageStaffVisibility || formState.staffVisibility !== 'owner_private' || Boolean(formState.ownerUserId))
     const privateOwnerCandidates = useMemo(

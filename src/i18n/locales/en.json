@@ -2884,9 +2884,11 @@
     "subtitle": "Manage your account and application settings",
     "partnerPrivacy": {
       "title": "Business partner privacy",
-      "description": "Optional controls that protect staff-owned customers and supplier information. Existing behavior stays unchanged until enabled.",
+      "description": "Optional controls that protect staff-owned customers and suppliers. Existing behavior stays unchanged until enabled.",
       "privateStaffCustomers": "Keep staff-created customers private",
       "privateStaffCustomersDescription": "New customers created by non-admin staff are visible only to their creator and administrators.",
+      "privateStaffSuppliers": "Keep staff-created suppliers private",
+      "privateStaffSuppliersDescription": "New suppliers created by non-admin staff are visible only to their creator and administrators.",
       "suppliersAdminOnly": "Restrict suppliers to administrators",
       "suppliersAdminOnlyDescription": "Non-admin staff cannot access suppliers or supplier-linked information.",
       "savedTitle": "Privacy setting saved",

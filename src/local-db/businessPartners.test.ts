@@ -323,6 +323,152 @@ describe('business partner agent facets', () => {
         )).resolves.toBe(false)
     })
 
+    it('makes a non-admin staff member\'s new supplier private when the opt-in is enabled', async () => {
+        const now = new Date().toISOString()
+        const staffUserId = '00000000-0000-4000-8000-000000000027'
+        const otherStaffUserId = '00000000-0000-4000-8000-000000000028'
+        const adminUserId = '00000000-0000-4000-8000-000000000029'
+        await db.workspaces.put({
+            id: WORKSPACE_ID,
+            workspaceId: WORKSPACE_ID,
+            data_mode: 'local',
+            private_staff_suppliers: true
+        } as never)
+        await db.users.bulkPut([
+            {
+                id: staffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'supplier-owner@example.test',
+                name: 'Supplier owner',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            },
+            {
+                id: otherStaffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'other-supplier-staff@example.test',
+                name: 'Other supplier staff member',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            },
+            {
+                id: adminUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'supplier-admin@example.test',
+                name: 'Supplier administrator',
+                role: 'admin',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            }
+        ])
+        setActiveBusinessUser(staffUserId)
+
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Staff-owned supplier',
+            phone: '07500000027',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'supplier'
+        })
+
+        expect(partner).toMatchObject({
+            staffVisibility: 'owner_private',
+            ownerUserId: staffUserId
+        })
+        expect(await db.suppliers.get(partner.supplierFacetId!)).toMatchObject({
+            businessPartnerId: partner.id,
+            partnerName: 'Staff-owned supplier'
+        })
+        await expect(canAccessBusinessPartnerInLocalCache(
+            WORKSPACE_ID,
+            partner.id,
+            'supplier'
+        )).resolves.toBe(true)
+
+        setActiveBusinessUser(otherStaffUserId)
+        await expect(canAccessBusinessPartnerInLocalCache(
+            WORKSPACE_ID,
+            partner.id,
+            'supplier'
+        )).resolves.toBe(false)
+
+        setActiveBusinessUser(adminUserId)
+        await expect(canAccessBusinessPartnerInLocalCache(
+            WORKSPACE_ID,
+            partner.id,
+            'supplier'
+        )).resolves.toBe(true)
+    })
+
+    it('keeps staff-created suppliers shared while the opt-in is disabled', async () => {
+        const now = new Date().toISOString()
+        const staffUserId = '00000000-0000-4000-8000-000000000030'
+        const otherStaffUserId = '00000000-0000-4000-8000-000000000031'
+        await db.users.bulkPut([
+            {
+                id: staffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'shared-supplier-owner@example.test',
+                name: 'Shared supplier owner',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            },
+            {
+                id: otherStaffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'shared-supplier-staff@example.test',
+                name: 'Shared supplier staff member',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            }
+        ])
+        setActiveBusinessUser(staffUserId)
+
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Shared supplier',
+            phone: '07500000030',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'supplier'
+        })
+
+        expect(partner).toMatchObject({
+            staffVisibility: 'shared',
+            ownerUserId: null
+        })
+
+        setActiveBusinessUser(otherStaffUserId)
+        await expect(canAccessBusinessPartnerInLocalCache(
+            WORKSPACE_ID,
+            partner.id,
+            'supplier'
+        )).resolves.toBe(true)
+    })
+
     it('blocks a non-admin from creating suppliers when supplier privacy is enabled', async () => {
         const now = new Date().toISOString()
         const staffUserId = '00000000-0000-4000-8000-000000000021'
@@ -459,6 +605,58 @@ describe('business partner agent facets', () => {
             defaultCurrency: 'iqd',
             creditLimit: 0,
             role: 'customer'
+        })
+
+        const updated = await updateBusinessPartner(partner.id, {
+            staffVisibility: 'owner_private',
+            ownerUserId: staffUserId
+        })
+
+        expect(updated).toMatchObject({
+            staffVisibility: 'owner_private',
+            ownerUserId: staffUserId
+        })
+    })
+
+    it('allows an administrator to assign a private supplier to a non-admin owner', async () => {
+        const now = new Date().toISOString()
+        const adminUserId = '00000000-0000-4000-8000-000000000032'
+        const staffUserId = '00000000-0000-4000-8000-000000000033'
+        await db.users.bulkPut([
+            {
+                id: adminUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'supplier-visibility-admin@example.test',
+                name: 'Supplier visibility administrator',
+                role: 'admin',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            },
+            {
+                id: staffUserId,
+                workspaceId: WORKSPACE_ID,
+                email: 'supplier-visibility-owner@example.test',
+                name: 'Supplier visibility owner',
+                role: 'staff',
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false
+            }
+        ])
+        setActiveBusinessUser(adminUserId)
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Admin-managed supplier',
+            phone: '07500000032',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'supplier'
         })
 
         const updated = await updateBusinessPartner(partner.id, {

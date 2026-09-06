@@ -2488,6 +2488,8 @@ export interface Workspace extends BaseEntity {
   sales_agent_commission_sheet_type?: SalesAgentCommissionSheetType
   /** Opt-in: new non-admin customer partners are private to their creator. */
   private_staff_customers?: boolean
+  /** Opt-in: new non-admin supplier partners are private to their creator. */
+  private_staff_suppliers?: boolean
   /** Opt-in: supplier data and supplier workflows are administrator-only. */
   suppliers_admin_only?: boolean
 }

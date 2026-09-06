@@ -163,8 +163,8 @@ function canActorSeePartner(
 ): boolean {
     // A mixed partner remains usable as a customer. Its supplier facet is
     // redacted below rather than dropping the entire customer record.
-    return !(context.suppliersAdminOnly && partner.role === 'supplier')
-        && canAccessBusinessPartner(partner, context, 'customer')
+    const scope = partner.role === 'supplier' ? 'supplier' : 'customer'
+    return canAccessBusinessPartner(partner, context, scope)
 }
 
 function redactSupplierFacetForActor(
@@ -213,15 +213,20 @@ async function resolveNewPartnerPrivacy(
     const context = await getPartnerPrivacyContext(workspaceId)
 
     if (!context.actor.isAdmin) {
-        if (context.privateStaffCustomers && roleIncludesCustomer(role) && context.actor.id) {
+        const shouldMakeOwnerPrivate = context.actor.id
+            && (
+                (context.privateStaffCustomers && roleIncludesCustomer(role))
+                || (context.privateStaffSuppliers && roleIncludesSupplier(role))
+            )
+        if (shouldMakeOwnerPrivate) {
             return { staffVisibility: 'owner_private', ownerUserId: context.actor.id }
         }
         return { staffVisibility: 'shared', ownerUserId: null }
     }
 
     const staffVisibility = requestedVisibility ?? 'shared'
-    if (staffVisibility !== 'shared' && !roleIncludesCustomer(role)) {
-        throw new Error('Only customer-capable business partners can use staff privacy')
+    if (staffVisibility !== 'shared' && !roleIncludesCustomer(role) && !roleIncludesSupplier(role)) {
+        throw new Error('Only customer- or supplier-capable business partners can use staff privacy')
     }
     if (staffVisibility !== 'owner_private') {
         return { staffVisibility, ownerUserId: null }

@@ -10,6 +10,7 @@ export type BusinessPartnerPrivacyActor = {
 
 export type BusinessPartnerPrivacyContext = {
     privateStaffCustomers: boolean
+    privateStaffSuppliers: boolean
     suppliersAdminOnly: boolean
     actor: BusinessPartnerPrivacyActor
 }
@@ -29,6 +30,7 @@ export async function getBusinessPartnerPrivacyContext(
 
     return {
         privateStaffCustomers: workspace?.private_staff_customers === true,
+        privateStaffSuppliers: workspace?.private_staff_suppliers === true,
         suppliersAdminOnly: workspace?.suppliers_admin_only === true,
         actor: {
             id: userId,

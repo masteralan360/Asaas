@@ -117,6 +117,7 @@ export interface WorkspaceFeatures {
     store_description: string | null
     sales_agent_commission_sheet_type: SalesAgentCommissionSheetType
     private_staff_customers: boolean
+    private_staff_suppliers: boolean
     suppliers_admin_only: boolean
 }
 
@@ -158,7 +159,7 @@ interface WorkspaceContextType {
     refreshFeatures: () => Promise<void>
     refreshPaymentSummary: () => Promise<WorkspacePaymentSummary | null>
     updateSettings: (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'sales_agent_commission_sheet_type' | 'private_staff_customers' | 'suppliers_admin_only' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'sales_agent_commission_sheet_type' | 'private_staff_customers' | 'private_staff_suppliers' | 'suppliers_admin_only' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
@@ -277,6 +278,7 @@ const defaultFeatures: WorkspaceFeatures = {
     store_description: null,
     sales_agent_commission_sheet_type: 'normal',
     private_staff_customers: false,
+    private_staff_suppliers: false,
     suppliers_admin_only: false
 }
 
@@ -305,6 +307,7 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'store_description',
     'sales_agent_commission_sheet_type',
     'private_staff_customers',
+    'private_staff_suppliers',
     'suppliers_admin_only'
 ].join(', ')
 
@@ -411,6 +414,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         store_description: localWorkspace.store_description ?? null,
         sales_agent_commission_sheet_type: localWorkspace.sales_agent_commission_sheet_type ?? 'normal',
         private_staff_customers: localWorkspace.private_staff_customers ?? false,
+        private_staff_suppliers: localWorkspace.private_staff_suppliers ?? false,
         suppliers_admin_only: localWorkspace.suppliers_admin_only ?? false
     })
 }
@@ -594,6 +598,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             store_description: nextFeatures.store_description,
             sales_agent_commission_sheet_type: nextFeatures.sales_agent_commission_sheet_type,
             private_staff_customers: nextFeatures.private_staff_customers,
+            private_staff_suppliers: nextFeatures.private_staff_suppliers,
             suppliers_admin_only: nextFeatures.suppliers_admin_only,
             syncStatus: 'synced',
             lastSyncedAt: timestamp,
@@ -805,6 +810,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 store_description: workspaceRow.store_description ?? currentFeatures.store_description,
                 sales_agent_commission_sheet_type: workspaceRow.sales_agent_commission_sheet_type ?? currentFeatures.sales_agent_commission_sheet_type,
                 private_staff_customers: workspaceRow.private_staff_customers ?? currentFeatures.private_staff_customers,
+                private_staff_suppliers: workspaceRow.private_staff_suppliers ?? currentFeatures.private_staff_suppliers,
                 suppliers_admin_only: workspaceRow.suppliers_admin_only ?? currentFeatures.suppliers_admin_only
             }, fetchedOverrides)
             const nextWorkspaceName = resolveFetchedWorkspaceName({
@@ -1039,6 +1045,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             store_description: data.store_description ?? currentFeatures.store_description,
                             sales_agent_commission_sheet_type: data.sales_agent_commission_sheet_type ?? currentFeatures.sales_agent_commission_sheet_type,
                             private_staff_customers: data.private_staff_customers ?? currentFeatures.private_staff_customers,
+                            private_staff_suppliers: data.private_staff_suppliers ?? currentFeatures.private_staff_suppliers,
                             suppliers_admin_only: data.suppliers_admin_only ?? currentFeatures.suppliers_admin_only
                         }, overridesRef.current)
                         const nextWorkspaceName = resolveFetchedWorkspaceName({
@@ -1254,7 +1261,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'private_staff_customers' | 'suppliers_admin_only' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'pos_convert_to_workspace_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'private_staff_customers' | 'private_staff_suppliers' | 'suppliers_admin_only' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string },
         options?: { requireRemoteSync?: boolean }
     ) => {
         const workspaceId = user?.workspaceId
@@ -1362,6 +1369,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 store_description: newFeatures.store_description,
                 sales_agent_commission_sheet_type: newFeatures.sales_agent_commission_sheet_type,
                 private_staff_customers: newFeatures.private_staff_customers,
+                private_staff_suppliers: newFeatures.private_staff_suppliers,
                 suppliers_admin_only: newFeatures.suppliers_admin_only,
                 syncStatus: shouldSync ? 'pending' : 'synced',
                 lastSyncedAt: shouldSync ? null : new Date().toISOString(),
