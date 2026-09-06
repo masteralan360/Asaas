@@ -278,6 +278,8 @@ function OrderPrintHeader({
                         position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.logo]}
                         editable={editableComponents}
                         onPositionChange={onComponentPositionChange}
+                        resizable
+                        maxScale={4}
                     >
                         <div className="flex items-start w-full max-w-[180px]">
                             {logoSrc ? (
@@ -322,6 +324,8 @@ function OrderPrintHeader({
                         position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName]}
                         editable={editableComponents}
                         onPositionChange={onComponentPositionChange}
+                        fontSizeEditable
+                        defaultFontSize={20}
                     >
                         <h1 className="text-xl font-bold">{workspaceName || 'Atlas'}</h1>
                     </MovableOrderPrintBlock>
@@ -605,7 +609,8 @@ export function OrderReceiptPrintTemplate({
         wrapperClassName?: string,
         handleSide?: 'left' | 'right',
         minY?: number,
-        pushFlow?: boolean
+        pushFlow?: boolean,
+        options?: { resizable?: boolean; fontSizeEditable?: boolean; defaultFontSize?: number }
     ) => (
         <MovableOrderPrintBlock
             componentKey={key}
@@ -617,6 +622,10 @@ export function OrderReceiptPrintTemplate({
             handleSide={handleSide}
             minY={minY}
             pushFlow={pushFlow}
+            resizable={options?.resizable}
+            maxScale={4}
+            fontSizeEditable={options?.fontSizeEditable}
+            defaultFontSize={options?.defaultFontSize}
         >
             {children}
         </MovableOrderPrintBlock>
@@ -669,7 +678,8 @@ export function OrderReceiptPrintTemplate({
                     logoSrc ? (
                         <img src={logoSrc} alt="Workspace Logo" className="h-16 w-auto object-contain" />
                     ) : null,
-                    'flex flex-1 justify-center'
+                    'flex flex-1 justify-center', undefined, undefined, undefined,
+                    { resizable: true }
                 )}
                 {mp(ORDER_RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, 'QR Code',
                     qrValue ? (
@@ -685,7 +695,7 @@ export function OrderReceiptPrintTemplate({
                 <div className="mb-1 text-center">
                     <h1 className="text-2xl font-bold">{workspaceName || 'Atlas'}</h1>
                     <p className="mt-1 text-xs font-semibold">{title}</p>
-                </div>
+                </div>, undefined, undefined, undefined, undefined, { fontSizeEditable: true, defaultFontSize: 24 }
             )}
 
             <div className="mb-4 grid grid-cols-2 gap-4 text-xs">

@@ -1718,8 +1718,10 @@ export function PartnerOrderItemsPrintTemplate({
                             onPositionChange={onComponentPositionChange}
                             wrapperClassName="inline-block max-w-full"
                             resizable
+                            fontSizeEditable
+                            defaultFontSize={13}
                         >
-                            <div className="font-bold text-[13px]">{workspaceName || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })}</div>
+                            <h1 className="font-bold text-[13px]">{workspaceName || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })}</h1>
                         </MovableOrderPrintBlock>
                         {workspaceDescription?.trim() ? <div className="mt-1 whitespace-pre-wrap">{workspaceDescription.trim()}</div> : null}
                         {data.workspace?.phone?.trim() ? <div>{data.workspace.phone}</div> : null}

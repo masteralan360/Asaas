@@ -100,7 +100,16 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
             onTemplateFieldChange?.(key, value)
         }
         const positionFor = (key: string) => componentPositions?.[key]
-        const mp = (key: string, label: string, children: ReactNode, wrapperClassName?: string, handleSide?: 'left' | 'right', minY?: number, pushFlow?: boolean) => (
+        const mp = (
+            key: string,
+            label: string,
+            children: ReactNode,
+            wrapperClassName?: string,
+            handleSide?: 'left' | 'right',
+            minY?: number,
+            pushFlow?: boolean,
+            options?: { resizable?: boolean; fontSizeEditable?: boolean; defaultFontSize?: number }
+        ) => (
             <MovableOrderPrintBlock
                 componentKey={key}
                 label={label}
@@ -111,6 +120,10 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                 handleSide={handleSide}
                 minY={minY}
                 pushFlow={pushFlow}
+                resizable={options?.resizable}
+                maxScale={4}
+                fontSizeEditable={options?.fontSizeEditable}
+                defaultFontSize={options?.defaultFontSize}
             >
                 {children}
             </MovableOrderPrintBlock>
@@ -162,7 +175,8 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                 className="h-16 w-auto object-contain"
                             />
                         ) : null,
-                        'flex flex-1 justify-center'
+                        'flex flex-1 justify-center', undefined, undefined, undefined,
+                        { resizable: true }
                     )}
                     {mp(RECEIPT_MOVABLE_COMPONENT_KEYS.qrCode, 'QR Code',
                         features.print_qr && effectiveWorkspaceId ? (
@@ -182,7 +196,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     <h1 className="text-2xl font-bold mb-4 text-center">
                         {workspaceName || 'Atlas'}
                     </h1>
-                )}
+                , undefined, undefined, undefined, undefined, { fontSizeEditable: true, defaultFontSize: 24 })}
 
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex flex-col flex-1">

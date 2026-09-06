@@ -6923,6 +6923,7 @@
       "receiveReturn": "Receive return",
       "transferPost": "Transfer post",
       "settlements": "Settlements",
+      "viewPosts": "View posts",
       "recordHandover": "Record handover",
       "addCourier": "Add Courier",
       "editCourier": "Edit courier",
@@ -7017,6 +7018,7 @@
       "cityZone": "City / zone",
       "description": "Description",
       "codAmount": "COD amount",
+      "codChangePendingLock": "Review the pending COD change before editing COD details.",
       "requestedCodAmount": "Requested COD amount",
       "approvedCodAmount": "Approved COD amount",
       "reviewNote": "Review note",
@@ -7095,6 +7097,7 @@
       "dispatch": "You do not have permission to create dispatch manifests."
     },
     "table": {
+      "number": "#",
       "tracking": "Tracking",
       "dateTime": "Date & Time",
       "merchantRecipient": "Merchant / recipient",
@@ -7129,6 +7132,7 @@
       "principal": "Principal",
       "zone": "Zone",
       "contact": "Contact",
+      "posts": "Posts",
       "openPosts": "Open posts",
       "deliveredPosts": "Delivered",
       "outstandingCash": "Outstanding cash",
@@ -7145,6 +7149,7 @@
       "noCourierPosts": "No post settlements recorded for this courier.",
       "noCourierFeePayables": "No courier fee payments are due.",
       "noCourierPayables": "No courier payments are due.",
+      "noPartyPosts": "No {{status}} posts for this party in the selected period.",
       "noBalances": "No open balances.",
       "noSettlements": "No settlements recorded yet."
     },
@@ -7215,6 +7220,12 @@
       "feePayerNote": "Fee charged to {{payer}}"
     },
     "dialogs": {
+      "partyPosts": {
+        "title": "Posts · {{name}}",
+        "description": "Review the available and done posts for {{name}}.",
+        "available": "Available",
+        "done": "Done"
+      },
       "enableMerchant": {
         "title": "Enable delivery merchant",
         "description": "This creates a delivery profile for an existing Business Partner; it does not create a duplicate customer."
@@ -7410,6 +7421,7 @@
       "codChangeAlreadyReviewed": "This COD change request has already been reviewed.",
       "codChangeReviewAdminOnly": "Only an administrator can review a COD change request.",
       "codChangeNoLongerReviewable": "This COD change request can no longer be approved.",
+      "codChangePendingEditBlocked": "Review the pending COD change before changing the post's COD details.",
       "amountExceedsBalance": "Settlement amount cannot exceed the outstanding balance.",
       "partialExplanationRequired": "Explain a partial settlement before confirming it.",
       "courierNotFound": "Courier not found.",

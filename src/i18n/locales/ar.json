@@ -6676,6 +6676,7 @@
       "receiveReturn": "استلام المرتجع",
       "transferPost": "نقل الشحنة",
       "settlements": "التسويات",
+      "viewPosts": "عرض الشحنات",
       "recordHandover": "تسجيل التسليم",
       "addCourier": "إضافة مندوب",
       "editCourier": "تعديل المندوب",
@@ -6770,6 +6771,7 @@
       "cityZone": "المدينة / المنطقة",
       "description": "الوصف",
       "codAmount": "مبلغ الدفع عند الاستلام",
+      "codChangePendingLock": "راجع طلب تغيير مبلغ الدفع عند الاستلام المعلّق قبل تعديل تفاصيل الدفع عند الاستلام.",
       "customerPaymentStatus": "دفع العميل",
       "recipientPayoutAmount": "مبلغ يُدفع للمستلم",
       "recipientPayoutAmountHint": "مبلغ يجب على المندوب دفعه للمستلم. يُخصم من حساب التاجر عند تأكيد التسليم.",
@@ -6848,6 +6850,7 @@
       "dispatch": "ليس لديك صلاحية إنشاء كشوفات التوزيع."
     },
     "table": {
+      "number": "#",
       "tracking": "رقم التتبع",
       "dateTime": "التاريخ والوقت",
       "merchantRecipient": "التاجر / المستلم",
@@ -6882,6 +6885,7 @@
       "principal": "أصل المبلغ",
       "zone": "المنطقة",
       "contact": "جهة الاتصال",
+      "posts": "الشحنات",
       "openPosts": "شحنات مفتوحة",
       "deliveredPosts": "مُسلّمة",
       "outstandingCash": "النقد المستحق",
@@ -6898,6 +6902,7 @@
       "noCourierPosts": "لا توجد تسويات شحنات مسجلة لهذا المندوب.",
       "noCourierFeePayables": "لا توجد دفعات أجور مستحقة للمندوبين.",
       "noCourierPayables": "لا توجد دفعات مستحقة للمندوبين.",
+      "noPartyPosts": "لا توجد شحنات {{status}} لهذا الطرف ضمن الفترة المحددة.",
       "noBalances": "لا توجد أرصدة مفتوحة.",
       "noSettlements": "لم يتم تسجيل تسويات بعد."
     },
@@ -6968,6 +6973,12 @@
       "feePayerNote": "الأجرة محسوبة على {{payer}}"
     },
     "dialogs": {
+      "partyPosts": {
+        "title": "الشحنات · {{name}}",
+        "description": "راجع الشحنات المتاحة والمكتملة لـ {{name}}.",
+        "available": "متاحة",
+        "done": "مكتملة"
+      },
       "enableMerchant": {
         "title": "تفعيل تاجر التوصيل",
         "description": "ينشئ هذا ملف توصيل لشريك أعمال موجود، ولا ينشئ عميلاً مكرراً."
@@ -7163,6 +7174,7 @@
       "codChangeAlreadyReviewed": "تمت مراجعة طلب تغيير مبلغ الدفع عند الاستلام بالفعل.",
       "codChangeReviewAdminOnly": "يمكن للمسؤول فقط مراجعة طلب تغيير مبلغ الدفع عند الاستلام.",
       "codChangeNoLongerReviewable": "لم يعد بالإمكان اعتماد طلب تغيير مبلغ الدفع عند الاستلام.",
+      "codChangePendingEditBlocked": "راجع طلب تغيير مبلغ الدفع عند الاستلام المعلّق قبل تعديل تفاصيل الدفع عند الاستلام للشحنة.",
       "amountExceedsBalance": "لا يمكن أن يتجاوز مبلغ التسوية الرصيد المستحق.",
       "partialExplanationRequired": "اشرح التسوية الجزئية قبل تأكيدها.",
       "courierNotFound": "لم يتم العثور على المندوب.",

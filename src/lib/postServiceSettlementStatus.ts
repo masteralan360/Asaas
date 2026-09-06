@@ -40,6 +40,30 @@ export function isDeliveryShipmentCompleted(
 }
 
 /**
+ * Whether a post has reached a terminal business state for Post Service lists.
+ * Delivered posts still need their settlement obligations cleared; returned
+ * posts remain active until the return is physically received.
+ */
+export function isDeliveryShipmentDone(
+  shipment: Pick<DeliveryShipment, "id" | "status" | "returnReceivedAt"> & Partial<Pick<DeliveryShipment, "customerPaymentStatus">>,
+  courierHandoverStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  merchantPayoutStatuses: ReadonlyMap<string, ShipmentSettlementStatus>,
+  courierReimbursementStatuses: ReadonlyMap<string, ShipmentSettlementStatus> = new Map(),
+  merchantRepaymentStatuses: ReadonlyMap<string, ShipmentSettlementStatus> = new Map(),
+) {
+  if (shipment.status === "cancelled") return true;
+  if (shipment.status === "returned") return Boolean(shipment.returnReceivedAt);
+
+  return isDeliveryShipmentCompleted(
+    shipment,
+    courierHandoverStatuses,
+    merchantPayoutStatuses,
+    courierReimbursementStatuses,
+    merchantRepaymentStatuses,
+  );
+}
+
+/**
  * Counts the monetary settlement obligations that are still active for a post.
  * Each payment model has two possible obligations: cash handover/payout for
  * COD, or courier reimbursement/merchant repayment for prepaid posts.

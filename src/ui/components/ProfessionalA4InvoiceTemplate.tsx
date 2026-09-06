@@ -195,7 +195,13 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         const noteText = data.notes?.trim()
         const [notesFontSize, setNotesFontSize] = useState(0)
 
-        const mp = (key: string, label: string, children: ReactNode, wrapperClassName?: string) => (
+        const mp = (
+            key: string,
+            label: string,
+            children: ReactNode,
+            wrapperClassName?: string,
+            options?: { resizable?: boolean; fontSizeEditable?: boolean; defaultFontSize?: number }
+        ) => (
             <MovableOrderPrintBlock
                 componentKey={key}
                 label={label}
@@ -203,6 +209,10 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                 editable={editableComponents}
                 onPositionChange={onComponentPositionChange}
                 wrapperClassName={wrapperClassName}
+                resizable={options?.resizable}
+                maxScale={4}
+                fontSizeEditable={options?.fontSizeEditable}
+                defaultFontSize={options?.defaultFontSize}
             >
                 {children}
             </MovableOrderPrintBlock>
@@ -269,7 +279,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                            ), undefined, { resizable: true })}
                         </div>
 
                         <div className="w-1/3 flex justify-center pt-1">
@@ -283,7 +293,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                         <div className="w-1/3 flex flex-col items-center text-center">
                             {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.workspaceName, 'Workspace Name', (
                                 <h1 className="text-xl font-bold">{workspaceName || 'Atlas'}</h1>
-                            ))}
+                            ), undefined, { fontSizeEditable: true, defaultFontSize: 20 })}
                             {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.title, 'Title', (
                                 <p className="text-sm font-semibold">{t('sales.print.a4', { defaultValue: 'A4 Invoice' })}</p>
                             ))}

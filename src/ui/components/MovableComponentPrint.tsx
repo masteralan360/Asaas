@@ -1,5 +1,5 @@
 import { Maximize2, Move } from 'lucide-react'
-import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import type { CustomTemplateComponentPosition } from '@/lib/printPreviewEditorStore'
 
 export function MovableOrderPrintBlock({
@@ -16,6 +16,10 @@ export function MovableOrderPrintBlock({
     resizable = false,
     minScale = 0.5,
     maxScale = 2,
+    fontSizeEditable = false,
+    defaultFontSize = 16,
+    minFontSize = 8,
+    maxFontSize = 72,
     children
 }: {
     componentKey: string
@@ -32,20 +36,33 @@ export function MovableOrderPrintBlock({
     resizable?: boolean
     minScale?: number
     maxScale?: number
+    /** Shows the uploaded-text-style font-size control for text components. */
+    fontSizeEditable?: boolean
+    defaultFontSize?: number
+    minFontSize?: number
+    maxFontSize?: number
     children: ReactNode
 }) {
     const resolvedScale = Math.min(maxScale, Math.max(minScale, position?.scale ?? 1))
+    const configuredFontSize = typeof position?.fontSize === 'number' && Number.isFinite(position.fontSize)
+        ? position.fontSize
+        : defaultFontSize
+    const resolvedFontSize = Math.min(maxFontSize, Math.max(minFontSize, configuredFontSize))
     const resolvedPosition = {
         x: position?.x ?? 0,
         y: position?.y ?? 0,
-        scale: resolvedScale
+        scale: resolvedScale,
+        ...(position?.fontSize !== undefined ? { fontSize: position.fontSize } : {})
     }
 
     const updatePosition = (nextPosition: CustomTemplateComponentPosition) => {
         onPositionChange?.(componentKey, {
             x: nextPosition.x,
             y: minY !== undefined ? Math.max(minY, nextPosition.y) : nextPosition.y,
-            scale: Math.min(maxScale, Math.max(minScale, nextPosition.scale ?? resolvedScale))
+            scale: Math.min(maxScale, Math.max(minScale, nextPosition.scale ?? resolvedScale)),
+            ...(nextPosition.fontSize !== undefined || position?.fontSize !== undefined
+                ? { fontSize: nextPosition.fontSize ?? position?.fontSize }
+                : {})
         })
     }
 
@@ -132,24 +149,35 @@ export function MovableOrderPrintBlock({
         window.addEventListener('pointercancel', handlePointerUp)
     }
 
+    // Workspace names need to retain their original layout footprint. Scaling the
+    // heading visually gives the same font-size control without reflowing the
+    // surrounding header or moving neighbouring print components.
+    const blockStyle = {
+        ...(pushFlow ? {
+            position: 'relative',
+            transform: `translate(${resolvedPosition.x}mm, 0) scale(${resolvedScale})`,
+            transformOrigin: 'top left',
+            marginTop: `${resolvedPosition.y}mm`,
+            zIndex: 20
+        } : {
+            transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm) scale(${resolvedScale})`,
+            transformOrigin: 'top left',
+            position: 'relative',
+            zIndex: 20
+        }),
+        ...(fontSizeEditable ? {
+            '--print-component-font-scale': `${resolvedFontSize / Math.max(defaultFontSize, 1)}`
+        } : {})
+    } as CSSProperties & { '--print-component-font-scale'?: string }
+
     return (
         <div
             className={[
                 editable ? 'group/order-block relative outline outline-1 outline-dashed outline-transparent hover:outline-primary/60' : undefined,
+                fontSizeEditable ? '[&_h1]:origin-top [&_h1]:scale-[var(--print-component-font-scale)]' : undefined,
                 wrapperClassName
             ].filter(Boolean).join(' ')}
-            style={pushFlow ? {
-                position: 'relative',
-                transform: `translate(${resolvedPosition.x}mm, 0) scale(${resolvedScale})`,
-                transformOrigin: 'top left',
-                marginTop: `${resolvedPosition.y}mm`,
-                zIndex: 20
-            } : {
-                transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm) scale(${resolvedScale})`,
-                transformOrigin: 'top left',
-                position: 'relative',
-                zIndex: 20
-            }}
+            style={blockStyle}
             data-order-print-component={componentKey}
             data-pdf-keep-together
             data-print-preview-editor-page-break-mode={previewPageBreakMode}
@@ -181,6 +209,29 @@ export function MovableOrderPrintBlock({
                             <Maximize2 className="h-3 w-3" />
                             <span>Scale</span>
                         </button>
+                    ) : null}
+                    {fontSizeEditable ? (
+                        <div
+                            className="absolute -top-10 left-1/2 z-50 flex h-7 -translate-x-1/2 items-center justify-center rounded-md border border-slate-200 bg-white px-1 opacity-0 shadow-sm transition-opacity group-hover/order-block:opacity-100 group-focus-within/order-block:opacity-100"
+                            onPointerDown={(event) => event.stopPropagation()}
+                        >
+                            <input
+                                type="number"
+                                min={minFontSize}
+                                max={maxFontSize}
+                                value={position?.fontSize === '' ? '' : (position?.fontSize ?? defaultFontSize)}
+                                onChange={(event) => {
+                                    const value = event.target.value
+                                    updatePosition({
+                                        ...resolvedPosition,
+                                        fontSize: value === '' ? '' : parseInt(value, 10)
+                                    })
+                                }}
+                                className="h-5 w-12 bg-transparent text-center text-xs font-medium text-slate-700 outline-none"
+                                aria-label={`Font size for ${label}`}
+                            />
+                            <span className="pointer-events-none select-none pe-1 text-[10px] font-medium text-slate-400">px</span>
+                        </div>
                     ) : null}
                 </>
             ) : null}

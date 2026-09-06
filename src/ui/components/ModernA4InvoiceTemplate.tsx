@@ -141,7 +141,13 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
         const BRAND_COLOR = '#197fe6'
 
         const positionFor = (key: string) => componentPositions?.[key]
-        const mp = (key: string, label: string, wrapperClassName?: string, children?: React.ReactNode) => (
+        const mp = (
+            key: string,
+            label: string,
+            wrapperClassName?: string,
+            children?: React.ReactNode,
+            options?: { resizable?: boolean; fontSizeEditable?: boolean; defaultFontSize?: number }
+        ) => (
             <MovableOrderPrintBlock
                 componentKey={key}
                 label={label}
@@ -149,6 +155,10 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 editable={editableComponents}
                 onPositionChange={onComponentPositionChange}
                 wrapperClassName={wrapperClassName}
+                resizable={options?.resizable}
+                maxScale={4}
+                fontSizeEditable={options?.fontSizeEditable}
+                defaultFontSize={options?.defaultFontSize}
             >
                 {children}
             </MovableOrderPrintBlock>
@@ -250,10 +260,12 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             <div className="w-full h-full bg-slate-100 rounded-xl flex flex-col items-center justify-center border border-slate-200 text-slate-400 overflow-hidden">
                                 <span className="text-[10px] font-bold uppercase tracking-wider">Logo Here</span>
                             </div>
-                        )
+                        ),
+                        { resizable: true }
                     )}
                     {mp(MODERN_A4_MOVABLE_COMPONENT_KEYS.workspaceName, 'Workspace Name', 'flex-1 text-center px-4 pt-1',
-                        <h1 className="text-2xl font-extrabold text-primary tracking-tight mb-1">{workspaceName || 'Atlas'}</h1>
+                        <h1 className="text-2xl font-extrabold text-primary tracking-tight mb-1">{workspaceName || 'Atlas'}</h1>,
+                        { fontSizeEditable: true, defaultFontSize: 24 }
                     )}
                     {mp(MODERN_A4_MOVABLE_COMPONENT_KEYS.qrCode, 'QR Code', 'w-16 flex flex-col items-end gap-1 flex-shrink-0',
                         <>

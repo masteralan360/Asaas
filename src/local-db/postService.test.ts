@@ -1175,6 +1175,25 @@ describe("Post Service COD accounting", () => {
       status: "delivered",
       actorAgentId: deliveryCourier.id,
     })).rejects.toThrow("pending COD change");
+    const assignedShipment = await db.delivery_shipments.get(shipment.id);
+    await expect(adminEditAndRedispatchDeliveryShipment(WORKSPACE_ID, {
+      operationId: crypto.randomUUID(),
+      shipmentId: shipment.id,
+      expectedVersion: assignedShipment!.version,
+      actorRole: "admin",
+      shipment: {
+        merchantProfileId: profile.id,
+        recipientPhone: "07500000000",
+        recipientAddress: "Baghdad",
+        currency: "iqd",
+        codAmount: 70,
+        customerPaymentStatus: "cash_on_delivery",
+        deliveryFee: 10,
+        feePayer: "merchant",
+      },
+      agentId: deliveryCourier.id,
+    })).rejects.toThrow("Review the pending COD change before changing the post COD details");
+    expect((await db.delivery_shipments.get(shipment.id))?.codAmount).toBe(100);
 
     const reviewed = await reviewDeliveryShipmentCodAdjustment(request.id, {
       reviewerUserId: crypto.randomUUID(),
@@ -1197,6 +1216,49 @@ describe("Post Service COD accounting", () => {
       expect.objectContaining({ kind: "courier_collection", shipmentId: shipment.id, amount: 65 }),
       expect.objectContaining({ kind: "merchant_cod_payable", shipmentId: shipment.id, amount: 65 }),
     ]));
+  });
+
+  it("finalizes a legacy COD request when the post already has the approved COD", async () => {
+    const merchant = partner(crypto.randomUUID());
+    const requesterUserId = crypto.randomUUID();
+    const deliveryCourier = { ...courier(crypto.randomUUID()), linkedUserId: requesterUserId };
+    await db.business_partners.put(merchant);
+    await db.agents.put(deliveryCourier);
+    const profile = await createDeliveryMerchantProfile(WORKSPACE_ID, { businessPartnerId: merchant.id, defaultFeeAmount: 10 });
+    const shipment = await createDeliveryShipment(WORKSPACE_ID, {
+      merchantProfileId: profile.id,
+      recipientPhone: "07500000000",
+      recipientAddress: "Baghdad",
+      currency: "iqd",
+      codAmount: 100,
+    });
+    await createDeliveryRun(WORKSPACE_ID, { agentId: deliveryCourier.id, shipmentIds: [shipment.id] });
+    const request = await requestDeliveryShipmentCodAdjustment(WORKSPACE_ID, {
+      shipmentId: shipment.id,
+      requesterUserId,
+      requesterAgentId: deliveryCourier.id,
+      requestedCodAmount: 70,
+      reason: "Legacy admin correction",
+    });
+    const assignedShipment = await db.delivery_shipments.get(shipment.id);
+    const alreadyAppliedAt = new Date().toISOString();
+    await db.delivery_shipments.put({
+      ...assignedShipment!,
+      codAmount: 70,
+      updatedAt: alreadyAppliedAt,
+      version: assignedShipment!.version + 1,
+    });
+
+    const reviewed = await reviewDeliveryShipmentCodAdjustment(request.id, {
+      reviewerUserId: crypto.randomUUID(),
+      decision: "approved",
+      approvedCodAmount: 70,
+      reviewNote: "Confirmed after the correction was applied.",
+    });
+
+    expect(reviewed.request).toMatchObject({ status: "approved", reviewedCodAmount: 70 });
+    expect(reviewed.shipment).toBeNull();
+    expect(await db.delivery_shipments.get(shipment.id)).toMatchObject({ codAmount: 70, version: assignedShipment!.version + 1 });
   });
 
   it("allows a courier to submit a COD change request without a written reason", async () => {

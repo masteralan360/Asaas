@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DeliveryLedgerEntry } from "@/local-db";
 
-import { activeDeliveryShipmentSettlementObligationCount, courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
+import { activeDeliveryShipmentSettlementObligationCount, courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementOutstandingByParty, courierReimbursementOutstandingByShipment, courierReimbursementPaidByShipment, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, isDeliveryShipmentCompleted, isDeliveryShipmentDone, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentOutstandingByParty, merchantRepaymentOutstandingByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty } from "./postServiceSettlementStatus";
 
 const NOW = "2026-08-17T10:00:00.000Z";
 
@@ -44,6 +44,22 @@ describe("isDeliveryShipmentCompleted", () => {
     expect(isDeliveryShipmentCompleted(prepaidShipment, new Map(), new Map(), settled, settled)).toBe(true);
     expect(isDeliveryShipmentCompleted(prepaidShipment, new Map(), new Map(), partial, settled)).toBe(false);
     expect(isDeliveryShipmentCompleted({ ...prepaidShipment, status: "assigned" }, new Map(), new Map(), settled, settled)).toBe(false);
+  });
+});
+
+describe("isDeliveryShipmentDone", () => {
+  it("uses each post status and settlement state to split active and done posts", () => {
+    const settled = new Map([["settled-post", "settled" as const]]);
+    const partial = new Map([["partial-post", "partial" as const]]);
+
+    expect(isDeliveryShipmentDone({ id: "received-post", status: "received" }, settled, settled)).toBe(false);
+    expect(isDeliveryShipmentDone({ id: "assigned-post", status: "assigned" }, settled, settled)).toBe(false);
+    expect(isDeliveryShipmentDone({ id: "postponed-post", status: "postponed" }, settled, settled)).toBe(false);
+    expect(isDeliveryShipmentDone({ id: "partial-post", status: "delivered" }, partial, settled)).toBe(false);
+    expect(isDeliveryShipmentDone({ id: "settled-post", status: "delivered" }, settled, settled)).toBe(true);
+    expect(isDeliveryShipmentDone({ id: "return-pending", status: "returned", returnReceivedAt: null }, settled, settled)).toBe(false);
+    expect(isDeliveryShipmentDone({ id: "return-received", status: "returned", returnReceivedAt: NOW }, settled, settled)).toBe(true);
+    expect(isDeliveryShipmentDone({ id: "cancelled-post", status: "cancelled" }, settled, settled)).toBe(true);
   });
 });
 

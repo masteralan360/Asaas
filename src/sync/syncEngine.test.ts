@@ -1245,7 +1245,7 @@ describe('fullSync error reporting', () => {
         expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
     })
 
-    it('retries a network-failed sale return with stable return and line ids', async () => {
+    it('retries a fractional sale return with its exact quantity and stable return and line ids', async () => {
         dbMock.rows.push({
             id: 'mutation-return-1',
             workspaceId: 'workspace-1',
@@ -1259,7 +1259,7 @@ describe('fullSync error reporting', () => {
                 p_items: [{
                     id: 'return-line-1',
                     sale_item_id: 'sale-item-1',
-                    quantity: 2
+                    quantity: 1.5
                 }],
                 p_return_reason: 'Damaged',
                 p_refund_method: null
@@ -1278,7 +1278,7 @@ describe('fullSync error reporting', () => {
             p_items: [{
                 id: 'return-line-1',
                 sale_item_id: 'sale-item-1',
-                quantity: 2
+                quantity: 1.5
             }],
             p_return_reason: 'Damaged',
             p_refund_method: null

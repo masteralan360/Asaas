@@ -1740,6 +1740,8 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
                     editable={editableComponents}
                     onPositionChange={onComponentPositionChange}
                     wrapperClassName="shrink-0"
+                    fontSizeEditable
+                    defaultFontSize={18}
                 >
                     <h1
                         data-rtl-workspace-name={workspaceNameDirection === 'rtl' ? 'true' : undefined}
@@ -1759,6 +1761,8 @@ export function SalesHistoryAtlasStandardInvoiceTemplate({
                     onPositionChange={onComponentPositionChange}
                     wrapperClassName="shrink-0"
                     handleSide="left"
+                    resizable
+                    maxScale={4}
                 >
                     {logoSrc ? (
                         <img src={logoSrc} alt={labels.workspaceLogo} className="max-h-[11mm] max-w-[24mm] object-contain" />

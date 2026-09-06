@@ -518,6 +518,8 @@ export function PartnerDetailsPrintTemplate({
                             editable={editableComponents}
                             onPositionChange={onComponentPositionChange}
                             wrapperClassName="inline-block"
+                            resizable
+                            maxScale={4}
                         >
                             {logoSrc ? (
                                 <img
@@ -540,6 +542,8 @@ export function PartnerDetailsPrintTemplate({
                             editable={editableComponents}
                             onPositionChange={onComponentPositionChange}
                             wrapperClassName="inline-block"
+                            fontSizeEditable
+                            defaultFontSize={20}
                         >
                             <h1 className="text-xl font-bold">{workspaceName || 'Atlas'}</h1>
                         </MovableOrderPrintBlock>

@@ -1723,6 +1723,18 @@ export async function adminEditAndRedispatchDeliveryShipment(
     deliveryFee: positiveMoney(input.shipment.deliveryFee ?? profile.defaultFeeAmount, "Delivery fee"),
     feePayer: input.shipment.feePayer ?? profile.defaultFeePayer,
   };
+  const pendingCodAdjustment = await db.delivery_shipment_cod_adjustment_requests
+    .where("[workspaceId+shipmentId+status]")
+    .equals([workspaceId, original.id, "pending"])
+    .and((request) => !request.isDeleted)
+    .first();
+  if (pendingCodAdjustment && (
+    edit.codAmount !== original.codAmount
+    || edit.currency !== original.currency
+    || edit.customerPaymentStatus !== original.customerPaymentStatus
+  )) {
+    throw new Error("Review the pending COD change before changing the post COD details");
+  }
   const changedFields = (Object.keys(edit) as Array<keyof DeliveryShipmentRedispatchEdit>)
     .filter((key) => original[key] !== edit[key])
     .map((key) => key.replace(/([A-Z])/g, " $1").toLowerCase());
@@ -2138,20 +2150,24 @@ export async function reviewDeliveryShipmentCodAdjustment(
   if (!shipment || shipment.isDeleted || shipment.workspaceId !== originalRequest.workspaceId) {
     throw new Error("Shipment not found");
   }
-  if (input.decision === "approved" && (
-    shipment.customerPaymentStatus !== "cash_on_delivery"
-    || !(["assigned", "postponed"] as DeliveryShipmentStatus[]).includes(shipment.status)
-    || Math.abs(shipment.codAmount - originalRequest.originalCodAmount) > 0.000001
-  )) {
-    throw new Error("This COD change request can no longer be approved");
-  }
-
   const reviewNote = normalizeText(input.reviewNote);
   const now = new Date().toISOString();
 
   const approvedCodAmount = input.decision === "approved"
     ? positiveMoney(input.approvedCodAmount ?? NaN, "Approved COD amount", false)
     : null;
+  const shipmentAlreadyHasApprovedCod = input.decision === "approved"
+    && Math.abs(shipment.codAmount - approvedCodAmount!) <= 0.000001;
+  if (input.decision === "approved" && (
+    shipment.customerPaymentStatus !== "cash_on_delivery"
+    || !(["assigned", "postponed"] as DeliveryShipmentStatus[]).includes(shipment.status)
+    || (
+      Math.abs(shipment.codAmount - originalRequest.originalCodAmount) > 0.000001
+      && !shipmentAlreadyHasApprovedCod
+    )
+  )) {
+    throw new Error("This COD change request can no longer be approved");
+  }
 
   const reviewedRequest: DeliveryShipmentCodAdjustmentRequest = {
     ...originalRequest,
@@ -2164,7 +2180,7 @@ export async function reviewDeliveryShipmentCodAdjustment(
     version: originalRequest.version + 1,
     ...getSyncMetadata(originalRequest.workspaceId, now),
   };
-  const adjustedShipment: DeliveryShipment | null = input.decision === "approved"
+  const adjustedShipment: DeliveryShipment | null = input.decision === "approved" && !shipmentAlreadyHasApprovedCod
     ? {
       ...shipment,
       codAmount: approvedCodAmount!,

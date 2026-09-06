@@ -111,6 +111,8 @@ export type CustomTemplateComponentPosition = {
     y: number
     /** Visual scale for movable print components. Older saved layouts omit this and render at 1×. */
     scale?: number
+    /** Optional font size for editable text components. Older saved layouts keep their template default. */
+    fontSize?: number | ''
 }
 
 export type CustomTemplateBackground = {
