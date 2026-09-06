@@ -1,4 +1,8 @@
 retry sync
 icon
+Price books selector order form and quick order
 usage calculator
 remove R2 Print only
+system-wide integrity check
+account switch
+Fix SQLITE loading

@@ -246,6 +246,87 @@ function resolveRenderScale(containerPixelWidth: number) {
     return Math.min(MAX_RENDER_SCALE, Math.max(RENDER_SCALE, dynamicScale))
 }
 
+/**
+ * A template watermark is normally an absolutely positioned image. Once the
+ * template flows beyond A4, centering that image centers it in the complete
+ * document instead of in each PDF page. During A4 capture we know the actual
+ * slice starts, so replace the single source watermark with one clipped layer
+ * per slice. Keeping this here also covers every native template that opts in
+ * with `data-atlas-standard-background`.
+ */
+function repeatA4WatermarksForPages(
+    container: HTMLElement,
+    pageStartsMm: readonly number[],
+    widthMm: number
+) {
+    const watermarks = Array.from(
+        container.querySelectorAll<HTMLImageElement>(
+            '[data-atlas-standard-background]:not([data-pdf-repeated-watermark])'
+        )
+    )
+    if (watermarks.length === 0 || pageStartsMm.length === 0) {
+        return () => undefined
+    }
+
+    const containerRect = container.getBoundingClientRect()
+    if (containerRect.width <= 0) {
+        return () => undefined
+    }
+
+    const pixelsToMm = widthMm / containerRect.width
+    const restoreWatermarks: Array<() => void> = []
+
+    watermarks.forEach((watermark) => {
+        const host = watermark.parentElement
+        if (!(host instanceof HTMLElement)) return
+
+        const hostRect = host.getBoundingClientRect()
+        const hostTopMm = (hostRect.top - containerRect.top) * pixelsToMm
+        const originalVisibility = watermark.style.visibility
+        const layers: HTMLElement[] = []
+
+        watermark.style.visibility = 'hidden'
+
+        pageStartsMm.forEach((pageStartMm, pageIndex) => {
+            const layer = document.createElement('div')
+            layer.dataset.pdfRepeatedWatermarkLayer = String(pageIndex + 1)
+            Object.assign(layer.style, {
+                position: 'absolute',
+                left: '0',
+                top: `${pageStartMm - hostTopMm}mm`,
+                width: '100%',
+                height: `${A4_HEIGHT_MM}mm`,
+                overflow: 'hidden',
+                pointerEvents: 'none',
+                zIndex: '-10'
+            })
+
+            const pageWatermark = watermark.cloneNode(false) as HTMLImageElement
+            pageWatermark.removeAttribute('id')
+            pageWatermark.dataset.pdfRepeatedWatermark = 'true'
+            Object.assign(pageWatermark.style, {
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 'auto',
+                visibility: 'visible'
+            })
+
+            layer.appendChild(pageWatermark)
+            host.appendChild(layer)
+            layers.push(layer)
+        })
+
+        restoreWatermarks.push(() => {
+            watermark.style.visibility = originalVisibility
+            layers.forEach((layer) => layer.remove())
+        })
+    })
+
+    return () => restoreWatermarks.forEach((restore) => restore())
+}
+
 async function renderTemplateCanvasSlice(
     container: HTMLElement,
     toCanvas: (node: HTMLElement, options: Record<string, unknown>) => Promise<HTMLCanvasElement>,
@@ -421,24 +502,33 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
             renderScale,
             Math.max(1, Math.floor(MAX_CANVAS_DIMENSION_PX / containerPixelWidth))
         )
+        const restorePageWatermarks = repeatA4WatermarksForPages(container, pageStarts, widthMm)
 
-        for (let pageIndex = 0; pageIndex < pageStarts.length; pageIndex += 1) {
-            const pageOffset = pageStarts[pageIndex]
-            const pageEnd = pageStarts[pageIndex + 1] || heightMm
-            const pageOffsetPx = Math.floor(pageOffset / pxToMm)
-            const pageHeightPx = Math.max(1, Math.ceil((pageEnd / pxToMm)) - pageOffsetPx)
+        try {
+            // Ensure html-to-image observes the temporary page watermark layers
+            // before it clones the source for the first canvas slice.
+            await new Promise(requestAnimationFrame)
 
-            const pageSlice = await renderTemplateCanvasSlice(
-                container,
-                toCanvas,
-                containerPixelWidth,
-                pageHeightPx,
-                pageOffsetPx,
-                Math.min(safeRenderScale, Math.max(1, Math.floor(MAX_CANVAS_DIMENSION_PX / pageHeightPx)))
-            )
+            for (let pageIndex = 0; pageIndex < pageStarts.length; pageIndex += 1) {
+                const pageOffset = pageStarts[pageIndex]
+                const pageEnd = pageStarts[pageIndex + 1] || heightMm
+                const pageOffsetPx = Math.floor(pageOffset / pxToMm)
+                const pageHeightPx = Math.max(1, Math.ceil((pageEnd / pxToMm)) - pageOffsetPx)
 
-            pageCanvases.push(pageSlice)
-            pageHeightsMm.push(pageHeightPx * pxToMm)
+                const pageSlice = await renderTemplateCanvasSlice(
+                    container,
+                    toCanvas,
+                    containerPixelWidth,
+                    pageHeightPx,
+                    pageOffsetPx,
+                    Math.min(safeRenderScale, Math.max(1, Math.floor(MAX_CANVAS_DIMENSION_PX / pageHeightPx)))
+                )
+
+                pageCanvases.push(pageSlice)
+                pageHeightsMm.push(pageHeightPx * pxToMm)
+            }
+        } finally {
+            restorePageWatermarks()
         }
 
         root.unmount()

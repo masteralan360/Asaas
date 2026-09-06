@@ -129,6 +129,82 @@ function getPreviewPageBreakAnchor(
         : movableComponent
 }
 
+/**
+ * Native templates keep their watermark inside an opaque white document root.
+ * The editor's page cards therefore cannot own the watermark themselves. Hide
+ * the single document-height image and temporarily add a clipped, centered
+ * copy inside that root for each visible A4 page instead.
+ */
+function repeatPreviewA4Watermarks(
+    stage: HTMLElement,
+    contentLayer: HTMLElement,
+    pageCount: number,
+    pageHeightMm: number,
+    pageWidthMm: number
+) {
+    const watermarks = Array.from(
+        contentLayer.querySelectorAll<HTMLImageElement>(
+            '[data-atlas-standard-background]:not([data-print-preview-repeated-watermark])'
+        )
+    )
+    if (watermarks.length === 0 || pageCount < 1) return () => undefined
+
+    const stageRect = stage.getBoundingClientRect()
+    if (stageRect.width <= 0) return () => undefined
+
+    const pixelsToMm = pageWidthMm / stageRect.width
+    const restoreWatermarks: Array<() => void> = []
+
+    watermarks.forEach((watermark) => {
+        const host = watermark.parentElement
+        if (!(host instanceof HTMLElement)) return
+
+        const hostTopMm = (host.getBoundingClientRect().top - stageRect.top) * pixelsToMm
+        const originalVisibility = watermark.style.visibility
+        const layers: HTMLElement[] = []
+
+        watermark.style.visibility = 'hidden'
+
+        Array.from({ length: pageCount }).forEach((_, pageIndex) => {
+            const layer = document.createElement('div')
+            layer.dataset.printPreviewWatermarkLayer = String(pageIndex + 1)
+            Object.assign(layer.style, {
+                position: 'absolute',
+                left: '0',
+                top: `${pageIndex * pageHeightMm - hostTopMm}mm`,
+                width: '100%',
+                height: `${pageHeightMm}mm`,
+                overflow: 'hidden',
+                pointerEvents: 'none',
+                zIndex: '-10'
+            })
+
+            const pageWatermark = watermark.cloneNode(false) as HTMLImageElement
+            pageWatermark.removeAttribute('id')
+            pageWatermark.dataset.printPreviewRepeatedWatermark = 'true'
+            Object.assign(pageWatermark.style, {
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 'auto',
+                visibility: 'visible'
+            })
+
+            layer.appendChild(pageWatermark)
+            host.appendChild(layer)
+            layers.push(layer)
+        })
+
+        restoreWatermarks.push(() => {
+            watermark.style.visibility = originalVisibility
+            layers.forEach((layer) => layer.remove())
+        })
+    })
+
+    return () => restoreWatermarks.forEach((restore) => restore())
+}
+
 const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -810,6 +886,27 @@ export function PrintPreviewEditorPage() {
         templateShapes,
         templateTexts,
         syncPreviewPageBreaks
+    ])
+
+    useLayoutEffect(() => {
+        const stage = templateStageRef.current
+        const contentLayer = templateContentLayerRef.current
+        if (!stage || !contentLayer || !templateBackground || !isFixedPageTemplatePreview) return
+
+        return repeatPreviewA4Watermarks(
+            stage,
+            contentLayer,
+            templatePageCount,
+            templatePageHeight || A4_PAGE_HEIGHT_MM,
+            templatePageWidth
+        )
+    }, [
+        isFixedPageTemplatePreview,
+        templateBackground,
+        templatePageCount,
+        templatePageHeight,
+        templatePageWidth,
+        templatePreview
     ])
 
     useEffect(() => {
@@ -1667,7 +1764,7 @@ export function PrintPreviewEditorPage() {
                                     {Array.from({ length: templatePageCount }).map((_, pageIndex) => (
                                         <div
                                             key={`template-preview-page-${pageIndex}`}
-                                            className="absolute left-0 z-0 bg-white shadow-sm ring-1 ring-slate-200"
+                                            className="absolute left-0 z-0 overflow-hidden bg-white shadow-sm ring-1 ring-slate-200"
                                             style={{
                                                 top: `${isFixedPageTemplatePreview ? pageIndex * templatePageHeight : 0}mm`,
                                                 width: `${templatePageWidth}mm`,
