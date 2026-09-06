@@ -1,4 +1,4 @@
 retry sync
 icon
 usage calculator
-draft quick pos
+remove R2 Print only
