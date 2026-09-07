@@ -10,7 +10,12 @@ type AuthSessionManagerOptions = {
 
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000
 
-function isRateLimitedError(error: unknown) {
+/**
+ * Detect the error shape returned by Supabase Auth when a refresh request is
+ * throttled. Callers use this to preserve a recoverable local session instead
+ * of treating a temporary 429 as a revoked login.
+ */
+export function isSupabaseRateLimitedError(error: unknown) {
   if (!error) return false
 
   if (typeof error === 'object') {
@@ -26,7 +31,7 @@ function isRateLimitedError(error: unknown) {
 
 function isRateLimitedRefreshResult(value: unknown) {
   if (!value || typeof value !== 'object') return false
-  return isRateLimitedError((value as { error?: unknown }).error)
+  return isSupabaseRateLimitedError((value as { error?: unknown }).error)
 }
 
 /**
@@ -73,7 +78,7 @@ export function createAuthSessionManager<RefreshResult, SignOutResult>(
           return result
         },
         (error) => {
-          if (isRateLimitedError(error)) {
+          if (isSupabaseRateLimitedError(error)) {
             rateLimitUntil = now() + rateLimitCooldownMs
             lastRateLimitedResult = null
             lastRateLimitedError = error

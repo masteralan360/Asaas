@@ -5,6 +5,7 @@ import {
   refreshSupabaseSession,
   signOutCurrentSupabaseSession
 } from './supabase'
+import { isSupabaseRateLimitedError } from './sessionManager'
 import type { User, Session } from '@supabase/supabase-js'
 import type { CashierShiftAssignment, CashierShiftOccurrence, UserRole, WorkspaceDataMode } from '@/local-db/models'
 import { connectionManager } from '@/lib/connectionManager'
@@ -579,12 +580,26 @@ function isRecoveryEligibleError(error: unknown) {
   )
 }
 
-function canUseRecoveryBridge(error?: unknown) {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return true
-  }
+function isBrowserOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
 
-  return isRecoveryEligibleError(error)
+/**
+ * A cached cloud profile is not proof of authentication while the device is
+ * online. Restoring it after a timeout or a 429 lets background requests run
+ * without a bearer token, which then makes the app show a fallback workspace.
+ *
+ * Local/demo workspaces can always run from their local source of truth. Any
+ * cached workspace may be used while the browser is definitely offline.
+ */
+function canRestoreWithoutSupabaseSession(recovered: AuthUser | null | undefined) {
+  if (!recovered?.workspaceId) return false
+
+  return recovered.workspaceMode === 'local' || recovered.workspaceMode === 'demo' || isBrowserOffline()
+}
+
+function shouldKeepRecoveryForTemporaryAuthFailure(error: unknown) {
+  return isSupabaseRateLimitedError(error) || isRecoveryEligibleError(error)
 }
 
 function refreshOfflineLeaseFromSession(user: AuthUser, session: Session | null | undefined, source: string) {
@@ -635,7 +650,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true
 
-    const processAuthStateChange = async (session: Session | null, taskId: number) => {
+    const processAuthStateChange = async (event: string, session: Session | null, taskId: number) => {
       if (!isMounted || taskId !== authStateTaskRef.current) return
 
       setSession(session)
@@ -643,16 +658,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!parsedUser) {
         const recovered = getRecoveredUser()
-        if (
-          !explicitSignOutRef.current &&
-          (recovered?.workspaceMode === 'local' || recovered?.workspaceMode === 'demo') &&
-          recovered.workspaceId
-        ) {
+        if (!explicitSignOutRef.current && recovered && canRestoreWithoutSupabaseSession(recovered)) {
           setUser(recovered)
           writeWorkspaceModeSnapshot({
             workspaceId: recovered.workspaceId,
             dataMode: recovered.workspaceMode
           })
+          setIsLoading(false)
+          return
+        }
+
+        // Supabase can emit INITIAL_SESSION with a null session while its
+        // automatic refresh is still being throttled. Keep recovery metadata
+        // for a later offline session or fresh sign-in, but do not treat it as
+        // an authenticated cloud session.
+        if (event === 'INITIAL_SESSION') {
+          setUser(null)
           setIsLoading(false)
           return
         }
@@ -698,14 +719,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`[Auth] State change: ${_event}`, session?.user?.id)
       const taskId = ++authStateTaskRef.current
       window.setTimeout(() => {
-        void processAuthStateChange(session, taskId)
+        void processAuthStateChange(_event, session, taskId)
       }, 0)
     })
 
     const fetchInitialSession = async () => {
       try {
         const {
-          data: { session }
+          data: { session },
+          error: sessionError
         } = (await runSupabaseAction('auth.initialSession', () => supabase.auth.getSession(), {
           timeoutMs: 8000,
           platform: 'all'
@@ -725,34 +747,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           const recovered = getRecoveredUser()
 
-          if (recovered?.workspaceMode === 'demo' && recovered.workspaceId) {
-            setUser(recovered)
-            writeWorkspaceModeSnapshot({
-              workspaceId: recovered.workspaceId,
-              dataMode: 'demo'
-            })
-          } else if (recovered?.workspaceMode === 'local' && recovered.workspaceId) {
-            setUser(recovered)
-            writeWorkspaceModeSnapshot({
-              workspaceId: recovered.workspaceId,
-              dataMode: 'local'
-            })
+          if (canRestoreWithoutSupabaseSession(recovered)) {
+            const maxAge = 7 * 24 * 60 * 60 * 1000
+            const isStale = recovered?.recoveredAt && Date.now() - recovered.recoveredAt > maxAge
+
+            if (recovered && !isStale) {
+              console.log('[Auth] Restoring offline/local session from recovery bridge...')
+              setUser(recovered)
+              writeWorkspaceModeSnapshot({
+                workspaceId: recovered.workspaceId,
+                dataMode: recovered.workspaceMode
+              })
+            } else if (isStale) {
+              console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
+              clearRecovery()
+            }
           } else {
             await clearStoredDemoWorkspacesBestEffort()
-            if (canUseRecoveryBridge()) {
-              if (recovered) {
-                const maxAge = 7 * 24 * 60 * 60 * 1000
-                const isStale = recovered.recoveredAt && Date.now() - recovered.recoveredAt > maxAge
-
-                if (!isStale) {
-                  console.log('[Auth] Restoring session from recovery bridge...')
-                  setUser(recovered)
-                } else {
-                  console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
-                  clearRecovery()
-                }
-              }
-            } else {
+            if (!shouldKeepRecoveryForTemporaryAuthFailure(sessionError)) {
               clearRecovery()
             }
           }
@@ -760,8 +772,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.error('[Auth] Initial session fetch failed:', e)
         const recoveredUser = getRecoveredUser()
-        let allowRecovery =
-          canUseRecoveryBridge(e) || recoveredUser?.workspaceMode === 'local' || recoveredUser?.workspaceMode === 'demo'
+        let allowRecovery = canRestoreWithoutSupabaseSession(recoveredUser)
+        let keepRecovery = shouldKeepRecoveryForTemporaryAuthFailure(e)
 
         // Second chance: try refreshSession directly (different code path)
         try {
@@ -784,19 +796,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             refreshOfflineLeaseFromSession(effectiveUser, refreshFallbackSession, 'auth-refresh-fallback')
             return // Success — skip recovery bridge
           }
+
+          keepRecovery ||= shouldKeepRecoveryForTemporaryAuthFailure(error)
         } catch (refreshErr) {
           console.warn('[Auth] refreshSession also failed:', refreshErr)
-          allowRecovery =
-            canUseRecoveryBridge(refreshErr) ||
-            recoveredUser?.workspaceMode === 'local' ||
-            recoveredUser?.workspaceMode === 'demo'
-
-          if (!allowRecovery) {
-            clearRecovery()
-          }
+          allowRecovery = canRestoreWithoutSupabaseSession(recoveredUser)
+          keepRecovery ||= shouldKeepRecoveryForTemporaryAuthFailure(refreshErr)
         }
 
-        if (!allowRecovery) {
+        if (!allowRecovery && !keepRecovery) {
           clearRecovery()
         }
 
@@ -861,6 +869,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (userRef.current) {
               refreshOfflineLeaseFromSession(userRef.current, verifiedSession, 'auth-wake-refresh')
             }
+          }
+
+          if (isSupabaseRateLimitedError(refreshError)) {
+            // Do not turn a temporary throttle into a logout/fallback-workspace
+            // loop. The user can retry a password login once Auth accepts
+            // requests again, while their local recovery data remains intact.
+            setSession(null)
+            console.warn('[Auth] Session refresh is rate-limited; waiting for a fresh sign-in.')
+            return
           }
 
           if (refreshError || !refreshData.session) {
@@ -1024,7 +1041,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }),
         { timeoutMs: 15000, platform: 'all' }
       )) as any
-      if (!error && data?.user) {
+      if (!error && data?.user && data?.session) {
         const enriched = await enrichUser(parseUserFromSupabase(data.user))
         refreshOfflineLeaseFromSession(enriched, data.session, 'auth-sign-in')
         if (enriched.workspaceMode === 'local' && enriched.workspaceId) {
@@ -1068,7 +1085,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         saveRecovery(enriched)
       }
 
-      return { error: error as Error | null }
+      return {
+        error: (error as Error | null) ?? new Error(i18n.t('auth.signInIncomplete'))
+      }
     } catch (err: any) {
       console.error('[Auth] Sign in failed/timeout:', err)
       return { error: err }
@@ -1515,7 +1534,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated: !!session || canRestoreWithoutSupabaseSession(user),
         isKicked,
         isSupabaseConfigured,
         signIn,

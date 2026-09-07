@@ -2787,6 +2787,7 @@
     "createAccount": "Create your account",
     "signingIn": "Signing in...",
     "signIn": "Sign in",
+    "signInIncomplete": "Sign-in did not complete. Please try again.",
     "tryDemo": "Try Demo",
     "fullName": "Full Name",
     "name": "Name",
