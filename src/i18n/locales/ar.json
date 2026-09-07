@@ -6712,6 +6712,7 @@
       "playback": "تشغيل التسجيل",
       "requestChange": "طلب تغيير",
       "reviewChange": "مراجعة التغيير",
+      "reviewChangeTo": "مراجعة التغيير إلى {{amount}}",
       "sendChangeRequest": "إرسال الطلب",
       "approveChange": "اعتماد التغيير",
       "rejectChange": "رفض التغيير"
@@ -6930,7 +6931,8 @@
       "awaitingReceipt": "بانتظار الاستلام",
       "returnHistory": "سجل المرتجعات",
       "cancelled": "ملغى",
-      "requestChange": "طلب تغيير"
+      "requestChange": "طلب تغيير",
+      "requestChangeTo": "طلب تغيير إلى {{amount}}"
     },
     "settlementStatus": {
       "handedOver": "تم التسليم",

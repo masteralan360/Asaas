@@ -145,6 +145,28 @@ function shipmentStatusLabel(t: TFunction, status: DeliveryShipmentStatus) {
   return t(`postService.status.${status}`);
 }
 
+function pendingCodAdjustmentLabel(
+  t: TFunction,
+  request: DeliveryShipmentCodAdjustmentRequest,
+  shipment: DeliveryShipment,
+  iqdPreference: "IQD" | "د.ع",
+) {
+  return t("postService.status.requestChangeTo", {
+    amount: formatCurrency(request.requestedCodAmount, shipment.currency, iqdPreference),
+  });
+}
+
+function pendingCodAdjustmentReviewLabel(
+  t: TFunction,
+  request: DeliveryShipmentCodAdjustmentRequest,
+  shipment: DeliveryShipment,
+  iqdPreference: "IQD" | "د.ع",
+) {
+  return t("postService.actions.reviewChangeTo", {
+    amount: formatCurrency(request.requestedCodAmount, shipment.currency, iqdPreference),
+  });
+}
+
 function currencySuffix(currency: CurrencyCode, iqdPreference: "IQD" | "د.ع") {
   return currency === "iqd" ? iqdPreference : currency === "usd" ? "$" : currency.toUpperCase();
 }
@@ -2278,7 +2300,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, showLis
         <TableCell>{shipment.recipientPayoutAmount > 0.000001 ? <span className="font-medium tabular-nums text-rose-700 dark:text-rose-300">{formatCurrency(shipment.recipientPayoutAmount, shipment.currency, iqdPreference)}</span> : "—"}</TableCell>
         <TableCell><SettlementNetButton t={t} shipment={shipment} settlementNet={settlementNetByShipment.get(shipment.id)} iqdPreference={iqdPreference} onClick={() => onOpenSettlementNet(shipment)} /></TableCell>
         <TableCell>{shipment.assignedAgentId ? agentNameById.get(shipment.assignedAgentId) : "—"}</TableCell>
-        <TableCell><div className="flex flex-wrap items-center gap-1.5"><ShipmentStatusBadges t={t} shipment={shipment} />{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div></TableCell>
+        <TableCell><div className="flex flex-wrap items-center gap-1.5"><ShipmentStatusBadges t={t} shipment={shipment} />{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{pendingCodAdjustmentLabel(t, pendingCodAdjustment, shipment, iqdPreference)}</Badge> : null}</div></TableCell>
         <TableCell><SettlementStatusBadge t={t} kind={isPrepaidElectronically ? "reimbursement" : "handover"} status={courierSettlementStatus} /></TableCell>
         <TableCell><SettlementStatusBadge t={t} kind={isPrepaidElectronically ? "repayment" : "payout"} status={merchantSettlementStatus} /></TableCell>
         <TableCell className="text-end"><div className="flex justify-end gap-1">
@@ -2286,7 +2308,7 @@ function ShipmentTable({ t, shipments, selectedIds, onToggle, canSelect, showLis
           {canAdminEditAndRedispatch && ["received", "assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEditAndRedispatch(shipment)}><Pencil className="h-4 w-4" />{t(shipment.status === "received" ? "postService.actions.editAndDispatch" : "postService.actions.editAndRedispatch")}</Button>}
           {canUpdate && ["assigned", "postponed"].includes(shipment.status) && <>{!pendingCodAdjustment && <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "delivered")} title={t("postService.actions.markDelivered")}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>}{shipment.status === "assigned" ? <Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "postponed")} title={t("postService.actions.postpone")}><History className="h-4 w-4 text-amber-600" /></Button> : null}<Button size="sm" variant="ghost" onClick={() => onStatus(shipment, "returned")} title={t("postService.actions.return")}><Undo2 className="h-4 w-4 text-rose-600" /></Button></>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
-          {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
+          {canReviewCodChange && pendingCodAdjustment && <Button size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{pendingCodAdjustmentReviewLabel(t, pendingCodAdjustment, shipment, iqdPreference)}</Button>}
           {canReceiveReturn && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveReturn(shipment)}><PackageCheck className="h-4 w-4" />{t("postService.actions.receiveReturn")}</Button>}
           {canTransfer && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <PostSettlementsButton t={t} activeObligationCount={activeDeliveryShipmentSettlementObligationCount(shipment, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment)} onClick={() => onOpenPostSettlements(shipment)} />}
@@ -2359,7 +2381,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, showList
               <p className="mt-1 text-xs text-muted-foreground"><span className="tabular-nums">{formatDateTime(shipment.createdAt)}</span></p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1"><div className="flex flex-wrap justify-end gap-1.5"><ShipmentStatusBadges t={t} shipment={shipment} /></div>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{t("postService.status.requestChange")}</Badge> : null}</div>
+          <div className="flex shrink-0 flex-col items-end gap-1"><div className="flex flex-wrap justify-end gap-1.5"><ShipmentStatusBadges t={t} shipment={shipment} /></div>{pendingCodAdjustment ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">{pendingCodAdjustmentLabel(t, pendingCodAdjustment, shipment, iqdPreference)}</Badge> : null}</div>
         </div>
 
         <div className="mt-4 grid gap-3 rounded-xl border bg-muted/25 p-3 sm:grid-cols-2">
@@ -2409,7 +2431,7 @@ function ShipmentGrid({ t, shipments, selectedIds, onToggle, canSelect, showList
             <Button type="button" size="sm" variant="outline" className="gap-1.5 border-rose-500/30 text-rose-700 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-300" onClick={() => onStatus(shipment, "returned")}><Undo2 className="h-4 w-4" />{t("postService.actions.return")}</Button>
           </>}
           {canRequestCodChange && !pendingCodAdjustment && requesterCourierId === shipment.assignedAgentId && shipment.customerPaymentStatus === "cash_on_delivery" && ["assigned", "postponed"].includes(shipment.status) && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onRequestCodChange(shipment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.requestChange")}</Button>}
-          {canReviewCodChange && pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{t("postService.actions.reviewChange")}</Button>}
+          {canReviewCodChange && pendingCodAdjustment && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-300" onClick={() => onReviewCodChange(pendingCodAdjustment)}><FilePenLine className="h-4 w-4" />{pendingCodAdjustmentReviewLabel(t, pendingCodAdjustment, shipment, iqdPreference)}</Button>}
           {canReceiveReturn && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-300" onClick={() => onReceiveReturn(shipment)}><PackageCheck className="h-4 w-4" />{t("postService.actions.receiveReturn")}</Button>}
           {canTransfer && shipment.status === "returned" && !shipment.returnReceivedAt && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => onTransfer(shipment)}><Send className="h-4 w-4" />{t("postService.actions.transferPost")}</Button>}
           {canSettle && shipment.status === "delivered" && <PostSettlementsButton t={t} activeObligationCount={activeDeliveryShipmentSettlementObligationCount(shipment, handoverStatusByShipment, payoutStatusByShipment, courierReimbursementStatusByShipment, merchantRepaymentStatusByShipment)} onClick={() => onOpenPostSettlements(shipment)} />}

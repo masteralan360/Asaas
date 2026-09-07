@@ -6763,6 +6763,7 @@
       "playback": "لێدانی دەنگ",
       "requestChange": "داوای گۆڕان",
       "reviewChange": "پێداچوونەوەی گۆڕان",
+      "reviewChangeTo": "پێداچوونەوەی گۆڕان بۆ {{amount}}",
       "sendChangeRequest": "ناردنی داوا",
       "approveChange": "پەسەندکردنی گۆڕان",
       "rejectChange": "ڕەتکردنەوەی گۆڕان"
@@ -6981,7 +6982,8 @@
       "awaitingReceipt": "چاوەڕێی وەرگرتن",
       "returnHistory": "مێژووی گەڕاوەکان",
       "cancelled": "هەڵوەشاوە",
-      "requestChange": "داوای گۆڕین"
+      "requestChange": "داوای گۆڕین",
+      "requestChangeTo": "داوای گۆڕین بۆ {{amount}}"
     },
     "settlementStatus": {
       "handedOver": "تەسلیم کراوە",

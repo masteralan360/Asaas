@@ -6959,6 +6959,7 @@
       "playback": "Playback",
       "requestChange": "Request Change",
       "reviewChange": "Review Change",
+      "reviewChangeTo": "Review Change To {{amount}}",
       "sendChangeRequest": "Send request",
       "approveChange": "Approve change",
       "rejectChange": "Reject change"
@@ -7177,7 +7178,8 @@
       "awaitingReceipt": "Awaiting receipt",
       "returnHistory": "Return history",
       "cancelled": "Cancelled",
-      "requestChange": "Request change"
+      "requestChange": "Request change",
+      "requestChangeTo": "Request Change to {{amount}}"
     },
     "settlementStatus": {
       "handedOver": "Handed over",

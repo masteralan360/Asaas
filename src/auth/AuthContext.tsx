@@ -1051,6 +1051,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             error: new Error(i18n.t('paymentAccounts.errors.loginLogoutShiftStartCancelled'))
           }
         }
+
+        // Do not wait for the asynchronous auth-state listener to populate the
+        // context. The Login page redirects as soon as this method resolves;
+        // without this synchronous handoff a slower desktop can briefly render
+        // the protected route as anonymous, sending the user back to Login and
+        // clearing the form even though Supabase accepted the credentials.
+        setSession(data.session ?? null)
+        setUser({ ...enriched })
+        saveRecovery(enriched)
       }
 
       return { error: error as Error | null }

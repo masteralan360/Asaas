@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { NotebookPen } from 'lucide-react'
 
 import {
+    AppDialog,
+    AppDialogBody,
+    AppDialogContent,
+    AppDialogDescription,
+    AppDialogFooter,
+    AppDialogHeader,
+    AppDialogTitle,
     Button,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
     Label,
     Textarea
 } from '@/ui/components'
@@ -42,7 +43,7 @@ export function OrderLineItemNoteDialog({ note, onSave, labels }: OrderLineItemN
     }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <AppDialog open={open} onOpenChange={setOpen}>
             <Button
                 type="button"
                 variant="ghost"
@@ -54,33 +55,28 @@ export function OrderLineItemNoteDialog({ note, onSave, labels }: OrderLineItemN
             >
                 <NotebookPen className="h-4 w-4" />
             </Button>
-            <DialogContent className="sm:max-w-sm">
-                <form onSubmit={(event) => {
-                    event.preventDefault()
-                    saveNote()
-                }}>
-                    <DialogHeader>
-                        <DialogTitle>{labels.title}</DialogTitle>
-                        <DialogDescription>{labels.description}</DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Label htmlFor="order-line-item-note">{labels.field}</Label>
-                        <Textarea
-                            id="order-line-item-note"
-                            value={draft}
-                            onChange={(event) => setDraft(event.target.value)}
-                            className="mt-2 min-h-28 resize-y"
-                            autoFocus
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                            {labels.cancel}
-                        </Button>
-                        <Button type="submit">{labels.save}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+            <AppDialogContent className="max-w-sm">
+                <AppDialogHeader>
+                    <AppDialogTitle>{labels.title}</AppDialogTitle>
+                    <AppDialogDescription>{labels.description}</AppDialogDescription>
+                </AppDialogHeader>
+                <AppDialogBody>
+                    <Label htmlFor="order-line-item-note">{labels.field}</Label>
+                    <Textarea
+                        id="order-line-item-note"
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        className="mt-2 min-h-28 resize-y"
+                        autoFocus
+                    />
+                </AppDialogBody>
+                <AppDialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                        {labels.cancel}
+                    </Button>
+                    <Button type="button" onClick={saveNote}>{labels.save}</Button>
+                </AppDialogFooter>
+            </AppDialogContent>
+        </AppDialog>
     )
 }
