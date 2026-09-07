@@ -1083,6 +1083,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(data.session ?? null)
         setUser({ ...enriched })
         saveRecovery(enriched)
+
+        return { error: null }
       }
 
       return {

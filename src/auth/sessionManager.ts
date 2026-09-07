@@ -19,14 +19,23 @@ export function isSupabaseRateLimitedError(error: unknown) {
   if (!error) return false
 
   if (typeof error === 'object') {
-    const candidate = error as { status?: unknown; message?: unknown }
+    const candidate = error as {
+      status?: unknown
+      code?: unknown
+      error_code?: unknown
+      message?: unknown
+    }
     if (candidate.status === 429) return true
+    if (candidate.code === 'over_request_rate_limit' || candidate.error_code === 'over_request_rate_limit') {
+      return true
+    }
     if (typeof candidate.message === 'string') {
-      return /\b429\b|too many requests/i.test(candidate.message)
+      return /\b429\b|too many requests|request rate limit reached|rate limit exceeded/i.test(candidate.message)
     }
   }
 
-  return typeof error === 'string' && /\b429\b|too many requests/i.test(error)
+  return typeof error === 'string'
+    && /\b429\b|too many requests|request rate limit reached|rate limit exceeded|over_request_rate_limit/i.test(error)
 }
 
 function isRateLimitedRefreshResult(value: unknown) {

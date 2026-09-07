@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createAuthSessionManager } from './sessionManager'
+import { createAuthSessionManager, isSupabaseRateLimitedError } from './sessionManager'
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void
@@ -14,6 +14,23 @@ function createDeferred<T>() {
 }
 
 describe('auth session manager', () => {
+  it('recognizes Supabase request-rate-limit error variants', () => {
+    expect(isSupabaseRateLimitedError({ status: 429 })).toBe(true)
+    expect(isSupabaseRateLimitedError({
+      code: 'over_request_rate_limit',
+      message: 'Request rate limit reached'
+    })).toBe(true)
+    expect(isSupabaseRateLimitedError({
+      error_code: 'over_request_rate_limit',
+      message: 'Request rate limit reached'
+    })).toBe(true)
+    expect(isSupabaseRateLimitedError('over_request_rate_limit')).toBe(true)
+    expect(isSupabaseRateLimitedError({
+      code: 'invalid_credentials',
+      message: 'Invalid login credentials'
+    })).toBe(false)
+  })
+
   it('shares concurrent refreshes and allows a later refresh after success', async () => {
     const firstRefresh = createDeferred<{ session: string }>()
     const refreshSession = vi.fn(() => firstRefresh.promise)
@@ -51,7 +68,10 @@ describe('auth session manager', () => {
     let currentTime = 1_000
     const rateLimitedResult = {
       data: { session: null },
-      error: { status: 429, message: 'Too many requests' }
+      error: {
+        code: 'over_request_rate_limit',
+        message: 'Request rate limit reached'
+      }
     }
     const recoveredResult = {
       data: { session: 'recovered-session' },
