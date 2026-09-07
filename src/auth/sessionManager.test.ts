@@ -47,6 +47,35 @@ describe('auth session manager', () => {
     expect(refreshSession).toHaveBeenCalledTimes(2)
   })
 
+  it('does not retry a rate-limited refresh until its cooldown has elapsed', async () => {
+    let currentTime = 1_000
+    const rateLimitedResult = {
+      data: { session: null },
+      error: { status: 429, message: 'Too many requests' }
+    }
+    const recoveredResult = {
+      data: { session: 'recovered-session' },
+      error: null
+    }
+    const refreshSession = vi
+      .fn<() => Promise<typeof rateLimitedResult | typeof recoveredResult>>()
+      .mockResolvedValueOnce(rateLimitedResult)
+      .mockResolvedValueOnce(recoveredResult)
+    const signOut = vi.fn().mockResolvedValue({ error: null })
+    const manager = createAuthSessionManager({ refreshSession, signOut }, {
+      now: () => currentTime,
+      rateLimitCooldownMs: 60_000
+    })
+
+    await expect(manager.refreshSession()).resolves.toBe(rateLimitedResult)
+    await expect(manager.refreshSession()).resolves.toBe(rateLimitedResult)
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+
+    currentTime += 60_000
+    await expect(manager.refreshSession()).resolves.toBe(recoveredResult)
+    expect(refreshSession).toHaveBeenCalledTimes(2)
+  })
+
   it('signs out only the current device session', async () => {
     const refreshSession = vi.fn().mockResolvedValue({ session: 'unused' })
     const signOut = vi.fn().mockResolvedValue({ error: null })

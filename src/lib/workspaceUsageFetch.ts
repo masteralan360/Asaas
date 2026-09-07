@@ -6,7 +6,10 @@ import { getWorkspaceDataMode, isLocalWorkspaceMode } from '@/workspace/workspac
 // though the stable wire text still says "data transfer".
 const WORKSPACE_TRANSFER_LIMIT_MESSAGE = 'Workspace monthly data transfer limit exceeded'
 const WORKSPACE_USAGE_UPDATED_EVENT = 'workspace-usage-updated'
-const SKIP_USAGE_HEADER = 'X-Workspace-Usage-Skip'
+// Used only for the small, RLS-protected reads that establish an authenticated
+// user's workspace. Routing those reads through the usage gateway would create
+// a dependency loop: the gateway itself must first resolve that workspace.
+export const WORKSPACE_USAGE_SKIP_HEADER = 'X-Workspace-Usage-Skip'
 const TABLE_WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 const RPC_METHODS = new Set(['GET', 'POST'])
 const UNMETERED_RPC_NAMES = new Set([
@@ -377,7 +380,7 @@ function getWorkspaceTransferContext(
     if (!url) return null
 
     const headers = getRequestHeaders(input, init)
-    if (headers.get(SKIP_USAGE_HEADER) === '1') return null
+    if (headers.get(WORKSPACE_USAGE_SKIP_HEADER) === '1') return null
 
     const tableName = getRestTableName(url, supabaseUrl)
     const rpcName = getRestRpcName(url, supabaseUrl)
@@ -509,7 +512,7 @@ async function recordSupabaseDataTransfer(
             // Charging is a side effect. Do not add an RPC response body to
             // every metered Tauri request.
             Prefer: 'return=minimal',
-            [SKIP_USAGE_HEADER]: '1'
+            [WORKSPACE_USAGE_SKIP_HEADER]: '1'
         },
         body: JSON.stringify({
             p_workspace_id: workspaceId,
@@ -602,6 +605,35 @@ function buildGatewayFetchArgs(
     }
 }
 
+function buildDirectFetchArgs(
+    input: RequestInfo | URL,
+    init: RequestInit | undefined
+): { input: RequestInfo | URL; init?: RequestInit } {
+    const headers = getRequestHeaders(input, init)
+    if (headers.get(WORKSPACE_USAGE_SKIP_HEADER) !== '1') {
+        return { input, init }
+    }
+
+    // The marker is for this in-app fetch wrapper only. Do not forward it to
+    // Supabase: browser bootstrap reads should remain ordinary CORS requests.
+    headers.delete(WORKSPACE_USAGE_SKIP_HEADER)
+
+    if (!(input instanceof Request)) {
+        return {
+            input,
+            init: {
+                ...init,
+                headers
+            }
+        }
+    }
+
+    const original = init ? new Request(input, init) : input
+    return {
+        input: new Request(original, { headers })
+    }
+}
+
 function usageErrorResponse(result: UsageRecordResult) {
     const limitExceeded = Boolean(result.limitExceeded)
     return new Response(
@@ -638,13 +670,14 @@ export function createWorkspaceUsageFetch(options: WorkspaceUsageFetchOptions): 
             )
             : null
         const gatewayRequest = gatewayUrl ? buildGatewayFetchArgs(input, init, gatewayUrl) : null
+        const directRequest = gatewayRequest ? null : buildDirectFetchArgs(input, init)
         const requestBytesPromise = countContext?.countRequestBody
             ? getRequestTransferBytes(input, init)
             : Promise.resolve(0)
 
         const response = await normalizedOptions.fetchImpl(
-            gatewayRequest?.input ?? input,
-            gatewayRequest?.init ?? init
+            gatewayRequest?.input ?? directRequest?.input ?? input,
+            gatewayRequest?.init ?? directRequest?.init ?? init
         )
         refreshOfflineLeaseFromFetch(input, init, response, normalizedOptions.supabaseUrl)
 

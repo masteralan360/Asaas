@@ -207,6 +207,35 @@ describe('workspace usage fetch metering', () => {
         expect((calls[0].init?.headers as Headers).get('Authorization')).toBe('Bearer token')
     })
 
+    it('keeps explicitly skipped auth bootstrap reads off the Web Live gateway', async () => {
+        testState.activeWorkspaceId = workspaceId
+        const calls: Array<{ url: string; init?: RequestInit }> = []
+        const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            calls.push({ url: String(input), init })
+            return new Response(JSON.stringify([{ id: 'profile-1' }]), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            })
+        }) as unknown as typeof fetch
+        const meteredFetch = createWorkspaceUsageFetch({
+            supabaseUrl: 'https://example.supabase.co',
+            supabaseAnonKey: 'anon-key',
+            webGatewayUrl: 'https://app.example.com/api-workspace-data',
+            fetchImpl
+        })
+
+        await meteredFetch('https://example.supabase.co/rest/v1/profiles?id=eq.profile-1', {
+            headers: {
+                Authorization: 'Bearer token',
+                'X-Workspace-Usage-Skip': '1'
+            }
+        })
+
+        expect(calls).toHaveLength(1)
+        expect(calls[0].url).toBe('https://example.supabase.co/rest/v1/profiles?id=eq.profile-1')
+        expect(new Headers(calls[0].init?.headers).has('X-Workspace-Usage-Skip')).toBe(false)
+    })
+
     it('sends successful table-write bytes for server-side charging', async () => {
         testState.activeWorkspaceId = workspaceId
         const requestBody = JSON.stringify([

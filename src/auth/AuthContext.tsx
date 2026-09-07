@@ -16,6 +16,7 @@ import {
   writeWorkspaceModeSnapshot
 } from '@/workspace/workspaceMode'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { WORKSPACE_USAGE_SKIP_HEADER } from '@/lib/workspaceUsageFetch'
 import { markSupabaseReachableFromAccessToken } from '@/lib/offlineLease'
 import { resolveFetchedWorkspaceName } from '@/workspace/workspaceLocalSettings'
 import { db } from '@/local-db/database'
@@ -409,7 +410,11 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
           .from('profiles')
           .select('profile_url, role, workspace_id, current_workspace')
           .eq('id', parsedUser.id)
-          .maybeSingle(),
+          .maybeSingle()
+          // This read establishes the workspace needed by the Web Live
+          // gateway itself. It remains protected by profile RLS, but must not
+          // be sent through that gateway before the context exists.
+          .setHeader(WORKSPACE_USAGE_SKIP_HEADER, '1'),
       { timeoutMs: 8000, platform: 'all' }
     )) as { data: ProfileBootstrapRow | null; error?: unknown }
 
@@ -468,7 +473,8 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
           .from('workspaces')
           .select(AUTH_WORKSPACE_BOOTSTRAP_COLUMNS)
           .eq('id', parsedUser.workspaceId)
-          .maybeSingle(),
+          .maybeSingle()
+          .setHeader(WORKSPACE_USAGE_SKIP_HEADER, '1'),
       { timeoutMs: 8000, platform: 'all' }
     )) as { data: WorkspaceBootstrapRow | null; error?: unknown }
 
