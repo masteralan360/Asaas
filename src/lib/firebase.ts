@@ -11,6 +11,7 @@ const firebaseConfig = {
 }
 
 let messaging: Messaging | null = null
+const FIREBASE_MESSAGING_SCOPE = '/firebase-cloud-messaging-push-scope/'
 
 export const initMessaging = async (): Promise<Messaging | null> => {
     if (messaging) return messaging
@@ -59,7 +60,12 @@ export const requestFirebaseTokenSync = async (): Promise<string | null> => {
             if ('serviceWorker' in navigator) {
                 try {
                     const swUrl = `/firebase-messaging-sw.js?apiKey=${firebaseConfig.apiKey}&projectId=${firebaseConfig.projectId}&messagingSenderId=${firebaseConfig.messagingSenderId}&appId=${firebaseConfig.appId}`
-                    const registration = await navigator.serviceWorker.register(swUrl)
+                    // Keep Firebase on a narrow, non-navigation scope. Registering it
+                    // at the default `/` scope would replace Atlas's offline worker
+                    // because service-worker registrations are keyed by scope.
+                    const registration = await navigator.serviceWorker.register(swUrl, {
+                        scope: FIREBASE_MESSAGING_SCOPE
+                    })
 
                     const currentToken = await getToken(msg, {
                         vapidKey,

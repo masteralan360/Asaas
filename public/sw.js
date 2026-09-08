@@ -112,7 +112,8 @@ async function retainCachedUrls(urls) {
         try {
             const request = new Request(new URL(value, self.location.origin).href)
             const response = await caches.match(request, {
-                ignoreSearch: request.mode === 'navigate'
+                ignoreSearch: request.mode === 'navigate',
+                ignoreVary: true,
             })
             if (response) await cache.put(request, response.clone())
         } catch {
@@ -136,7 +137,12 @@ async function getCachedResponse(request) {
     for (const cacheName of candidates) {
         const cache = await caches.open(cacheName)
         const match = await cache.match(request, {
-            ignoreSearch: request.mode === 'navigate'
+            ignoreSearch: request.mode === 'navigate',
+            // Prepared responses may carry `Vary: Origin` from the hosting
+            // layer. Module requests include an Origin header while the
+            // preparation fetch does not, so strict Vary matching can miss an
+            // otherwise exact same-origin cached asset during a cold start.
+            ignoreVary: true,
         })
         if (match) return match
     }
@@ -208,7 +214,7 @@ async function verifyCacheEntries(cacheName, expectedUrls) {
     const cache = await caches.open(cacheName)
     const missingUrls = []
     for (const value of expectedUrls) {
-        const response = await cache.match(new Request(value))
+        const response = await cache.match(new Request(value), { ignoreVary: true })
         if (!response || (!response.ok && response.type !== 'opaque')) {
             missingUrls.push(value)
         }
@@ -353,7 +359,10 @@ async function applyStagedDeployment(notify = true) {
 async function expectedUrlsFromExistingCache(cacheName) {
     try {
         const cache = await caches.open(cacheName)
-        const shellResponse = await cache.match(appShellRequest(), { ignoreSearch: true })
+        const shellResponse = await cache.match(appShellRequest(), {
+            ignoreSearch: true,
+            ignoreVary: true,
+        })
         if (!shellResponse) return null
         const html = await shellResponse.clone().text()
         const keys = await cache.keys()
