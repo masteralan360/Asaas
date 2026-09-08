@@ -1164,7 +1164,7 @@ export function POS() {
                 return matchesSearch && p.categoryId === selectedCategory
             }
             return matchesSearch
-        })
+        }).sort((left, right) => (left.name || '').localeCompare(right.name || ''))
     }, [search, selectedCategory, selectedStorageId, sellableProducts])
 
     const barcodeMap = useMemo(() => {

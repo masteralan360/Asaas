@@ -45,6 +45,7 @@ import {
 } from "@/local-db";
 import { useWorkspace } from "@/workspace";
 import { PartnerAutocompleteInput } from "@/ui/components/crm/PartnerAutocompleteInput";
+import { QuickCustomerButton } from "@/ui/components/crm/QuickCustomerButton";
 import { DateRangeFilters } from "@/ui/components/DateRangeFilters";
 import { PaymentAccountSelector } from "@/ui/components/payments/PaymentAccountSelector";
 import { PaymentMethodSelector } from "@/ui/components/PaymentMethodSelector";
@@ -271,19 +272,32 @@ function CreateInstallmentSaleDialog({
                   {t("installmentSales.customer")}{" "}
                   <span className="text-destructive">*</span>
                 </Label>
-                <PartnerAutocompleteInput
-                  value={customerText}
-                  onChange={setCustomerText}
-                  onSelectPartner={(partner) => {
-                    setCustomer(partner);
-                    setCustomerText(partner.partnerName);
-                    if (!price && partner.defaultCurrency)
-                      setCurrency(partner.defaultCurrency);
-                  }}
-                  workspaceId={workspaceId}
-                  roles={["customer", "both"]}
-                  disabled={isSaving || !!customer}
-                />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <PartnerAutocompleteInput
+                    value={customerText}
+                    onChange={setCustomerText}
+                    onSelectPartner={(partner) => {
+                      setCustomer(partner);
+                      setCustomerText(partner.partnerName);
+                      if (!price && partner.defaultCurrency)
+                        setCurrency(partner.defaultCurrency);
+                    }}
+                    workspaceId={workspaceId}
+                    roles={["customer", "both"]}
+                    disabled={isSaving || !!customer}
+                  />
+                  <QuickCustomerButton
+                    workspaceId={workspaceId}
+                    className="w-full shrink-0 sm:w-auto"
+                    disabled={isSaving || !!customer}
+                    onCreated={(partner) => {
+                      setCustomer(partner);
+                      setCustomerText(partner.partnerName);
+                      if (!price && partner.defaultCurrency)
+                        setCurrency(partner.defaultCurrency);
+                    }}
+                  />
+                </div>
                 <LinkPill
                   partner={customer}
                   label={t("common.linked")}
