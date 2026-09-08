@@ -1986,8 +1986,6 @@ export interface Loan extends BaseEntity {
   installmentFrequency: InstallmentFrequency
   firstDueDate: string | null
   nextDueDate?: string | null
-  overdueReminderSnoozedAt?: string | null
-  overdueReminderSnoozedForDueDate?: string | null
   status: LoanStatus
   notes?: string
   createdBy?: string

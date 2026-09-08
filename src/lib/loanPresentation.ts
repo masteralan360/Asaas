@@ -2,6 +2,9 @@ import type { Loan, LoanCategory, LoanDirection } from '@/local-db/models'
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
+export type LoanPaymentFilter = 'all' | 'outstanding' | 'partial' | 'paid'
+export type LoanPaymentStatus = Exclude<LoanPaymentFilter, 'all'> | 'cancelled'
+
 function translate(t: Translate, key: string, fallback: string) {
     const value = t(key, { defaultValue: fallback })
     return value === key ? fallback : value
@@ -21,6 +24,24 @@ export function getLoanDirection(loan: Pick<Loan, 'direction'> | LoanDirection |
     }
 
     return 'lent'
+}
+
+export function getLoanPaymentStatus(loan: Pick<Loan, 'balanceAmount' | 'totalPaidAmount' | 'status'>): LoanPaymentStatus {
+    if (loan.status === 'cancelled') return 'cancelled'
+    if (loan.balanceAmount <= 0) return 'paid'
+    return loan.totalPaidAmount > 0 ? 'partial' : 'outstanding'
+}
+
+export function matchesLoanPaymentFilter(
+    loan: Pick<Loan, 'balanceAmount' | 'totalPaidAmount' | 'status'>,
+    filter: LoanPaymentFilter
+) {
+    if (filter === 'all') return true
+
+    const paymentStatus = getLoanPaymentStatus(loan)
+    return filter === 'outstanding'
+        ? paymentStatus === 'outstanding' || paymentStatus === 'partial'
+        : paymentStatus === filter
 }
 
 export function isSimpleLoan(loan: Pick<Loan, 'loanCategory'> | null | undefined) {

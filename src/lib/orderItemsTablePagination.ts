@@ -25,6 +25,7 @@ export const ORDER_ITEMS_CONTINUATION_SUFFIX_ATTR = 'data-order-items-continuati
 export const ORDER_ITEMS_STATEMENT_BLOCK_ATTR = 'data-order-statement-block'
 export const ORDER_ITEMS_SECTION_SUMMARY_ATTR = 'data-order-items-section-summary'
 export const ORDER_ITEMS_PAGE_SPACER_ATTR = 'data-order-items-page-spacer'
+export const ORDER_ITEMS_TABLE_HEADER_SPACER_ATTR = 'data-order-items-table-header-spacer'
 
 const ORDER_ITEMS_PAGINATED_SELECTOR = `table[${ORDER_ITEMS_PAGINATED_ATTR}]`
 const ORDER_ITEMS_CONTINUATION_SELECTOR = `[${ORDER_ITEMS_CONTINUATION_ATTR}]`
@@ -45,6 +46,10 @@ export type OrderItemsSplitDecision = {
     boundaryMm: number
 }
 
+export type OrderItemsTableHeaderSpacer = {
+    spacerMm: number
+}
+
 /**
  * Finds where a statement table should be cut for the given page height.
  *
@@ -56,18 +61,19 @@ export type OrderItemsSplitDecision = {
  */
 export function findOrderItemsSplitIndex(
     rows: readonly OrderItemsRowSpan[],
-    pageHeightMm: number
+    pageHeightMm: number,
+    pagePaddingMm = 0
 ): OrderItemsSplitDecision | null {
-    if (rows.length === 0 || !Number.isFinite(pageHeightMm) || pageHeightMm <= 0) {
+    if (rows.length === 0 || !Number.isFinite(pageHeightMm) || pageHeightMm <= 0 || !Number.isFinite(pagePaddingMm) || pagePaddingMm < 0) {
         return null
     }
 
     const firstTopMm = rows[0].topMm
     const lastBottomMm = rows[rows.length - 1].bottomMm
-    const lastBoundaryIndex = Math.floor(lastBottomMm / pageHeightMm)
+    const lastBoundaryIndex = Math.floor((lastBottomMm + pagePaddingMm) / pageHeightMm)
 
     for (let boundaryIndex = 1; boundaryIndex <= lastBoundaryIndex; boundaryIndex += 1) {
-        const boundaryMm = boundaryIndex * pageHeightMm
+        const boundaryMm = (boundaryIndex * pageHeightMm) - pagePaddingMm
         if (boundaryMm <= firstTopMm + SPLIT_EPSILON_MM) continue
 
         const crossingRowIndex = rows.findIndex((row) => row.bottomMm > boundaryMm + SPLIT_EPSILON_MM)
@@ -77,6 +83,51 @@ export function findOrderItemsSplitIndex(
     }
 
     return null
+}
+
+/**
+ * Ensures a table header and its first full row never strand at the bottom of
+ * an A4 page. The returned spacer moves that table to the next printable page
+ * area, preserving both the repeated heading and the exact measured row
+ * height. A header plus a single row taller than an A4 content area is left in
+ * place because it cannot be kept together by any pagination strategy.
+ */
+export function planOrderItemsTableHeaderSpacer(
+    tableTopMm: number,
+    firstRowBottomMm: number,
+    pageHeightMm: number,
+    pagePaddingMm = 0
+): OrderItemsTableHeaderSpacer | null {
+    if (!Number.isFinite(tableTopMm)
+        || !Number.isFinite(firstRowBottomMm)
+        || !Number.isFinite(pageHeightMm)
+        || !Number.isFinite(pagePaddingMm)
+        || pageHeightMm <= 0
+        || pagePaddingMm < 0
+        || firstRowBottomMm <= tableTopMm + SPLIT_EPSILON_MM
+    ) {
+        return null
+    }
+
+    const headerAndFirstRowHeightMm = firstRowBottomMm - tableTopMm
+    const printablePageHeightMm = pageHeightMm - (pagePaddingMm * 2)
+    if (headerAndFirstRowHeightMm > printablePageHeightMm + SPLIT_EPSILON_MM) {
+        return null
+    }
+
+    const pageStartMm = Math.floor(tableTopMm / pageHeightMm) * pageHeightMm
+    const pageContentTopMm = pageStartMm + pagePaddingMm
+    const pageContentBottomMm = pageStartMm + pageHeightMm - pagePaddingMm
+    const targetTopMm = tableTopMm < pageContentTopMm - SPLIT_EPSILON_MM
+        ? pageContentTopMm
+        : firstRowBottomMm > pageContentBottomMm + SPLIT_EPSILON_MM
+            ? pageStartMm + pageHeightMm + pagePaddingMm
+            : null
+
+    if (targetTopMm === null) return null
+
+    const spacerMm = targetTopMm - tableTopMm
+    return spacerMm > SPLIT_EPSILON_MM ? { spacerMm } : null
 }
 
 /**
@@ -102,6 +153,8 @@ export function restoreOrderItemsTableSplits(root: HTMLElement): void {
 
         continuation.remove()
     }
+
+    root.querySelectorAll<HTMLElement>(`[${ORDER_ITEMS_TABLE_HEADER_SPACER_ATTR}]`).forEach((spacer) => spacer.remove())
 }
 
 function nearestPrecedingOrderItemsTable(element: Element): HTMLTableElement | null {
@@ -134,18 +187,68 @@ export function paginateOrderItemsTables(
     if (rootRect.width <= 0) return
 
     const pxToMm = options.pageWidthMm / rootRect.width
+    const pagePaddingMm = resolveStatementPagePaddingMm(root, 0)
 
     for (let iteration = 0; iteration < MAX_SPLIT_ITERATIONS; iteration += 1) {
-        const nextSplit = findNextOrderItemsTableSplit(root, options.pageHeightMm, pxToMm)
+        const tableHeaderSpacer = findNextOrderItemsTableHeaderSpacer(
+            root,
+            options.pageHeightMm,
+            pxToMm,
+            pagePaddingMm
+        )
+        if (tableHeaderSpacer) {
+            applyOrderItemsTableHeaderSpacer(tableHeaderSpacer.table, tableHeaderSpacer.spacerMm)
+            continue
+        }
+
+        const nextSplit = findNextOrderItemsTableSplit(root, options.pageHeightMm, pxToMm, pagePaddingMm)
         if (!nextSplit) return
         applyOrderItemsTableSplit(nextSplit.table, nextSplit.rowIndex)
     }
 }
 
+function findNextOrderItemsTableHeaderSpacer(
+    root: HTMLElement,
+    pageHeightMm: number,
+    pxToMm: number,
+    pagePaddingMm: number
+): { table: HTMLTableElement; spacerMm: number } | null {
+    const rootRect = root.getBoundingClientRect()
+    const tables = Array.from(root.querySelectorAll<HTMLTableElement>(
+        `${ORDER_ITEMS_PAGINATED_SELECTOR}, ${ORDER_ITEMS_CONTINUATION_TABLE_SELECTOR}`
+    ))
+
+    for (const table of tables) {
+        const firstRow = table.querySelector<HTMLTableRowElement>('tbody > tr')
+        if (!firstRow) continue
+
+        const tableRect = table.getBoundingClientRect()
+        const firstRowRect = firstRow.getBoundingClientRect()
+        const spacer = planOrderItemsTableHeaderSpacer(
+            (tableRect.top - rootRect.top) * pxToMm,
+            (firstRowRect.bottom - rootRect.top) * pxToMm,
+            pageHeightMm,
+            pagePaddingMm
+        )
+
+        if (spacer) return { table, spacerMm: spacer.spacerMm }
+    }
+
+    return null
+}
+
+function applyOrderItemsTableHeaderSpacer(table: HTMLTableElement, spacerMm: number): void {
+    const spacer = document.createElement('div')
+    spacer.setAttribute(ORDER_ITEMS_TABLE_HEADER_SPACER_ATTR, '')
+    spacer.style.height = `${spacerMm}mm`
+    table.insertAdjacentElement('beforebegin', spacer)
+}
+
 function findNextOrderItemsTableSplit(
     root: HTMLElement,
     pageHeightMm: number,
-    pxToMm: number
+    pxToMm: number,
+    pagePaddingMm: number
 ): { table: HTMLTableElement; rowIndex: number } | null {
     const rootRect = root.getBoundingClientRect()
     const tables = Array.from(root.querySelectorAll<HTMLTableElement>(
@@ -164,7 +267,7 @@ function findNextOrderItemsTableSplit(
             }
         })
 
-        const decision = findOrderItemsSplitIndex(spans, pageHeightMm)
+        const decision = findOrderItemsSplitIndex(spans, pageHeightMm, pagePaddingMm)
         if (decision) {
             return { table, rowIndex: decision.rowIndex }
         }

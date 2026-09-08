@@ -38,12 +38,10 @@ interface LoanListPrintTemplateProps {
         activeLoans?: number
         overdueLoans?: number
         dueToday?: number
-        totalLent?: number
-        totalBorrowed?: number
-        totalLentByCurrency?: Record<string, number>
-        totalBorrowedByCurrency?: Record<string, number>
+        totalPrincipalByCurrency?: Record<string, number>
+        totalPaidByCurrency?: Record<string, number>
+        totalBalanceByCurrency?: Record<string, number>
         activeEntries?: number
-        settledEntries?: number
     }
     logoUrl?: string | null
     qrValue?: string | null
@@ -173,6 +171,26 @@ function resolveInstallmentStatusLabel(status: LoanInstallment['status'], t: (ke
     return t(`loans.installmentStatuses.${status}`) || status
 }
 
+const LOAN_DETAILS_FIRST_TABLE_MAX_ROWS = 10
+const LOAN_DETAILS_CONTINUATION_TABLE_MAX_ROWS = 16
+const LOAN_DETAILS_TABLE_ROW_HEIGHT_MM = 12
+
+function chunkLoanDetailPrintRows<T>(rows: readonly T[]): T[][] {
+    if (rows.length === 0) return [[]]
+
+    const chunks: T[][] = []
+    let start = 0
+    let capacity = LOAN_DETAILS_FIRST_TABLE_MAX_ROWS
+
+    while (start < rows.length) {
+        chunks.push(rows.slice(start, start + capacity))
+        start += capacity
+        capacity = LOAN_DETAILS_CONTINUATION_TABLE_MAX_ROWS
+    }
+
+    return chunks
+}
+
 export function LoanListPrintTemplate({
     workspaceName,
     printLang,
@@ -197,37 +215,47 @@ export function LoanListPrintTemplate({
     const counterpartyColumnLabel = isSimpleVariant || loans.some((loan) => isSimpleLoan(loan))
         ? (t('loans.counterparty') || 'Counterparty')
         : (t('loans.borrower') || 'Borrower')
+    const printTitle = titleOverride || (isSimpleVariant ? getSimpleLoanModuleTitle(t) : getStandardLoanModuleTitle(t))
+    const continuedLabel = t('businessPartners.accountStatement.continued', { defaultValue: '(continued)' })
 
     return (
         <div
             dir={isRTL(printLang) ? 'rtl' : 'ltr'}
             className="bg-white text-black"
-            style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
+            style={{ width: '210mm' }}
+            data-loan-list-print
+            data-order-print-page
+            data-page-width-mm="210"
+            data-page-padding-mm="14"
         >
             <style
                 dangerouslySetInnerHTML={{
                     __html: `
 @media print {
     @page { margin: 0; size: A4; }
-    body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
+    [data-loan-list-print] tr,
+    [data-loan-list-print] [data-pdf-keep-together] { break-inside: avoid; page-break-inside: avoid; }
+    [data-loan-list-print] thead { display: table-header-group; }
 }
 `
                 }}
             />
 
-            <LoanPrintHeader
-                workspaceName={workspaceName}
-                printLang={printLang}
-                title={titleOverride || (isSimpleVariant ? getSimpleLoanModuleTitle(t) : getStandardLoanModuleTitle(t))}
-                subtitle={subtitleOverride || `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`}
-                logoUrl={logoUrl}
-                qrValue={qrValue}
-            />
+            <section className="bg-white" style={{ minHeight: '297mm', padding: '14mm 12mm', boxSizing: 'border-box' }}>
+                <LoanPrintHeader
+                    workspaceName={workspaceName}
+                    printLang={printLang}
+                    title={printTitle}
+                    subtitle={subtitleOverride || `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`}
+                    logoUrl={logoUrl}
+                    qrValue={qrValue}
+                />
 
-            <div className="grid grid-cols-2 items-start gap-3 mb-4 text-xs">
+            <div className="grid grid-cols-2 items-start gap-3 mb-4 text-xs" data-pdf-keep-together>
                 <HideablePrintFieldCard
                     title={isSimpleVariant
-                        ? t('loans.totalLent', { defaultValue: 'Total Lent' })
+                        ? t('loans.totalPrincipal', { defaultValue: 'Total Principal' })
                         : (t('loans.totalOutstanding') || 'Total Outstanding')}
                     className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
@@ -237,20 +265,20 @@ export function LoanListPrintTemplate({
                         {
                             key: 'loans.list.totalPrimary',
                             label: isSimpleVariant
-                                ? t('loans.totalLent', { defaultValue: 'Total Lent' })
+                                ? t('loans.totalPrincipal', { defaultValue: 'Total Principal' })
                                 : (t('loans.totalOutstanding') || 'Total Outstanding'),
-                            value: formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference),
-                            render: isSimpleVariant && metrics.totalLentByCurrency && Object.keys(metrics.totalLentByCurrency).length > 0
-                                ? <div className="text-center">{Object.entries(metrics.totalLentByCurrency).map(([curr, val]) => (
+                            value: formatCurrency(isSimpleVariant ? 0 : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference),
+                            render: isSimpleVariant && metrics.totalPrincipalByCurrency && Object.keys(metrics.totalPrincipalByCurrency).length > 0
+                                ? <div className="text-center">{Object.entries(metrics.totalPrincipalByCurrency).map(([curr, val]) => (
                                     <p key={curr} className="font-bold">{formatCurrency(val, curr as any, iqdPreference)}</p>
                                 ))}</div>
-                                : <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference)}</p>
+                                : <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? 0 : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference)}</p>
                         }
                     ]}
                 />
                 <HideablePrintFieldCard
                     title={isSimpleVariant
-                        ? t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })
+                        ? t('loans.totalPaid', { defaultValue: 'Total Paid' })
                         : (t('loans.dueToday') || 'Due Today')}
                     className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
@@ -260,14 +288,14 @@ export function LoanListPrintTemplate({
                         {
                             key: 'loans.list.totalSecondary',
                             label: isSimpleVariant
-                                ? t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })
+                                ? t('loans.totalPaid', { defaultValue: 'Total Paid' })
                                 : (t('loans.dueToday') || 'Due Today'),
-                            value: formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference),
-                            render: isSimpleVariant && metrics.totalBorrowedByCurrency && Object.keys(metrics.totalBorrowedByCurrency).length > 0
-                                ? <div className="text-center">{Object.entries(metrics.totalBorrowedByCurrency).map(([curr, val]) => (
+                            value: formatCurrency(isSimpleVariant ? 0 : (metrics.dueToday || 0), displayCurrency as any, iqdPreference),
+                            render: isSimpleVariant && metrics.totalPaidByCurrency && Object.keys(metrics.totalPaidByCurrency).length > 0
+                                ? <div className="text-center">{Object.entries(metrics.totalPaidByCurrency).map(([curr, val]) => (
                                     <p key={curr} className="font-bold">{formatCurrency(val, curr as any, iqdPreference)}</p>
                                 ))}</div>
-                                : <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference)}</p>
+                                : <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? 0 : (metrics.dueToday || 0), displayCurrency as any, iqdPreference)}</p>
                         }
                     ]}
                 />
@@ -292,7 +320,7 @@ export function LoanListPrintTemplate({
                 />
                 <HideablePrintFieldCard
                     title={isSimpleVariant
-                        ? t('loans.settledEntries', { defaultValue: 'Settled Entries' })
+                        ? t('loans.totalBalance', { defaultValue: 'Total Balance' })
                         : (t('loans.overdueLoans') || 'Overdue Loans')}
                     className="border border-slate-300 rounded-md p-2"
                     titleClassName="text-slate-500 text-center font-normal mb-0"
@@ -302,69 +330,79 @@ export function LoanListPrintTemplate({
                         {
                             key: 'loans.list.statusCount',
                             label: isSimpleVariant
-                                ? t('loans.settledEntries', { defaultValue: 'Settled Entries' })
+                                ? t('loans.totalBalance', { defaultValue: 'Total Balance' })
                                 : (t('loans.overdueLoans') || 'Overdue Loans'),
-                            value: isSimpleVariant ? (metrics.settledEntries || 0) : (metrics.overdueLoans || 0),
-                            render: <p className="font-bold text-center">{isSimpleVariant ? (metrics.settledEntries || 0) : (metrics.overdueLoans || 0)}</p>
+                            value: isSimpleVariant ? 0 : (metrics.overdueLoans || 0),
+                            render: isSimpleVariant && metrics.totalBalanceByCurrency && Object.keys(metrics.totalBalanceByCurrency).length > 0
+                                ? <div className="text-center">{Object.entries(metrics.totalBalanceByCurrency).map(([curr, val]) => (
+                                    <p key={curr} className="font-bold">{formatCurrency(val, curr as any, iqdPreference)}</p>
+                                ))}</div>
+                                : <p className="font-bold text-center">{isSimpleVariant ? formatCurrency(0, displayCurrency as any, iqdPreference) : (metrics.overdueLoans || 0)}</p>
                         }
                     ]}
                 />
             </div>
 
-            <table className="w-full border-collapse text-xs">
-                <thead>
-                    <tr className="bg-slate-100">
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.loanNo') || 'Loan No.'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{counterpartyColumnLabel}</th>
-                        <th className="border border-slate-300 p-2 text-end">{t('loans.principal') || 'Principal'}</th>
-                        <th className="border border-slate-300 p-2 text-end">{t('loans.paid') || 'Paid'}</th>
-                        <th className="border border-slate-300 p-2 text-end">{t('loans.balance') || 'Balance'}</th>
-                        {!hideNextDue && <th className="border border-slate-300 p-2 text-start">{t('loans.nextDue') || 'Next Due'}</th>}
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.status') || 'Status'}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {loans.length === 0 ? (
-                        <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={hideNextDue ? 6 : 7}>
-                                {t('common.noData') || 'No data'}
-                            </td>
+                <table
+                    data-order-items-paginated
+                    data-order-items-title-text={printTitle}
+                    data-order-items-continuation-label={continuedLabel}
+                    className="w-full table-fixed border-collapse text-xs"
+                >
+                    <thead>
+                        <tr className="bg-slate-100">
+                            <th className="w-[19%] border border-slate-300 p-2 text-start">{t('loans.loanNo') || 'Loan No.'}</th>
+                            <th className="w-[28%] border border-slate-300 p-2 text-start">{counterpartyColumnLabel}</th>
+                            <th className="border border-slate-300 p-2 text-end">{t('loans.principal') || 'Principal'}</th>
+                            <th className="border border-slate-300 p-2 text-end">{t('loans.paid') || 'Paid'}</th>
+                            <th className="border border-slate-300 p-2 text-end">{t('loans.balance') || 'Balance'}</th>
+                            {!hideNextDue && <th className="w-[10%] border border-slate-300 p-2 text-start">{t('loans.nextDue') || 'Next Due'}</th>}
+                            <th className="w-[11%] border border-slate-300 p-2 text-start">{t('loans.status') || 'Status'}</th>
                         </tr>
-                    ) : loans.map((loan) => (
-                        <tr key={loan.id}>
-                            <td className="border border-slate-300 p-2 font-semibold">
-                                <LoanNoDisplay loanNo={loan.loanNo} plain />
-                            </td>
-                            <td className="border border-slate-300 p-2">
-                                <p className="font-medium">{loan.borrowerName}</p>
-                                {isSimpleLoan(loan) ? (
-                                    <p className="text-[10px] font-semibold text-slate-600">
-                                        {getLoanDirectionLabel(getLoanDirection(loan), t)}
-                                    </p>
-                                ) : null}
-                                {getLoanLinkedPartySummary(loan, t) ? (
-                                    <p className="text-[10px] font-medium text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
-                                ) : null}
-                                <p className="text-[10px] text-slate-500">{loan.borrowerNationalId}</p>
-                            </td>
-                            <td className="border border-slate-300 p-2 text-end">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2 text-end">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2 text-end font-semibold">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            {!hideNextDue && <td className="border border-slate-300 p-2">{loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</td>}
-                            <td className="border border-slate-300 p-2">{resolveStatusLabel(loan, t)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {loans.length === 0 ? (
+                            <tr>
+                                <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={hideNextDue ? 6 : 7}>
+                                    {t('common.noData') || 'No data'}
+                                </td>
+                            </tr>
+                        ) : loans.map((loan) => (
+                            <tr key={loan.id} data-pdf-keep-together>
+                                <td className="border border-slate-300 p-2 font-semibold break-words">
+                                    <LoanNoDisplay loanNo={loan.loanNo} plain />
+                                </td>
+                                <td className="border border-slate-300 p-2">
+                                    <p className="font-medium">{loan.borrowerName}</p>
+                                    {isSimpleLoan(loan) ? (
+                                        <p className="text-[10px] font-semibold text-slate-600">
+                                            {getLoanDirectionLabel(getLoanDirection(loan), t)}
+                                        </p>
+                                    ) : null}
+                                    {getLoanLinkedPartySummary(loan, t) ? (
+                                        <p className="text-[10px] font-medium text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
+                                    ) : null}
+                                    <p className="text-[10px] text-slate-500">{loan.borrowerNationalId}</p>
+                                </td>
+                                <td className="border border-slate-300 p-2 text-end whitespace-nowrap">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-2 text-end whitespace-nowrap">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</td>
+                                <td className="border border-slate-300 p-2 text-end font-semibold whitespace-nowrap">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
+                                {!hideNextDue && <td className="border border-slate-300 p-2">{loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</td>}
+                                <td className="border border-slate-300 p-2">{resolveStatusLabel(loan, t)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
 
-            {notesOverride?.trim() ? (
-                <div className="mt-6 text-xs">
-                    <div className="font-semibold text-slate-600">{t('loans.noteLabel') || 'Note:'}</div>
-                    <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
-                        {notesOverride.trim()}
+                {notesOverride?.trim() ? (
+                    <div className="mt-6 text-xs" data-pdf-keep-together>
+                        <div className="font-semibold text-slate-600">{t('loans.noteLabel') || 'Note:'}</div>
+                        <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
+                            {notesOverride.trim()}
+                        </div>
                     </div>
-                </div>
-            ) : null}
+                ) : null}
+            </section>
         </div>
     )
 }
@@ -390,191 +428,229 @@ export function LoanDetailsPrintTemplate({
     const loanScheduleTitle = getLoanScheduleTitle(loan, t)
     const loanScheduleIndexLabel = getLoanScheduleIndexLabel(loan, t)
     const loanScheduleAmountLabel = getLoanScheduleAmountLabel(loan, t)
+    const installmentChunks = chunkLoanDetailPrintRows(installments)
+    const paymentChunks = chunkLoanDetailPrintRows(
+        payments
+            .slice()
+            .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
+            .map((payment, index) => ({ payment, index }))
+    )
+    const continuedLabel = t('businessPartners.accountStatement.continued', { defaultValue: '(continued)' })
 
     return (
         <div
             dir={isRTL(printLang) ? 'rtl' : 'ltr'}
             className="bg-white text-black"
-            style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
+            style={{ width: '210mm' }}
+            data-loan-details-print
+            data-order-print-page
+            data-page-width-mm="210"
+            data-page-padding-mm="14"
         >
             <style
                 dangerouslySetInnerHTML={{
                     __html: `
 @media print {
     @page { margin: 0; size: A4; }
-    body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
+    [data-loan-details-print] tr,
+    [data-loan-details-print] [data-pdf-keep-together] { break-inside: avoid; page-break-inside: avoid; }
+    [data-loan-details-print] thead { display: table-header-group; }
 }
 `
                 }}
             />
 
-            <LoanPrintHeader
-                workspaceName={workspaceName}
-                printLang={printLang}
-                title={getLoanModuleTitle(loan, t)}
-                subtitle={
-                    <span className="flex items-center justify-center gap-1">
-                        <LoanNoDisplay loanNo={loan.loanNo} className="text-slate-600" plain />
-                        <span>•</span>
-                        <span>{formatDateTime(new Date().toISOString())}</span>
-                    </span>
-                }
-                logoUrl={logoUrl}
-                qrValue={qrValue}
-            />
-
-            <div className="grid grid-cols-2 items-start gap-4 mb-4 text-xs text-center">
-                <HideablePrintFieldCard
-                    title={getLoanIdentityTitle(loan, t)}
-                    className="border border-slate-300 rounded-md p-3"
-                    hiddenFields={hiddenFields}
-                    onHiddenFieldChange={onHiddenFieldChange}
-                    fields={[
-                        ...(getLoanLinkedPartySummary(loan, t) ? [{
-                            key: 'loans.identity.linkedParty',
-                            label: t('loans.linkedParty', { defaultValue: 'Linked Party' }),
-                            value: getLoanLinkedPartySummary(loan, t),
-                            render: <p className="mb-1 text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
-                        }] : []),
-                        ...(isSimpleLoan(loan) ? [{
-                            key: 'loans.identity.direction',
-                            label: t('loans.direction', { defaultValue: 'Direction' }),
-                            value: getLoanDirectionLabel(getLoanDirection(loan), t),
-                            render: <p className="mb-1 font-semibold text-slate-700">{getLoanDirectionLabel(getLoanDirection(loan), t)}</p>
-                        }] : []),
-                        {
-                            key: 'loans.identity.name',
-                            label: getLoanCounterpartyLabel(loan, t),
-                            value: loan.borrowerName
-                        },
-                        {
-                            key: 'loans.identity.phone',
-                            label: t('common.phone', { defaultValue: 'Phone' }),
-                            value: loan.borrowerPhone
-                        },
-                        {
-                            key: 'loans.identity.address',
-                            label: t('common.address', { defaultValue: 'Address' }),
-                            value: loan.borrowerAddress
-                        },
-                        {
-                            key: 'loans.identity.nationalId',
-                            label: t('loans.nationalId', { defaultValue: 'National ID' }),
-                            value: loan.borrowerNationalId,
-                            className: 'text-slate-600'
-                        }
-                    ]}
+            <section className="bg-white" style={{ minHeight: '297mm', padding: '14mm 12mm', boxSizing: 'border-box' }}>
+                <LoanPrintHeader
+                    workspaceName={workspaceName}
+                    printLang={printLang}
+                    title={getLoanModuleTitle(loan, t)}
+                    subtitle={
+                        <span className="flex items-center justify-center gap-1">
+                            <LoanNoDisplay loanNo={loan.loanNo} className="text-slate-600" plain />
+                            <span>•</span>
+                            <span>{formatDateTime(new Date().toISOString())}</span>
+                        </span>
+                    }
+                    logoUrl={logoUrl}
+                    qrValue={qrValue}
                 />
-                <HideablePrintFieldCard
-                    title={loanSummaryTitle}
-                    className="border border-slate-300 rounded-md p-3 text-center"
-                    hiddenFields={hiddenFields}
-                    onHiddenFieldChange={onHiddenFieldChange}
-                    fields={[
-                        {
-                            key: 'loans.summary.principal',
-                            label: t('loans.principal') || 'Principal',
-                            value: formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)
-                        },
-                        {
-                            key: 'loans.summary.paid',
-                            label: t('loans.paid') || 'Paid',
-                            value: formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)
-                        },
-                        {
-                            key: 'loans.summary.balance',
-                            label: t('loans.balance') || 'Balance',
-                            value: formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)
-                        },
-                        ...(!hideNextDue ? [{
-                            key: 'loans.summary.nextDue',
-                            label: t('loans.nextDue') || 'Next Due',
-                            value: loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'
-                        }] : []),
-                        {
-                            key: 'loans.summary.status',
-                            label: t('loans.status') || 'Status',
-                            value: resolveStatusLabel(loan, t)
-                        }
-                    ]}
-                />
-            </div>
 
-            <h3 className="font-semibold mb-2 text-sm">{loanScheduleTitle}</h3>
-            <table className="w-full border-collapse text-xs mb-5">
-                <thead>
-                    <tr className="bg-slate-100">
-                        <th className="border border-slate-300 p-2 text-start">{loanScheduleIndexLabel}</th>
-                        {!hideDueDate && <th className="border border-slate-300 p-2 text-start">{t('loans.dueDate') || 'Due Date'}</th>}
-                        <th className="border border-slate-300 p-2 text-start">{loanScheduleAmountLabel}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.paid') || 'Paid'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.balance') || 'Balance'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.status') || 'Status'}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {installments.length === 0 ? (
-                        <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={hideDueDate ? 5 : 6}>
-                                {t('common.noData') || 'No data'}
-                            </td>
-                        </tr>
-                    ) : installments.map((item) => (
-                        <tr key={item.id}>
-                            <td className="border border-slate-300 p-2">{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</td>
-                            {!hideDueDate && <td className="border border-slate-300 p-2">{item.dueDate ? formatDate(item.dueDate) : '-'}</td>}
-                            <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.plannedAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.paidAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2">{resolveInstallmentStatusLabel(item.status, t)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-
-            <h3 className="font-semibold mb-2 text-sm">{t('loans.recentActivity') || 'Recent Activity'}</h3>
-            <table className="w-full border-collapse text-xs">
-                <thead>
-                    <tr className="bg-slate-100">
-                        <th className="border border-slate-300 p-2 text-start">{t('common.date') || 'Date'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('common.description') || 'Description'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('pos.paymentMethod') || 'Payment Method'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('common.amount') || 'Amount'}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {payments.length === 0 ? (
-                        <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={4}>
-                                {t('common.noData') || 'No data'}
-                            </td>
-                        </tr>
-                    ) : payments
-                        .slice()
-                        .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
-                        .map((payment, index) => (
-                            <tr key={payment.id}>
-                                <td className="border border-slate-300 p-2">{formatDateTime(payment.paidAt)}</td>
-                                <td className="border border-slate-300 p-2">
-                                    {getLoanPaymentActivityLabel(loan, t)}{index === 0 && loan.balanceAmount <= 0 ? ' (Final)' : ''}
-                                </td>
-                                <td className="border border-slate-300 p-2">
-                                    {t(`pos.${payment.paymentMethod}`) || payment.paymentMethod}
-                                </td>
-                                <td className="border border-slate-300 p-2 text-start">
-                                    {formatCurrency(payment.amount, loan.settlementCurrency, iqdPreference)}
-                                </td>
-                            </tr>
-                        ))}
-                </tbody>
-            </table>
-
-            <div className="mt-6 text-xs">
-                <div className="font-semibold text-slate-600">{t('loans.noteLabel') || 'Note:'}</div>
-                <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
-                    {noteValue || ''}
+                <div className="grid grid-cols-2 items-start gap-4 mb-4 text-xs text-center" data-pdf-keep-together>
+                    <HideablePrintFieldCard
+                        title={getLoanIdentityTitle(loan, t)}
+                        className="border border-slate-300 rounded-md p-3"
+                        hiddenFields={hiddenFields}
+                        onHiddenFieldChange={onHiddenFieldChange}
+                        fields={[
+                            ...(getLoanLinkedPartySummary(loan, t) ? [{
+                                key: 'loans.identity.linkedParty',
+                                label: t('loans.linkedParty', { defaultValue: 'Linked Party' }),
+                                value: getLoanLinkedPartySummary(loan, t),
+                                render: <p className="mb-1 text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
+                            }] : []),
+                            ...(isSimpleLoan(loan) ? [{
+                                key: 'loans.identity.direction',
+                                label: t('loans.direction', { defaultValue: 'Direction' }),
+                                value: getLoanDirectionLabel(getLoanDirection(loan), t),
+                                render: <p className="mb-1 font-semibold text-slate-700">{getLoanDirectionLabel(getLoanDirection(loan), t)}</p>
+                            }] : []),
+                            {
+                                key: 'loans.identity.name',
+                                label: getLoanCounterpartyLabel(loan, t),
+                                value: loan.borrowerName
+                            },
+                            {
+                                key: 'loans.identity.phone',
+                                label: t('common.phone', { defaultValue: 'Phone' }),
+                                value: loan.borrowerPhone
+                            },
+                            {
+                                key: 'loans.identity.address',
+                                label: t('common.address', { defaultValue: 'Address' }),
+                                value: loan.borrowerAddress
+                            },
+                            {
+                                key: 'loans.identity.nationalId',
+                                label: t('loans.nationalId', { defaultValue: 'National ID' }),
+                                value: loan.borrowerNationalId,
+                                className: 'text-slate-600'
+                            }
+                        ]}
+                    />
+                    <HideablePrintFieldCard
+                        title={loanSummaryTitle}
+                        className="border border-slate-300 rounded-md p-3 text-center"
+                        hiddenFields={hiddenFields}
+                        onHiddenFieldChange={onHiddenFieldChange}
+                        fields={[
+                            {
+                                key: 'loans.summary.principal',
+                                label: t('loans.principal') || 'Principal',
+                                value: formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)
+                            },
+                            {
+                                key: 'loans.summary.paid',
+                                label: t('loans.paid') || 'Paid',
+                                value: formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)
+                            },
+                            {
+                                key: 'loans.summary.balance',
+                                label: t('loans.balance') || 'Balance',
+                                value: formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)
+                            },
+                            ...(!hideNextDue ? [{
+                                key: 'loans.summary.nextDue',
+                                label: t('loans.nextDue') || 'Next Due',
+                                value: loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'
+                            }] : []),
+                            {
+                                key: 'loans.summary.status',
+                                label: t('loans.status') || 'Status',
+                                value: resolveStatusLabel(loan, t)
+                            }
+                        ]}
+                    />
                 </div>
-            </div>
+
+                {installmentChunks.map((installmentChunk, chunkIndex) => (
+                    <table
+                        key={`schedule-${chunkIndex}`}
+                        data-pdf-page-chunk
+                        data-centered-table={chunkIndex > 0 ? '' : undefined}
+                        className={`${chunkIndex === 0 ? 'mt-5' : 'mt-3'} w-full table-fixed border-collapse text-xs`}
+                    >
+                        <thead>
+                            <tr className="bg-white">
+                                <th className="border-x border-t border-slate-300 px-2 py-1 text-start text-sm" colSpan={hideDueDate ? 5 : 6}>
+                                    {loanScheduleTitle}
+                                    {chunkIndex > 0 ? <span className="ms-1 text-[9px] font-normal text-slate-500">{continuedLabel}</span> : null}
+                                </th>
+                            </tr>
+                            <tr className="bg-slate-100">
+                                <th className="w-[16%] border border-slate-300 p-2 text-start">{loanScheduleIndexLabel}</th>
+                                {!hideDueDate && <th className="w-[16%] border border-slate-300 p-2 text-start">{t('loans.dueDate') || 'Due Date'}</th>}
+                                <th className="border border-slate-300 p-2 text-end">{loanScheduleAmountLabel}</th>
+                                <th className="border border-slate-300 p-2 text-end">{t('loans.paid') || 'Paid'}</th>
+                                <th className="border border-slate-300 p-2 text-end">{t('loans.balance') || 'Balance'}</th>
+                                <th className="w-[15%] border border-slate-300 p-2 text-start">{t('loans.status') || 'Status'}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {installmentChunk.length === 0 ? (
+                                <tr style={{ height: `${LOAN_DETAILS_TABLE_ROW_HEIGHT_MM}mm` }}>
+                                    <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={hideDueDate ? 5 : 6}>
+                                        {t('common.noData') || 'No data'}
+                                    </td>
+                                </tr>
+                            ) : installmentChunk.map((item) => (
+                                <tr key={item.id} data-pdf-keep-together style={{ height: `${LOAN_DETAILS_TABLE_ROW_HEIGHT_MM}mm` }}>
+                                    <td className="border border-slate-300 p-2">{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</td>
+                                    {!hideDueDate && <td className="border border-slate-300 p-2 whitespace-nowrap">{item.dueDate ? formatDate(item.dueDate) : '-'}</td>}
+                                    <td className="border border-slate-300 p-2 text-end whitespace-nowrap">{formatCurrency(item.plannedAmount, loan.settlementCurrency, iqdPreference)}</td>
+                                    <td className="border border-slate-300 p-2 text-end whitespace-nowrap">{formatCurrency(item.paidAmount, loan.settlementCurrency, iqdPreference)}</td>
+                                    <td className="border border-slate-300 p-2 text-end whitespace-nowrap">{formatCurrency(item.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
+                                    <td className="border border-slate-300 p-2">{resolveInstallmentStatusLabel(item.status, t)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ))}
+
+                {paymentChunks.map((paymentChunk, chunkIndex) => (
+                    <table
+                        key={`activity-${chunkIndex}`}
+                        data-pdf-page-chunk
+                        data-centered-table=""
+                        className="mt-5 w-full table-fixed border-collapse text-xs"
+                    >
+                        <thead>
+                            <tr className="bg-white">
+                                <th className="border-x border-t border-slate-300 px-2 py-1 text-start text-sm" colSpan={4}>
+                                    {t('loans.recentActivity') || 'Recent Activity'}
+                                    {chunkIndex > 0 ? <span className="ms-1 text-[9px] font-normal text-slate-500">{continuedLabel}</span> : null}
+                                </th>
+                            </tr>
+                            <tr className="bg-slate-100">
+                                <th className="w-[20%] border border-slate-300 p-2 text-start">{t('common.date') || 'Date'}</th>
+                                <th className="w-[35%] border border-slate-300 p-2 text-start">{t('common.description') || 'Description'}</th>
+                                <th className="w-[25%] border border-slate-300 p-2 text-start">{t('pos.paymentMethod') || 'Payment Method'}</th>
+                                <th className="w-[20%] border border-slate-300 p-2 text-end">{t('common.amount') || 'Amount'}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paymentChunk.length === 0 ? (
+                                <tr style={{ height: `${LOAN_DETAILS_TABLE_ROW_HEIGHT_MM}mm` }}>
+                                    <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={4}>
+                                        {t('common.noData') || 'No data'}
+                                    </td>
+                                </tr>
+                            ) : paymentChunk.map(({ payment, index }) => (
+                                <tr key={payment.id} data-pdf-keep-together style={{ height: `${LOAN_DETAILS_TABLE_ROW_HEIGHT_MM}mm` }}>
+                                    <td className="border border-slate-300 p-2 whitespace-nowrap">{formatDateTime(payment.paidAt)}</td>
+                                    <td className="border border-slate-300 p-2">
+                                        {getLoanPaymentActivityLabel(loan, t)}{index === 0 && loan.balanceAmount <= 0 ? ' (Final)' : ''}
+                                    </td>
+                                    <td className="border border-slate-300 p-2">
+                                        {t(`pos.${payment.paymentMethod}`) || payment.paymentMethod}
+                                    </td>
+                                    <td className="border border-slate-300 p-2 text-end whitespace-nowrap">
+                                        {formatCurrency(payment.amount, loan.settlementCurrency, iqdPreference)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ))}
+
+                <div className="mt-6 text-xs" data-pdf-keep-together>
+                    <div className="font-semibold text-slate-600">{t('loans.noteLabel') || 'Note:'}</div>
+                    <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
+                        {noteValue || ''}
+                    </div>
+                </div>
+            </section>
         </div>
     )
 }

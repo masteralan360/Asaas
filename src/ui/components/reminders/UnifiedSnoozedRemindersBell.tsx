@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Bell, BellOff, RotateCcw, ArrowUpRight, TrendingUp, HandCoins, FileSpreadsheet, Inbox, ShoppingBag } from 'lucide-react'
+import { Bell, BellOff, RotateCcw, ArrowUpRight, TrendingUp, Inbox, ShoppingBag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/ui/components'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/ui/components/dialog'
@@ -24,8 +24,6 @@ export function UnifiedSnoozedRemindersBell() {
 
     const counts = useMemo(() => ({
         all: items.length,
-        loan: items.filter(i => i.type === 'loan').length,
-        budget: items.filter(i => i.type === 'budget').length,
         exchange: items.filter(i => i.type === 'exchange').length,
         marketplace: items.filter(i => i.type === 'marketplace').length,
     }), [items])
@@ -76,15 +74,9 @@ export function UnifiedSnoozedRemindersBell() {
                     {/* Content with Tabs */}
                     <div className="p-4">
                         <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-                            <TabsList className="grid w-full grid-cols-5 h-11 bg-muted/60 p-1 rounded-xl mb-4">
+                            <TabsList className="grid w-full grid-cols-3 h-11 bg-muted/60 p-1 rounded-xl mb-4">
                                 <TabsTrigger value="all" className="rounded-lg font-bold text-[10px] uppercase tracking-tighter">
                                     {t('common.all') || 'All'} ({counts.all})
-                                </TabsTrigger>
-                                <TabsTrigger value="loan" className="rounded-lg font-bold text-[10px] uppercase tracking-tighter">
-                                    {t('nav.installments', { defaultValue: 'Installments' })} ({counts.loan})
-                                </TabsTrigger>
-                                <TabsTrigger value="budget" className="rounded-lg font-bold text-[10px] uppercase tracking-tighter">
-                                    {t('nav.budget', { defaultValue: 'Accounting' })} ({counts.budget})
                                 </TabsTrigger>
                                 <TabsTrigger value="exchange" className="rounded-lg font-bold text-[10px] uppercase tracking-tighter">
                                     {t('exchange.rates') || 'Rates'} ({counts.exchange})
@@ -135,13 +127,9 @@ function ReminderCard({ item, iqdPreference, t, closeDialog }: { item: SnoozedIt
                 <div className="flex gap-3.5 min-w-0">
                     <div className={cn(
                         "mt-0.5 p-2 rounded-xl shrink-0 transition-all duration-500 group-hover:scale-105 group-hover:shadow-lg",
-                        item.type === 'loan' ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
-                        item.type === 'budget' ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" :
                         item.type === 'marketplace' ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
                         "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                     )}>
-                        {item.type === 'loan' && <HandCoins className="h-4.5 w-4.5" />}
-                        {item.type === 'budget' && <FileSpreadsheet className="h-4.5 w-4.5" />}
                         {item.type === 'marketplace' && <ShoppingBag className="h-4.5 w-4.5" />}
                         {item.type === 'exchange' && <TrendingUp className="h-4.5 w-4.5" />}
                     </div>
@@ -179,10 +167,8 @@ function ReminderCard({ item, iqdPreference, t, closeDialog }: { item: SnoozedIt
                     }}
                 >
                     <ArrowUpRight className="h-3 w-3" />
-                    {item.type === 'loan' ? (t('loans.reminder.payNow') || 'View Loan') :
-                     item.type === 'marketplace' ? (t('ecommerce.reviewOrder', { defaultValue: 'Review Order' }) || 'Review Order') :
-                     item.type === 'exchange' ? (t('exchange.editManual') || 'Open Editor') :
-                     (t('budget.reminder.yesPaid') || 'Open Details')}
+                    {item.type === 'marketplace' ? (t('ecommerce.reviewOrder', { defaultValue: 'Review Order' }) || 'Review Order') :
+                     (t('exchange.editManual') || 'Open Editor')}
                 </Button>
                 <Button
                     size="sm"

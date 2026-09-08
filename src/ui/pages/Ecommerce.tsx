@@ -5,7 +5,6 @@ import {
     ArrowLeft,
     BadgeCheck,
     CalendarDays,
-    ChevronDown,
     CircleDollarSign,
     Clock3,
     Eye,
@@ -68,10 +67,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
     Input,
     SettlementDialog,
     Table,
@@ -87,6 +82,7 @@ import {
     TooltipTrigger,
     useToast
 } from '@/ui/components'
+import { FilterDropdown } from '@/ui/components/FilterDropdown'
 
 type MarketplaceOrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
 type MarketplaceOrderFilter = 'all' | MarketplaceOrderStatus
@@ -680,8 +676,6 @@ function EcommerceListView({
         ? ((dateFilteredOrders.length - previousOrderCount) / previousOrderCount) * 100
         : null
 
-    const StatusFilterIcon = statusFilterIcons[statusFilter]
-
     const getDateDisplay = () => {
         if (dateRange === 'today') {
             return formatDate(new Date())
@@ -947,49 +941,20 @@ function EcommerceListView({
                             </div>
 
                             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                                <DropdownMenu dir={pageDirection}>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            variant="outline"
-                                            allowViewer={true}
-                                            className={cn(
-                                                'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
-                                                statusFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
-                                            )}
-                                        >
-                                            <span className="flex min-w-0 items-center gap-2">
-                                                <StatusFilterIcon className="h-4 w-4 shrink-0" />
-                                                <span className="hidden text-xs text-muted-foreground sm:inline">{t('common.status') || 'Status'}</span>
-                                                <span className="truncate text-sm">
-                                                    {statusFilter === 'all'
-                                                        ? (t('common.all') || 'All')
-                                                        : t(`ecommerce.status.${statusFilter}`, { defaultValue: statusFilter })}
-                                                </span>
-                                            </span>
-                                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="min-w-44 rounded-xl border-border/70 p-1.5">
-                                        {(['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as MarketplaceOrderFilter[]).map((value) => {
-                                            const StatusOptionIcon = statusFilterIcons[value]
-                                            return (
-                                                <DropdownMenuItem
-                                                    key={value}
-                                                    onSelect={() => setStatusFilter(value)}
-                                                    className={cn(
-                                                        'rounded-lg px-3 py-2 text-sm font-medium',
-                                                        statusFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
-                                                    )}
-                                                >
-                                                    <StatusOptionIcon className="me-2 h-4 w-4" />
-                                                    {value === 'all'
-                                                        ? (t('common.all') || 'All')
-                                                        : t(`ecommerce.status.${value}`, { defaultValue: value })}
-                                                </DropdownMenuItem>
-                                            )
-                                        })}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                <FilterDropdown
+                                    dir={pageDirection}
+                                    value={statusFilter}
+                                    label={t('common.status') || 'Status'}
+                                    hasActiveFilter={statusFilter !== 'all'}
+                                    options={(['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as MarketplaceOrderFilter[]).map((value) => ({
+                                        value,
+                                        icon: statusFilterIcons[value],
+                                        label: value === 'all'
+                                            ? (t('common.all') || 'All')
+                                            : t(`ecommerce.status.${value}`, { defaultValue: value }),
+                                    }))}
+                                    onValueChange={setStatusFilter}
+                                />
                             </div>
                         </div>
                     </div>

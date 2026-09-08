@@ -118,7 +118,6 @@ import {
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/printPreviewEditorStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
-import { suppressExpenseReminderForSession } from '@/lib/budgetReminderSession'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 
 interface ExpenseRow {
@@ -978,10 +977,6 @@ export function Budget() {
                     category: selectedExpenseCategory?.name ?? null,
                     subcategory: null
                 })
-
-                if (dueDate <= new Date().toISOString().slice(0, 10)) {
-                    suppressExpenseReminderForSession(workspaceId, createdSeries.id, selectedMonth)
-                }
 
                 await ensureExpenseItemsForMonth(workspaceId, selectedMonth)
 

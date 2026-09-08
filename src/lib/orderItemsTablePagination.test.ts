@@ -3,6 +3,8 @@ import {
     findOrderItemsSplitIndex,
     ORDER_ITEMS_CONTINUATION_ATTR,
     ORDER_ITEMS_PAGINATED_ATTR,
+    ORDER_ITEMS_TABLE_HEADER_SPACER_ATTR,
+    planOrderItemsTableHeaderSpacer,
     planOrderItemsStatementSpacers
 } from './orderItemsTablePagination'
 
@@ -47,12 +49,39 @@ describe('findOrderItemsSplitIndex', () => {
         expect(findOrderItemsSplitIndex([row(10)], 0)).toBeNull()
         expect(findOrderItemsSplitIndex([row(10)], Number.NaN)).toBeNull()
     })
+
+    it('uses the printable content bottom, not the physical page edge, when padding is configured', () => {
+        // On page 2, the printable bottom is 580mm (594 - 14). The second
+        // row expands to 584mm, so it must start a new continuation table.
+        expect(findOrderItemsSplitIndex([
+            row(320, 16),
+            row(568, 16)
+        ], 297, 14)).toEqual({ rowIndex: 1, boundaryMm: 580 })
+    })
+})
+
+describe('planOrderItemsTableHeaderSpacer', () => {
+    it('moves a continuation title and its first wrapped row together to the next printable page', () => {
+        // The current page ends at 297mm and its printable bottom is 283mm.
+        // A table at 270mm whose first row ends at 310mm would otherwise leave
+        // its repeated title/header on page 1 and its row on page 2.
+        expect(planOrderItemsTableHeaderSpacer(270, 310, 297, 14)).toEqual({ spacerMm: 41 })
+    })
+
+    it('does not waste space when the measured header and first row already fit', () => {
+        expect(planOrderItemsTableHeaderSpacer(312, 360, 297, 14)).toBeNull()
+    })
+
+    it('does not attempt to keep an unavoidably taller-than-page row together', () => {
+        expect(planOrderItemsTableHeaderSpacer(270, 560, 297, 14)).toBeNull()
+    })
 })
 
 describe('order items pagination markers', () => {
     it('exposes the attribute names the template and paginator agree on', () => {
         expect(ORDER_ITEMS_PAGINATED_ATTR).toBe('data-order-items-paginated')
         expect(ORDER_ITEMS_CONTINUATION_ATTR).toBe('data-order-items-continuation')
+        expect(ORDER_ITEMS_TABLE_HEADER_SPACER_ATTR).toBe('data-order-items-table-header-spacer')
     })
 })
 

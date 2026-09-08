@@ -8,5 +8,6 @@ Fix SQLITE loading
 Transaction Reconciliation & Integrity Audit, Expandable, Plain English Explanation, AGENTS.md guide
 supabase backup
 Move Tabs in sidebar and add favorite
+SQLite Offline
 
 Price books selector order form and quick order

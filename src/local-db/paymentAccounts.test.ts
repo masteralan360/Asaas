@@ -20,7 +20,8 @@ let assertPaymentAccountTransactionCanBeAppliedLocally: typeof import('./payment
 let mirrorPaymentAccountTransactionLocally: typeof import('./paymentAccounts').mirrorPaymentAccountTransactionLocally
 
 function installBrowserStorage() {
-  const rows = new Map<string, string>()
+    const rows = new Map<string, string>()
+    const documentHead = { appendChild: () => undefined }
   const storage = {
     get length() { return rows.size },
     getItem: (key: string) => rows.get(key) ?? null,
@@ -31,15 +32,29 @@ function installBrowserStorage() {
   }
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage })
+  Object.defineProperty(globalThis.URL, 'createObjectURL', { configurable: true, value: () => 'blob:test' })
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { localStorage: storage, sessionStorage: storage, location: { hash: '', origin: 'http://localhost', pathname: '/' }, addEventListener: () => undefined },
+    value: { localStorage: storage, sessionStorage: storage, location: { hash: '', origin: 'http://localhost', pathname: '/' }, URL: globalThis.URL, addEventListener: () => undefined },
   })
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
-    value: { visibilityState: 'visible', dir: 'ltr', documentElement: { lang: 'en', dir: 'ltr' }, addEventListener: () => undefined, removeEventListener: () => undefined },
+    value: {
+      visibilityState: 'visible',
+      dir: 'ltr',
+      documentElement: { lang: 'en', dir: 'ltr', style: {} },
+      head: documentHead,
+      getElementsByTagName: () => [documentHead],
+      createElement: () => ({ appendChild: () => undefined, setAttribute: () => undefined, style: {} }),
+      createTextNode: () => ({}),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    },
   })
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } })
+  Object.defineProperty(globalThis, 'DOMMatrix', { configurable: true, value: class DOMMatrix {} })
+  Object.defineProperty(globalThis, 'ImageData', { configurable: true, value: class ImageData {} })
+  Object.defineProperty(globalThis, 'Path2D', { configurable: true, value: class Path2D {} })
 }
 
 async function createFundedAccount(openingAmount = 50_000) {
@@ -171,6 +186,70 @@ describe('payment-account availability', () => {
     expect(balance?.balanceAmount).toBe(50_000)
     expect((await db.payment_transactions.get(original.id))?.isDeleted).toBe(false)
     expect(reversal).toMatchObject({ accountId: account.id, reversalOfTransactionId: original.id, amount: -50_000 })
+  })
+
+  it('reverses a standard-loan repayment through payment transactions and restores its schedule and account ledger', async () => {
+    const account = await createFundedAccount()
+    const { loan, installments } = await createManualLoan(WORKSPACE_ID, {
+      loanCategory: 'standard',
+      direction: 'lent',
+      borrowerName: 'Test Borrower',
+      borrowerPhone: '07500000000',
+      borrowerAddress: 'Erbil',
+      borrowerNationalId: '',
+      principalAmount: 100_000,
+      settlementCurrency: 'iqd',
+      installmentCount: 2,
+      installmentFrequency: 'monthly',
+      firstDueDate: '2026-09-01',
+    })
+
+    await recordLoanPayment(WORKSPACE_ID, {
+      loanId: loan.id,
+      installmentId: installments[0].id,
+      amount: 50_000,
+      paymentMethod: 'cash',
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+      paidAt: '2026-09-02T12:00:00.000Z',
+    })
+
+    const original = (await db.payment_transactions
+      .where('[workspaceId+sourceType+sourceRecordId]')
+      .equals([WORKSPACE_ID, 'loan_installment', loan.id])
+      .toArray())[0]
+    expect(original).toMatchObject({
+      accountId: account.id,
+      amount: 50_000,
+      direction: 'incoming',
+      metadata: expect.objectContaining({
+        touchedInstallmentIds: [installments[0].id],
+      }),
+    })
+    expect(await db.loans.get(loan.id)).toMatchObject({ totalPaidAmount: 50_000, balanceAmount: 50_000 })
+    expect(await db.payment_account_movements.get(original!.id)).toMatchObject({ deltaAmount: 50_000 })
+
+    const reversal = await reversePaymentTransaction(WORKSPACE_ID, original!.id)
+
+    expect(reversal).toMatchObject({
+      accountId: account.id,
+      reversalOfTransactionId: original!.id,
+      amount: -50_000,
+    })
+    expect(await db.loans.get(loan.id)).toMatchObject({ totalPaidAmount: 0, balanceAmount: 100_000 })
+    expect((await db.loan_installments.where('loanId').equals(loan.id).sortBy('installmentNo')).map((item) => ({
+      paidAmount: item.paidAmount,
+      balanceAmount: item.balanceAmount,
+    }))).toEqual([
+      { paidAmount: 0, balanceAmount: 50_000 },
+      { paidAmount: 0, balanceAmount: 50_000 },
+    ])
+    expect((await db.loan_payments.where('loanId').equals(loan.id).toArray())[0]).toMatchObject({ isDeleted: true })
+    expect(await db.payment_account_movements.get(reversal.id)).toMatchObject({ deltaAmount: -50_000 })
+    expect((await db.payment_account_balances.where('[accountId+currency]').equals([account.id, 'iqd']).first())?.balanceAmount).toBe(50_000)
+
+    await expect(reversePaymentTransaction(WORKSPACE_ID, reversal.id)).rejects.toThrow('Reversal entries cannot be reversed')
+    expect((await db.payment_transactions.where('sourceRecordId').equals(loan.id).toArray())).toHaveLength(3)
   })
 
   it('rejects an unfundable manual simple loan without creating the loan, installment, or origination payment', async () => {

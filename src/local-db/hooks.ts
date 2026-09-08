@@ -87,7 +87,14 @@ import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable, getSupabaseRemoteTableName, getVisibilityScopedTableRpc } from '@/lib/supabaseSchema'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
-import { recordWorkspaceDataFetch } from '@/workspace/workspaceDataFreshness'
+import {
+    cancelWorkspaceDataHydration,
+    completeWorkspaceDataHydration,
+    failWorkspaceDataHydration,
+    recordWorkspaceDataFetch,
+    startWorkspaceDataHydration,
+    updateWorkspaceDataHydrationProgress
+} from '@/workspace/workspaceDataFreshness'
 
 export { addToOfflineMutations } from './offlineMutations'
 
@@ -1747,10 +1754,11 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
     tableName: string,
     table: any,
     workspaceId: string,
-    options?: { includeDeleted?: boolean }
-): Promise<void> {
+    options?: { includeDeleted?: boolean },
+    hydrationOperationId?: string
+): Promise<boolean> {
     if (!await canReconcileCloudWorkspaceData(workspaceId)) {
-        return
+        return false
     }
 
     const includeDeleted = options?.includeDeleted ?? false
@@ -1777,11 +1785,24 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
             .range(from, from + TABLE_FETCH_PAGE_SIZE - 1)
 
         const { data, error } = await query
-        if (!data || error || !await canReconcileCloudWorkspaceData(workspaceId)) {
-            return
+        if (error) {
+            throw error
+        }
+        if (!data) {
+            throw new Error(`No data returned while reading ${tableName}`)
+        }
+        if (!await canReconcileCloudWorkspaceData(workspaceId)) {
+            return false
         }
 
         remoteRows.push(...data)
+        updateWorkspaceDataHydrationProgress(
+            workspaceId,
+            'supabase',
+            tableName,
+            remoteRows.length,
+            hydrationOperationId
+        )
         if (data.length < TABLE_FETCH_PAGE_SIZE) {
             break
         }
@@ -1809,7 +1830,7 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
     })
 
     if (!await canReconcileCloudWorkspaceData(workspaceId)) {
-        return
+        return false
     }
 
     await db.transaction('rw', table, async () => {
@@ -1826,7 +1847,8 @@ async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus
         }
     })
 
-    recordWorkspaceDataFetch(workspaceId, 'supabase')
+    recordWorkspaceDataFetch(workspaceId, 'supabase', undefined, tableName)
+    return true
 }
 
 export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(
@@ -1850,7 +1872,19 @@ export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, 
         if (!await canReconcileCloudWorkspaceData(workspaceId)) {
             return
         }
-        await fetchTableFromSupabaseInternal<T>(tableName, table, workspaceId, options)
+
+        startWorkspaceDataHydration(workspaceId, 'supabase', tableName, key)
+        try {
+            const completed = await fetchTableFromSupabaseInternal<T>(tableName, table, workspaceId, options, key)
+            if (completed) {
+                completeWorkspaceDataHydration(workspaceId, 'supabase', tableName, undefined, key)
+            } else {
+                cancelWorkspaceDataHydration(workspaceId, 'supabase', tableName, key)
+            }
+        } catch (error) {
+            failWorkspaceDataHydration(workspaceId, 'supabase', tableName, undefined, key)
+            console.error(`[${tableName}] Failed to hydrate from Supabase:`, error)
+        }
     })()
         .finally(() => {
             if (tableFetchesInFlight.get(key) === request) {
@@ -2437,6 +2471,7 @@ export async function generateLocalSaleSequenceId(workspaceId: string): Promise<
 }
 
 type SalesSyncOptions = { startDate?: string; endDate?: string }
+type SalesSyncResult = 'complete' | 'cancelled' | 'error'
 
 const SALES_VERSION_PAGE_SIZE = 1000
 const SALES_DETAIL_CHUNK_SIZE = 100
@@ -2461,8 +2496,12 @@ async function fetchSalesChunks<T>(
   return rows
 }
 
-async function performSalesSync(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
-  if (!await canReconcileCloudWorkspaceData(workspaceId)) return
+async function performSalesSync(
+  workspaceId: string,
+  options?: SalesSyncOptions,
+  hydrationOperationId?: string,
+): Promise<SalesSyncResult> {
+  if (!await canReconcileCloudWorkspaceData(workspaceId)) return 'cancelled'
 
   const remoteChecks: Array<{ id: string; version: number; updated_at: string }> = []
 
@@ -2486,12 +2525,19 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
         .range(from, from + SALES_VERSION_PAGE_SIZE - 1),
     )
 
-    if (!result.data || result.error) return
+    if (!result.data || result.error) return 'error'
     remoteChecks.push(...result.data)
+    updateWorkspaceDataHydrationProgress(
+      workspaceId,
+      'supabase',
+      'sales',
+      remoteChecks.length,
+      hydrationOperationId,
+    )
     if (result.data.length < SALES_VERSION_PAGE_SIZE) break
   }
 
-  if (!await canReconcileCloudWorkspaceData(workspaceId)) return
+  if (!await canReconcileCloudWorkspaceData(workspaceId)) return 'cancelled'
 
   const localSales = await db.sales
     .where('workspaceId')
@@ -2582,7 +2628,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
         return (result.data || []) as any[]
       })
     } catch {
-      return
+      return 'error'
     }
 
     if (fullData) {
@@ -2599,7 +2645,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
             (acc: any, p: any) => ({ ...acc, [p.id]: p.name }),
             {},
           )
-          if (!await canReconcileCloudWorkspaceData(workspaceId)) return
+          if (!await canReconcileCloudWorkspaceData(workspaceId)) return 'cancelled'
           await db.profiles.bulkPut(
             profiles.map((p: any) => ({
               id: p.id,
@@ -2693,7 +2739,7 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
     }
   }
 
-  if (!await canReconcileCloudWorkspaceData(workspaceId)) return
+  if (!await canReconcileCloudWorkspaceData(workspaceId)) return 'cancelled'
 
   await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items, db.sale_product_exchanges], async () => {
     if (remoteExchangeRows) {
@@ -2730,6 +2776,8 @@ async function performSalesSync(workspaceId: string, options?: SalesSyncOptions)
       if (saleProductExchangesToPut.length > 0) await db.sale_product_exchanges.bulkPut(saleProductExchangesToPut)
     }
   })
+
+  return 'complete'
 }
 
 export function syncSalesFromSupabase(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
@@ -2741,7 +2789,22 @@ export function syncSalesFromSupabase(workspaceId: string, options?: SalesSyncOp
 
   const request = (async () => {
     if (!await canReconcileCloudWorkspaceData(workspaceId)) return
-    await performSalesSync(workspaceId, options)
+
+    startWorkspaceDataHydration(workspaceId, 'supabase', 'sales', key)
+    try {
+      const result = await performSalesSync(workspaceId, options, key)
+      if (result === 'complete') {
+        recordWorkspaceDataFetch(workspaceId, 'supabase', undefined, 'sales')
+        completeWorkspaceDataHydration(workspaceId, 'supabase', 'sales', undefined, key)
+      } else if (result === 'error') {
+        failWorkspaceDataHydration(workspaceId, 'supabase', 'sales', undefined, key)
+      } else {
+        cancelWorkspaceDataHydration(workspaceId, 'supabase', 'sales', key)
+      }
+    } catch (error) {
+      failWorkspaceDataHydration(workspaceId, 'supabase', 'sales', undefined, key)
+      throw error
+    }
   })().finally(() => {
     if (salesSyncsInFlight.get(key) === request) {
       salesSyncsInFlight.delete(key)
@@ -4711,6 +4774,19 @@ async function listLoanPaymentTransactionsByLoan(workspaceId: string, loanId: st
     return groups.flat()
 }
 
+async function listLoanSettlementTransactionsByLoan(workspaceId: string, loanId: string) {
+    const groups = await Promise.all(
+        LOAN_SETTLEMENT_TRANSACTION_SOURCE_TYPES.map((sourceType) =>
+            db.payment_transactions
+                .where('[workspaceId+sourceType+sourceRecordId]')
+                .equals([workspaceId, sourceType, loanId])
+                .toArray()
+        )
+    )
+
+    return groups.flat()
+}
+
 export async function hasLoanTransactionHistory(workspaceId: string, loanId: string) {
     const [activeLoanPayments, settlementTransactions] = await Promise.all([
         db.loan_payments.where('loanId').equals(loanId).and((item) => !item.isDeleted).count(),
@@ -4833,8 +4909,6 @@ function rebuildLoanStateFromPayments(
         loan.settlementCurrency
     )
     const nextDueDate = updatedInstallments.find((installment) => installment.balanceAmount > 0)?.dueDate || null
-    const oldestOverdueDueDate = updatedInstallments.find((installment) => installment.balanceAmount > 0 && !!installment.dueDate && installment.dueDate < today)?.dueDate || null
-    const keepReminderSnooze = !!oldestOverdueDueDate && oldestOverdueDueDate === loan.overdueReminderSnoozedForDueDate
     const baseLoanNo = loan.loanNo.replace(/-\d+$/, '')
     const rebuiltLoanNo = payments.length > 0 ? `${baseLoanNo}-${payments.length}` : baseLoanNo
 
@@ -4844,8 +4918,6 @@ function rebuildLoanStateFromPayments(
         totalPaidAmount,
         balanceAmount,
         nextDueDate,
-        overdueReminderSnoozedAt: keepReminderSnooze ? loan.overdueReminderSnoozedAt || null : null,
-        overdueReminderSnoozedForDueDate: keepReminderSnooze ? loan.overdueReminderSnoozedForDueDate || null : null,
         status: computeLoanStatus(nextDueDate, balanceAmount),
         updatedAt: now,
         version: loan.version + 1,
@@ -5105,8 +5177,6 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         installmentFrequency: input.installmentFrequency,
         firstDueDate,
         nextDueDate,
-        overdueReminderSnoozedAt: null,
-        overdueReminderSnoozedForDueDate: null,
         status: computeLoanStatus(nextDueDate, principalAmount),
         notes: input.notes?.trim(),
         createdBy: input.createdBy,
@@ -5423,6 +5493,48 @@ export function useLoanPayments(loanId: string | undefined, workspaceId?: string
     return payments ?? []
 }
 
+/**
+ * Repayment transactions, including their reversal entries, for one loan.
+ * Detail views use these rows to offer reversals without treating a loan
+ * balance as the financial source of truth.
+ */
+export function useLoanSettlementTransactions(loanId: string | undefined, workspaceId?: string) {
+    const online = useNetworkStatus()
+    const loansViewOwnScope = useViewOwnRecordScope('loans.view_own')
+    const installmentsViewOwnScope = useViewOwnRecordScope('installments.view_own')
+
+    const transactions = useLiveQuery(
+        async () => {
+            if (!loanId || !workspaceId) return []
+            const loan = await db.loans.get(loanId)
+            if (!loan || !isLoanVisibleInLocalCache(loan, loansViewOwnScope, installmentsViewOwnScope)) {
+                return []
+            }
+
+            const rows = await listLoanSettlementTransactionsByLoan(workspaceId, loanId)
+            return rows
+                .filter((item) => !item.isDeleted)
+                .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))
+        },
+        [
+            loanId,
+            workspaceId,
+            loansViewOwnScope.isRestricted,
+            loansViewOwnScope.userId,
+            installmentsViewOwnScope.isRestricted,
+            installmentsViewOwnScope.userId,
+        ]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true })
+        }
+    }, [online, workspaceId])
+
+    return transactions ?? []
+}
+
 export async function createManualLoan(
     workspaceId: string,
     input: Omit<LoanCreateInput, 'source'>
@@ -5737,83 +5849,6 @@ export async function linkLoanToBusinessPartner(
     }
 }
 
-export async function updateLoanReminderSnooze(
-    loanId: string,
-    input: {
-        snoozedAt: string | null
-        snoozedForDueDate: string | null
-    }
-): Promise<Loan> {
-    const existing = await db.loans.get(loanId)
-    if (!existing || existing.isDeleted) {
-        throw new Error('Loan not found')
-    }
-
-    const now = new Date().toISOString()
-    const updatedLoan: Loan = {
-        ...existing,
-        overdueReminderSnoozedAt: input.snoozedAt,
-        overdueReminderSnoozedForDueDate: input.snoozedForDueDate,
-        updatedAt: now,
-        version: existing.version + 1,
-        syncStatus: 'pending',
-        lastSyncedAt: null
-    }
-
-    await db.loans.put(updatedLoan)
-
-    const enqueueMutation = async () => {
-        await addToOfflineMutations(
-            'loans',
-            updatedLoan.id,
-            'update',
-            updatedLoan as unknown as Record<string, unknown>,
-            existing.workspaceId
-        )
-    }
-
-    if (!isOnline()) {
-        await enqueueMutation()
-        return updatedLoan
-    }
-
-    try {
-        const { error } = await runMutation('loans.reminderSnooze.update', () =>
-            supabase
-                .from('loans')
-                .update(toSnakeCase({
-                    overdueReminderSnoozedAt: updatedLoan.overdueReminderSnoozedAt,
-                    overdueReminderSnoozedForDueDate: updatedLoan.overdueReminderSnoozedForDueDate,
-                    updatedAt: updatedLoan.updatedAt,
-                    version: updatedLoan.version
-                }))
-                .eq('id', updatedLoan.id)
-        )
-        if (error) throw error
-
-        const syncedAt = new Date().toISOString()
-        await db.loans.update(updatedLoan.id, {
-            syncStatus: 'synced',
-            lastSyncedAt: syncedAt
-        })
-
-        return {
-            ...updatedLoan,
-            syncStatus: 'synced',
-            lastSyncedAt: syncedAt
-        }
-    } catch (error) {
-        if (shouldUseOfflineMutationFallback(error)) {
-            console.error('[Loans] Reminder snooze sync failed, queued offline mutation:', error)
-            await enqueueMutation()
-            return updatedLoan
-        }
-
-        await db.loans.put(existing)
-        throw normalizeSupabaseActionError(error)
-    }
-}
-
 export async function updateLoanNote(loanId: string, note: string): Promise<Loan> {
     const existing = await db.loans.get(loanId)
     if (!existing || existing.isDeleted) {
@@ -6091,8 +6126,6 @@ export async function reverseLoanPayment(
                     totalPaidAmount: updatedLoan.totalPaidAmount,
                     balanceAmount: updatedLoan.balanceAmount,
                     nextDueDate: updatedLoan.nextDueDate,
-                    overdueReminderSnoozedAt: updatedLoan.overdueReminderSnoozedAt,
-                    overdueReminderSnoozedForDueDate: updatedLoan.overdueReminderSnoozedForDueDate,
                     status: updatedLoan.status,
                     updatedAt: updatedLoan.updatedAt,
                     version: updatedLoan.version
@@ -6272,12 +6305,6 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
     if (updatedInstallments.some(item => item.status === 'overdue')) {
         updatedLoan.status = updatedLoan.balanceAmount <= 0 ? 'completed' : 'overdue'
     }
-    const oldestOverdueDueDate = updatedInstallments.find(item => item.balanceAmount > 0 && !!item.dueDate && item.dueDate < today)?.dueDate || null
-    if (!oldestOverdueDueDate || oldestOverdueDueDate !== loan.overdueReminderSnoozedForDueDate) {
-        updatedLoan.overdueReminderSnoozedAt = null
-        updatedLoan.overdueReminderSnoozedForDueDate = null
-    }
-
     const payment: LoanPayment = {
         id: generateId(),
         workspaceId,
@@ -6385,8 +6412,6 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
                     totalPaidAmount: updatedLoan.totalPaidAmount,
                     balanceAmount: updatedLoan.balanceAmount,
                     nextDueDate: updatedLoan.nextDueDate,
-                    overdueReminderSnoozedAt: updatedLoan.overdueReminderSnoozedAt,
-                    overdueReminderSnoozedForDueDate: updatedLoan.overdueReminderSnoozedForDueDate,
                     status: updatedLoan.status,
                     updatedAt: updatedLoan.updatedAt,
                     version: updatedLoan.version

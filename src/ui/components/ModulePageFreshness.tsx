@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import {
     getWorkspaceDataFetchSource,
+    readWorkspaceDataHydration,
     readWorkspaceDataFetch,
+    WORKSPACE_DATA_HYDRATION_EVENT,
     WORKSPACE_DATA_FETCH_EVENT,
+    type WorkspaceDataHydrationSnapshot,
     type WorkspaceDataFetchSnapshot
 } from '@/workspace/workspaceDataFreshness'
 import { cn } from '@/lib/utils'
@@ -33,47 +37,103 @@ function formatRelativeTime(timestamp: string, locale: string) {
     }).format(date)
 }
 
-export function ModulePageFreshness({ className }: { className?: string }) {
+export function ModulePageFreshness({
+    className,
+    tableNames
+}: {
+    className?: string
+    /** Limits freshness feedback to the data actually shown by this module. */
+    tableNames?: readonly string[]
+}) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { features } = useWorkspace()
     const source = getWorkspaceDataFetchSource(features.data_mode)
     const workspaceId = user?.workspaceId
+    const tableNamesKey = tableNames?.filter(Boolean).join('|') ?? ''
     const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(() => (
-        readWorkspaceDataFetch(workspaceId, source)?.fetchedAt ?? null
+        readWorkspaceDataFetch(workspaceId, source, tableNames)?.fetchedAt ?? null
     ))
-    const [clock, setClock] = useState(0)
+    const [hydration, setHydration] = useState<WorkspaceDataHydrationSnapshot | null>(() => (
+        readWorkspaceDataHydration(workspaceId, source, tableNames)
+    ))
+    const [, setClock] = useState(0)
 
     useEffect(() => {
-        setLastFetchedAt(readWorkspaceDataFetch(workspaceId, source)?.fetchedAt ?? null)
+        const scopedTableNames = tableNamesKey ? tableNamesKey.split('|') : undefined
+        setLastFetchedAt(readWorkspaceDataFetch(workspaceId, source, scopedTableNames)?.fetchedAt ?? null)
 
         const handleFetch = (event: Event) => {
             const snapshot = (event as CustomEvent<WorkspaceDataFetchSnapshot>).detail
-            if (snapshot?.workspaceId === workspaceId && snapshot.source === source) {
+            if (
+                snapshot?.workspaceId === workspaceId
+                && snapshot.source === source
+                && (tableNamesKey.length === 0 || Boolean(snapshot.tableName && scopedTableNames?.includes(snapshot.tableName)))
+            ) {
                 setLastFetchedAt(snapshot.fetchedAt)
             }
         }
 
         window.addEventListener(WORKSPACE_DATA_FETCH_EVENT, handleFetch)
         return () => window.removeEventListener(WORKSPACE_DATA_FETCH_EVENT, handleFetch)
-    }, [source, workspaceId])
+    }, [source, tableNamesKey, workspaceId])
+
+    useEffect(() => {
+        const scopedTableNames = tableNamesKey ? tableNamesKey.split('|') : undefined
+        setHydration(readWorkspaceDataHydration(workspaceId, source, scopedTableNames))
+
+        const handleHydration = (event: Event) => {
+            const snapshot = (event as CustomEvent<WorkspaceDataHydrationSnapshot>).detail
+            if (snapshot?.workspaceId === workspaceId && snapshot.source === source) {
+                setHydration(readWorkspaceDataHydration(workspaceId, source, scopedTableNames))
+            }
+        }
+
+        window.addEventListener(WORKSPACE_DATA_HYDRATION_EVENT, handleHydration)
+        return () => window.removeEventListener(WORKSPACE_DATA_HYDRATION_EVENT, handleHydration)
+    }, [source, tableNamesKey, workspaceId])
 
     useEffect(() => {
         const interval = window.setInterval(() => setClock((value) => value + 1), 60_000)
         return () => window.clearInterval(interval)
     }, [])
 
-    const relativeTime = useMemo(
-        () => lastFetchedAt ? formatRelativeTime(lastFetchedAt, i18n.resolvedLanguage || i18n.language) : null,
-        [clock, i18n.language, i18n.resolvedLanguage, lastFetchedAt]
-    )
-    const label = relativeTime
+    const completionAt = hydration?.lastResult?.state === 'complete'
+        ? new Date(hydration.lastResult.at).getTime()
+        : null
+    const completionIsRecent = completionAt !== null
+        && !Number.isNaN(completionAt)
+        && Date.now() - completionAt < 3_500
+
+    useEffect(() => {
+        if (!completionIsRecent || completionAt === null) return
+
+        const timeout = window.setTimeout(() => setClock((value) => value + 1), Math.max(0, 3_500 - (Date.now() - completionAt)))
+        return () => window.clearTimeout(timeout)
+    }, [completionAt, completionIsRecent])
+
+    const relativeTime = lastFetchedAt
+        ? formatRelativeTime(lastFetchedAt, i18n.resolvedLanguage || i18n.language)
+        : null
+    const freshnessLabel = relativeTime
         ? t('launcher.freshness.updated', { time: relativeTime, defaultValue: `Updated ${relativeTime}` })
         : t('launcher.freshness.unavailable', { defaultValue: 'Update unavailable' })
 
+    const isChecking = hydration?.isLoading === true
+    const hasFailed = !isChecking && hydration?.lastResult?.state === 'error'
+    const label = isChecking
+        ? t('launcher.freshness.checking', { defaultValue: 'Checking for updates…' })
+        : hasFailed
+            ? t('launcher.freshness.checkFailed', { defaultValue: 'Could not check for newer data' })
+            : completionIsRecent
+                ? t('launcher.freshness.upToDate', { defaultValue: 'Up to date' })
+                : freshnessLabel
+
     return (
         <span
-            className={cn('inline text-current !ms-0', className)}
+            className={cn('inline items-center text-current !ms-0', (isChecking || hasFailed || completionIsRecent) && 'inline-flex gap-1', className)}
+            role="status"
+            aria-live="polite"
             title={lastFetchedAt
                 ? new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language || 'en', {
                     dateStyle: 'medium',
@@ -81,7 +141,15 @@ export function ModulePageFreshness({ className }: { className?: string }) {
                 }).format(new Date(lastFetchedAt))
                 : undefined}
         >
-            <span aria-hidden="true" className="mx-1 text-primary">•</span>
+            {isChecking ? (
+                <Loader2 aria-hidden="true" className="size-3 animate-spin text-primary" />
+            ) : hasFailed ? (
+                <CircleAlert aria-hidden="true" className="size-3 text-amber-600 dark:text-amber-400" />
+            ) : completionIsRecent ? (
+                <CheckCircle2 aria-hidden="true" className="size-3 text-emerald-600 dark:text-emerald-400" />
+            ) : (
+                <span aria-hidden="true" className="mx-1 text-primary">•</span>
+            )}
             {label}
         </span>
     )

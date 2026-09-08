@@ -525,7 +525,10 @@
     "openAction": "Open",
     "freshness": {
       "updated": "Updated {{time}}",
-      "unavailable": "Update unavailable"
+      "unavailable": "Update unavailable",
+      "checking": "Checking for updates…",
+      "upToDate": "Up to date",
+      "checkFailed": "Could not check for newer data"
     },
     "viewModes": {
       "detail": "Detail",
@@ -4551,6 +4554,8 @@
     "summary": "Loan Summary",
     "principalOnly": "Principal Only",
     "totalPrincipal": "Total Principal",
+    "totalPaid": "Total Paid",
+    "totalBalance": "Total Balance",
     "totalRepaid": "Total Repaid",
     "balanceDue": "Balance Due",
     "cancelledBalance": "Cancelled Balance",
@@ -4561,14 +4566,11 @@
     "recentActivity": "Recent Activity",
     "currencyHint": "Settlement Currency",
     "pay": "Pay",
+    "reverseRepayment": "Reverse Repayment",
     "totalLent": "Total Lent",
     "totalBorrowed": "Total Borrowed",
     "activeEntries": "Active Entries",
     "settledEntries": "Settled Entries",
-    "snoozedItems": "Snoozed Loan Reminders",
-    "snoozedItemsDesc": "These overdue loan reminders are snoozed until you open them again.",
-    "snoozedAt": "Snoozed at",
-    "unsnooze": "Un-snooze",
     "completedPercent": "completed",
     "frequencies": {
       "daily": "Daily",
@@ -4588,6 +4590,12 @@
       "lent": "Lent",
       "borrowed": "Borrowed"
     },
+    "paymentFilters": {
+      "outstanding": "Outstanding",
+      "partial": "Partially Paid",
+      "paid": "Paid"
+    },
+    "paymentStatus": "Payment status",
     "statuses": {
       "active": "Active",
       "overdue": "Overdue",
@@ -4620,30 +4628,16 @@
       "amountLent": "Amount Lent",
       "amountBorrowed": "Amount Borrowed"
     },
-    "reminder": {
-      "title": "Overdue Loan Payment",
-      "description": "This loan has an overdue payment. Do you want to record a payment now?",
-      "queueProgress": "{{current}} of {{total}} overdue reminders",
-      "overdueAmount": "Overdue Amount",
-      "totalBalance": "Total balance",
-      "oldestDueDate": "Oldest Due Date",
-      "overdueInstallments_one": "{{count}} overdue installment",
-      "overdueInstallments_other": "{{count}} overdue installments",
-      "payNow": "Yes, Open Payment",
-      "snooze": "Snooze"
-    },
     "messages": {
       "loanCreated": "Loan created successfully.",
       "loanCreateFailed": "Loan creation failed.",
       "loanDeleted": "Loan deleted successfully.",
       "loanDeleteFailed": "Failed to delete loan.",
       "loanDeleteBlocked": "Only loans without recorded repayments, and either manual loans or loans whose linked sale was deleted, can be removed.",
-      "reminderSnoozed": "Loan reminder snoozed.",
-      "reminderSnoozeFailed": "Failed to snooze reminder.",
-      "reminderUnsnoozed": "Loan reminder un-snoozed.",
-      "reminderUnsnoozeFailed": "Failed to un-snooze reminder.",
       "paymentRecorded": "Payment recorded successfully.",
       "paymentRecordFailed": "Failed to record payment.",
+      "paymentReversed": "Repayment reversed successfully.",
+      "paymentReverseFailed": "Unable to reverse this repayment. Refresh the loan and try again.",
       "loanNotFound": "Loan not found.",
       "borrowerSavedAsPartner": "Borrower saved as business partner and linked to loan",
       "borrowerSavePartnerFailed": "Failed to save borrower as business partner"
@@ -5573,13 +5567,6 @@
     "futureMonthConfirmTitle": "Open {{month}} early?",
     "futureMonthConfirmDesc": "{{month}} has not been reached yet. You are still in {{currentMonth}}, and no budget allocation exists for {{month}}. Do you want to continue?",
     "futureMonthConfirmAction": "Continue to {{month}}",
-    "snoozedItems": "Snoozed Reminders",
-    "snoozedItemsDesc": "These items are currently snoozed. Un-snooze to be reminded again.",
-    "snoozedItemsOtherMonths": "Snoozed Reminders (Other Months)",
-    "snoozedItemsOtherMonthsDesc": "These reminders belong to other months.",
-    "snoozedUntil": "Snoozed until",
-    "unsnooze": "Un-snooze",
-    "snoozedIndefinitely": "Snoozed Until Un-snoozed",
     "deleteSeries": "Delete Recurring Series",
     "deleteOccurrence": "Delete This Month Only",
     "deletedOccurrenceKeepsSeries": "Deleted this month item. Recurring series is still active.",
@@ -5625,35 +5612,15 @@
       "snoozed": "Snoozed"
     },
     "reminder": {
-      "didYouPay": "Did you pay?",
-      "yesPaid": "Yes, I Paid",
-      "noSnooze": "Remind me tomorrow",
-      "queueProgress": "{{current}} of {{total}}",
-      "overdue": "Overdue",
-      "dueToday": "Due Today",
-      "dueTomorrow": "Due Tomorrow",
-      "dueIn": "In {{days}} days",
-      "snoozedTimes": "Snoozed {{count}} time(s)",
-      "snoozed": "Reminder snoozed.",
-      "snoozeFailed": "Failed to snooze reminder.",
-      "unsnoozed": "Reminder un-snoozed.",
-      "unsnoozeFailed": "Failed to un-snooze reminder.",
       "paid": "Marked as paid.",
       "unpaid": "Marked as unpaid.",
       "payFailed": "Failed to update payment.",
-      "lockFailed": "Failed to lock payment.",
-      "snoozeNow": "Snooze for now",
       "lockTitle": "Lock this payment?",
       "lockDesc": "Locking prevents accidental edits. This action cannot be undone.",
       "lockConfirm": "Lock",
       "lockSkip": "Skip",
       "snoozeTitle": "Snooze Reminder",
       "snoozeDesc": "When should we remind you about this again?",
-      "category": {
-        "expense": "Expense",
-        "salary": "Salary",
-        "dividend": "Dividend"
-      },
       "snooze": {
         "30m": "30 minutes",
         "12h": "12 hours",

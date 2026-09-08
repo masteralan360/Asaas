@@ -2475,7 +2475,7 @@ export function Sales() {
                             )}
                         </div>
                         <p className="text-muted-foreground">
-                            {t('sales.subtitle') || 'View past transactions'} <ModulePageFreshness className="ms-2" />
+                            {t('sales.subtitle') || 'View past transactions'} <ModulePageFreshness className="ms-2" tableNames={['sales']} />
                         </p>
                     </div>
 

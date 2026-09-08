@@ -113,6 +113,7 @@ import {
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
+import { FilterDropdown } from '@/ui/components/FilterDropdown'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
 import { OrderDetailsView } from '@/ui/components/orders/OrderDetailsView'
 import { OrderProductMosaic } from '@/ui/components/orders/OrderProductAvatars'
@@ -1660,9 +1661,6 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
 
     const salesDisabled = customers.length === 0 || products.length === 0
     const purchaseDisabled = suppliers.length === 0 || products.length === 0
-    const StatusFilterIcon = statusFilterIcons[statusFilter]
-    const PaymentFilterIcon = paymentFilterIcons[paymentFilter]
-    const EcommerceFilterIcon = ecommerceFilterIcons[ecommerceFilter]
     const areDateFiltersSynced = dateRange === fulfillmentDateRange
         && customDates.start === fulfillmentCustomDates.start
         && customDates.end === fulfillmentCustomDates.end
@@ -1973,144 +1971,57 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                                    <DropdownMenu dir={pageDirection}>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                allowViewer={true}
-                                                className={cn(
-                                                    'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
-                                                    statusFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
-                                                )}
-                                            >
-                                                <span className="flex min-w-0 items-center gap-2">
-                                                    <StatusFilterIcon className="h-4 w-4 shrink-0" />
-                                                    <span className="hidden text-xs text-muted-foreground sm:inline">{t('common.status') || 'Status'}</span>
-                                                    <span className="truncate text-sm">{statusFilter === 'all' ? (t('common.all') || 'All') : t(`orders.status.${statusFilter}`) || statusFilter}</span>
-                                                </span>
-                                                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="min-w-44 rounded-xl border-border/70 p-1.5">
-                                            {(['all', 'draft', 'pending', 'ordered', 'received', 'completed', 'cancelled'] as const).map((value) => {
-                                                const StatusOptionIcon = statusFilterIcons[value]
-                                                return (
-                                                    <DropdownMenuItem
-                                                        key={value}
-                                                        onSelect={() => setStatusFilter(value)}
-                                                        className={cn(
-                                                            'rounded-lg px-3 py-2 text-sm font-medium',
-                                                            statusFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
-                                                        )}
-                                                    >
-                                                        <StatusOptionIcon className="me-2 h-4 w-4" />
-                                                        {value === 'all' ? (t('common.all') || 'All') : t(`orders.status.${value}`) || value}
-                                                    </DropdownMenuItem>
-                                                )
-                                            })}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    <FilterDropdown
+                                        dir={pageDirection}
+                                        value={statusFilter}
+                                        label={t('common.status') || 'Status'}
+                                        hasActiveFilter={statusFilter !== 'all'}
+                                        options={(['all', 'draft', 'pending', 'ordered', 'received', 'completed', 'cancelled'] as const).map((value) => ({
+                                            value,
+                                            icon: statusFilterIcons[value],
+                                            label: value === 'all' ? (t('common.all') || 'All') : t(`orders.status.${value}`) || value,
+                                        }))}
+                                        onValueChange={setStatusFilter}
+                                    />
 
                                     {activeTab === 'sales' && hasEcommerceOrdersForCreatedDate && (
-                                        <DropdownMenu dir={pageDirection}>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button
-                                                    variant="outline"
-                                                    allowViewer={true}
-                                                    className={cn(
-                                                        'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
-                                                        ecommerceFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
-                                                    )}
-                                                >
-                                                    <span className="flex min-w-0 items-center gap-2">
-                                                        <EcommerceFilterIcon className="h-4 w-4 shrink-0" />
-                                                        <span className="hidden text-xs text-muted-foreground sm:inline">{t('orders.ecommerceFilter.label', { defaultValue: 'Order source' })}</span>
-                                                        <span className="truncate text-sm">
-                                                            {ecommerceFilter === 'all'
-                                                                ? (t('common.all') || 'All')
-                                                                : ecommerceFilter === 'ecommerce'
-                                                                    ? t('orders.ecommerceFilter.ecommerce', { defaultValue: 'E-Commerce Orders' })
-                                                                    : t('orders.ecommerceFilter.nonEcommerce', { defaultValue: 'Non-E-Commerce Orders' })}
-                                                        </span>
-                                                    </span>
-                                                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end" className="min-w-52 rounded-xl border-border/70 p-1.5">
-                                                {(['all', 'ecommerce', 'nonEcommerce'] as const).map((value) => {
-                                                    const EcommerceOptionIcon = ecommerceFilterIcons[value]
-                                                    const label = value === 'all'
-                                                        ? (t('common.all') || 'All')
-                                                        : value === 'ecommerce'
-                                                            ? t('orders.ecommerceFilter.ecommerce', { defaultValue: 'E-Commerce Orders' })
-                                                            : t('orders.ecommerceFilter.nonEcommerce', { defaultValue: 'Non-E-Commerce Orders' })
-
-                                                    return (
-                                                        <DropdownMenuItem
-                                                            key={value}
-                                                            onSelect={() => setEcommerceFilter(value)}
-                                                            className={cn(
-                                                                'rounded-lg px-3 py-2 text-sm font-medium',
-                                                                ecommerceFilter === value && 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary'
-                                                            )}
-                                                        >
-                                                            <EcommerceOptionIcon className="me-2 h-4 w-4" />
-                                                            {label}
-                                                        </DropdownMenuItem>
-                                                    )
-                                                })}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                                        <FilterDropdown
+                                            dir={pageDirection}
+                                            value={ecommerceFilter}
+                                            label={t('orders.ecommerceFilter.label', { defaultValue: 'Order source' })}
+                                            hasActiveFilter={ecommerceFilter !== 'all'}
+                                            contentClassName="min-w-52"
+                                            options={(['all', 'ecommerce', 'nonEcommerce'] as const).map((value) => ({
+                                                value,
+                                                icon: ecommerceFilterIcons[value],
+                                                label: value === 'all'
+                                                    ? (t('common.all') || 'All')
+                                                    : value === 'ecommerce'
+                                                        ? t('orders.ecommerceFilter.ecommerce', { defaultValue: 'E-Commerce Orders' })
+                                                        : t('orders.ecommerceFilter.nonEcommerce', { defaultValue: 'Non-E-Commerce Orders' }),
+                                            }))}
+                                            onValueChange={setEcommerceFilter}
+                                        />
                                     )}
 
-                                    <DropdownMenu dir={pageDirection}>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                allowViewer={true}
-                                                className={cn(
-                                                    'h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5',
-                                                    paymentFilter !== 'all' && 'border-primary/30 bg-primary/5 text-primary'
-                                                )}
-                                            >
-                                                <span className="flex min-w-0 items-center gap-2">
-                                                    <PaymentFilterIcon className="h-4 w-4 shrink-0" />
-                                                    <span className="hidden text-xs text-muted-foreground sm:inline">{t('orders.paymentStatus', { defaultValue: 'Payment status' })}</span>
-                                                    <span className="truncate text-sm">{paymentFilter === 'all'
-                                                        ? (t('common.all') || 'All')
-                                                        : paymentFilter === 'returned'
-                                                            ? (t('sales.return.returnedStatus') || 'Returned')
-                                                            : t(`orders.status.${paymentFilter}`) || paymentFilter}</span>
-                                                </span>
-                                                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="min-w-40 rounded-xl border-border/70 p-1.5">
-                                            {(['all', 'unpaid', 'partial', 'paid', 'returned'] as const).map((value) => {
-                                                const PaymentOptionIcon = paymentFilterIcons[value]
-                                                return (
-                                                    <DropdownMenuItem
-                                                        key={value}
-                                                        onSelect={() => setPaymentFilter(value)}
-                                                        className={cn(
-                                                            'rounded-lg px-3 py-2 text-sm font-medium',
-                                                            value === 'returned' && 'text-rose-600 focus:text-rose-700 dark:text-rose-400',
-                                                            paymentFilter === value && (value === 'returned'
-                                                                ? 'bg-rose-500/10 text-rose-700 focus:bg-rose-500/10 focus:text-rose-700 dark:text-rose-300'
-                                                                : 'bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary')
-                                                        )}
-                                                    >
-                                                        <PaymentOptionIcon className="me-2 h-4 w-4" />
-                                                        {value === 'all'
-                                                            ? (t('common.all') || 'All')
-                                                            : value === 'returned'
-                                                                ? (t('sales.return.returnedStatus') || 'Returned')
-                                                                : t(`orders.status.${value}`) || value}
-                                                    </DropdownMenuItem>
-                                                )
-                                            })}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    <FilterDropdown
+                                        dir={pageDirection}
+                                        value={paymentFilter}
+                                        label={t('orders.paymentStatus', { defaultValue: 'Payment status' })}
+                                        hasActiveFilter={paymentFilter !== 'all'}
+                                        contentClassName="min-w-40"
+                                        options={(['all', 'unpaid', 'partial', 'paid', 'returned'] as const).map((value) => ({
+                                            value,
+                                            icon: paymentFilterIcons[value],
+                                            label: value === 'all'
+                                                ? (t('common.all') || 'All')
+                                                : value === 'returned'
+                                                    ? (t('sales.return.returnedStatus') || 'Returned')
+                                                    : t(`orders.status.${value}`) || value,
+                                            tone: value === 'returned' ? 'danger' as const : undefined,
+                                        }))}
+                                        onValueChange={setPaymentFilter}
+                                    />
                                 </div>
                             </div>
                         </div>

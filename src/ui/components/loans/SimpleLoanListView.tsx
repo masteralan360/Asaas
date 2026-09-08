@@ -2,15 +2,16 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from 're
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
-import { Eye, LayoutGrid, List, Plus, Printer, Search, Trash2, MessageCircle } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, BadgeCheck, CircleDashed, CreditCard, Eye, LayoutGrid, List, ListFilter, Plus, Printer, Search, Trash2, MessageCircle, Wallet, type LucideIcon } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useDateRange } from '@/context/DateRangeContext'
 import { isDateInDateRange } from '@/lib/dateRangeFilters'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
+import { calculateSimpleLoanListMetrics } from '@/lib/loanListMetrics'
 import { getReportOriginId } from '@/lib/printIdentity'
 import { isMobile } from '@/lib/platform'
-import { getLoanDeleteWarning, getLoanDetailsTitle, getLoanDirection, getLoanDirectionLabel, getSimpleLoanModuleTitle } from '@/lib/loanPresentation'
+import { getLoanDeleteWarning, getLoanDetailsTitle, getLoanDirection, getLoanDirectionLabel, getSimpleLoanModuleTitle, matchesLoanPaymentFilter, type LoanPaymentFilter } from '@/lib/loanPresentation'
 import { cn, formatCurrency, formatDate, formatDateTime, formatLoanDetailsForWhatsApp } from '@/lib/utils'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { deleteLoan, isLoanDeletionAllowed, type Loan, useLoanInstallments, useLoanPayments, useLoans } from '@/local-db'
@@ -38,6 +39,7 @@ import {
     ContextMenuItem,
 } from '@/ui/components'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { FilterDropdown } from '@/ui/components/FilterDropdown'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -51,6 +53,20 @@ import { LoanNoteActionButton } from './LoanNoteActionButton'
 import { LoanNoteDialog } from './LoanNoteDialog'
 
 type SimpleLoanFilter = 'all' | 'lent' | 'borrowed' | 'completed'
+
+const simpleLoanFilterIcons = {
+    all: ListFilter,
+    lent: ArrowUpRight,
+    borrowed: ArrowDownLeft,
+    completed: BadgeCheck,
+} satisfies Record<SimpleLoanFilter, LucideIcon>
+
+const loanPaymentFilterIcons = {
+    all: CreditCard,
+    outstanding: Wallet,
+    partial: CircleDashed,
+    paid: BadgeCheck,
+} satisfies Record<LoanPaymentFilter, LucideIcon>
 
 function statusClass(status: string) {
     if (status === 'completed') return 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
@@ -86,6 +102,7 @@ export function SimpleLoanListView({
     const canUseWhatsApp = hasCapability('whatsappSharing')
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<SimpleLoanFilter>('all')
+    const [paymentFilter, setPaymentFilter] = useState<LoanPaymentFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
     const [pageSize, setPageSize] = useState(() => {
         return Number(localStorage.getItem('simple_loans_page_size')) || 10
@@ -145,33 +162,13 @@ export function SimpleLoanListView({
         [loanPaymentHistoryIds]
     )
 
-    const metrics = useMemo(() => {
-        const activeLoans = dateScopedSimpleLoans.filter((loan) => loan.balanceAmount > 0 && loan.status !== 'completed')
-        const totalLentByCurrency: Record<string, number> = {}
-        const totalBorrowedByCurrency: Record<string, number> = {}
-        for (const loan of activeLoans) {
-            const currency = loan.settlementCurrency ?? features.default_currency
-            const direction = getLoanDirection(loan)
-            if (direction === 'lent') {
-                totalLentByCurrency[currency] = (totalLentByCurrency[currency] || 0) + loan.balanceAmount
-            } else {
-                totalBorrowedByCurrency[currency] = (totalBorrowedByCurrency[currency] || 0) + loan.balanceAmount
-            }
-        }
-        return {
-            totalLentByCurrency,
-            totalBorrowedByCurrency,
-            activeCount: activeLoans.length,
-            settledCount: dateScopedSimpleLoans.filter((loan) => loan.balanceAmount <= 0 || loan.status === 'completed').length
-        }
-    }, [dateScopedSimpleLoans, features.default_currency])
-
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase()
         return dateScopedSimpleLoans.filter((loan) => {
             const direction = getLoanDirection(loan)
             const overdue = isLoanOverdue(loan)
 
+            if (!matchesLoanPaymentFilter(loan, paymentFilter)) return false
             if (filter === 'lent' && direction !== 'lent') return false
             if (filter === 'borrowed' && direction !== 'borrowed') return false
             if (filter === 'completed' && !(loan.status === 'completed' || loan.balanceAmount <= 0)) return false
@@ -184,7 +181,12 @@ export function SimpleLoanListView({
                 (overdue && (t('loans.statuses.overdue') || 'overdue').toLowerCase().includes(query))
             )
         })
-    }, [dateScopedSimpleLoans, filter, search, t])
+    }, [dateScopedSimpleLoans, filter, paymentFilter, search, t])
+
+    const metrics = useMemo(
+        () => calculateSimpleLoanListMetrics(filtered, features.default_currency),
+        [features.default_currency, filtered]
+    )
 
     const paginated = useMemo(() => {
         const from = (currentPage - 1) * pageSize
@@ -210,16 +212,16 @@ export function SimpleLoanListView({
             displayCurrency={features.default_currency}
             iqdPreference={features.iqd_display_preference}
             metrics={{
-                totalLentByCurrency: metrics.totalLentByCurrency,
-                totalBorrowedByCurrency: metrics.totalBorrowedByCurrency,
-                activeEntries: metrics.activeCount,
-                settledEntries: metrics.settledCount
+                totalPrincipalByCurrency: metrics.totalPrincipalByCurrency,
+                totalPaidByCurrency: metrics.totalPaidByCurrency,
+                totalBalanceByCurrency: metrics.totalBalanceByCurrency,
+                activeEntries: metrics.activeCount
             }}
             logoUrl={features.logo_url}
             qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
             hideNextDue={localStorage.getItem('atlas_print_hide_next_due') === 'true'}
         />
-    ), [buildQrValue, features.default_currency, features.iqd_display_preference, features.logo_url, filter, filtered, metrics.activeCount, metrics.settledCount, metrics.totalBorrowedByCurrency, metrics.totalLentByCurrency, printLang, workspaceName])
+    ), [buildQrValue, features.default_currency, features.iqd_display_preference, features.logo_url, filter, filtered, metrics.activeCount, metrics.totalBalanceByCurrency, metrics.totalPaidByCurrency, metrics.totalPrincipalByCurrency, printLang, workspaceName])
     const buildSimpleLoanListPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
         return generateTemplatePdf({
             element: renderSimpleLoanListTemplate(effectiveId),
@@ -246,10 +248,10 @@ export function SimpleLoanListView({
                 displayCurrency={features.default_currency}
                 iqdPreference={features.iqd_display_preference}
                 metrics={{
-                    totalLentByCurrency: metrics.totalLentByCurrency,
-                    totalBorrowedByCurrency: metrics.totalBorrowedByCurrency,
-                    activeEntries: metrics.activeCount,
-                    settledEntries: metrics.settledCount
+                    totalPrincipalByCurrency: metrics.totalPrincipalByCurrency,
+                    totalPaidByCurrency: metrics.totalPaidByCurrency,
+                    totalBalanceByCurrency: metrics.totalBalanceByCurrency,
+                    activeEntries: metrics.activeCount
                 }}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
@@ -331,13 +333,13 @@ export function SimpleLoanListView({
     }, [loanToPrint, workspaceName, printLang, features, loanPrintInstallments, loanPrintPayments, t, buildQrValue])
 
     const simpleLoanListInvoiceData = useMemo(() => ({
-        totalAmount: Object.values(metrics.totalLentByCurrency).reduce((a, b) => a + b, 0) + Object.values(metrics.totalBorrowedByCurrency).reduce((a, b) => a + b, 0),
+        totalAmount: Object.values(metrics.totalBalanceByCurrency).reduce((a, b) => a + b, 0),
         settlementCurrency: features.default_currency,
         origin: 'loan_report' as const,
         createdByName: user?.name || 'Unknown',
         cashierName: user?.name || 'Unknown',
         printFormat: 'a4' as const
-    }), [features.default_currency, metrics.totalLentByCurrency, metrics.totalBorrowedByCurrency, user?.name])
+    }), [features.default_currency, metrics.totalBalanceByCurrency, user?.name])
     const canDeleteLoanRecord = (loan: Loan) => loan.source !== 'order'
         && isLoanDeletionAllowed(loan, false, loanPaymentHistoryIdSet.has(loan.id))
 
@@ -369,13 +371,21 @@ export function SimpleLoanListView({
 
     return (
         <div className="space-y-4">
+            <div className="flex min-h-10 items-center justify-end">
+                {!isReadOnly && (
+                    <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
+                        <Plus className="h-4 w-4" />
+                        <span>{t('loans.createSimpleLoan', { defaultValue: 'Create Simple Loan' })}</span>
+                    </Button>
+                )}
+            </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Card>
                     <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground mb-1">{t('loans.totalLent', { defaultValue: 'Total Lent' })}</div>
+                        <div className="text-xs text-muted-foreground mb-1">{t('loans.totalPrincipal', { defaultValue: 'Total Principal' })}</div>
                         <div className="space-y-1">
-                            {Object.keys(metrics.totalLentByCurrency).length > 0
-                                ? Object.entries(metrics.totalLentByCurrency).map(([curr, val]) => (
+                            {Object.keys(metrics.totalPrincipalByCurrency).length > 0
+                                ? Object.entries(metrics.totalPrincipalByCurrency).map(([curr, val]) => (
                                     <div key={curr} className="text-2xl font-bold tabular-nums leading-none">
                                         {formatCurrency(val, curr as any, features.iqd_display_preference)}
                                     </div>
@@ -387,10 +397,10 @@ export function SimpleLoanListView({
                 </Card>
                 <Card>
                     <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground mb-1">{t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })}</div>
+                        <div className="text-xs text-muted-foreground mb-1">{t('loans.totalPaid', { defaultValue: 'Total Paid' })}</div>
                         <div className="space-y-1">
-                            {Object.keys(metrics.totalBorrowedByCurrency).length > 0
-                                ? Object.entries(metrics.totalBorrowedByCurrency).map(([curr, val]) => (
+                            {Object.keys(metrics.totalPaidByCurrency).length > 0
+                                ? Object.entries(metrics.totalPaidByCurrency).map(([curr, val]) => (
                                     <div key={curr} className="text-2xl font-bold tabular-nums leading-none">
                                         {formatCurrency(val, curr as any, features.iqd_display_preference)}
                                     </div>
@@ -408,8 +418,16 @@ export function SimpleLoanListView({
                 </Card>
                 <Card>
                     <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground mb-1">{t('loans.settledEntries', { defaultValue: 'Settled Entries' })}</div>
-                        <div className="text-2xl font-bold">{metrics.settledCount}</div>
+                        <div className="text-xs text-muted-foreground mb-1">{t('loans.totalBalance', { defaultValue: 'Total Balance' })}</div>
+                        <div className="space-y-1">
+                            {Object.keys(metrics.totalBalanceByCurrency).length > 0
+                                ? Object.entries(metrics.totalBalanceByCurrency).map(([curr, val]) => (
+                                    <div key={curr} className="text-2xl font-bold tabular-nums leading-none">
+                                        {formatCurrency(val, curr as any, features.iqd_display_preference)}
+                                    </div>
+                                ))
+                                : <div className="text-2xl font-bold">0</div>}
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -418,7 +436,7 @@ export function SimpleLoanListView({
                 <CardContent className="space-y-4 pt-6">
                     <DateRangeFilters />
 
-                    <div className="flex flex-col gap-3 lg:flex-row">
+                    <div className="flex flex-col gap-3 xl:flex-row">
                         <div className="relative flex-1">
                             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
@@ -466,7 +484,7 @@ export function SimpleLoanListView({
                                 {filtered.length <= pageSize && (t('loans.view.grid') || 'Loans Grid')}
                             </Button>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-4">
                             <AppPagination
                                 currentPage={currentPage}
                                 totalCount={filtered.length}
@@ -478,38 +496,46 @@ export function SimpleLoanListView({
                                 }}
                                 className="w-auto"
                             />
-                            <div className="flex items-center gap-1 rounded-md bg-muted/30 p-1">
-                                {(['all', 'lent', 'borrowed', 'completed'] as SimpleLoanFilter[]).map((value) => (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        onClick={() => {
-                                            setCurrentPage(1)
-                                            setFilter(value)
-                                        }}
-                                        className={cn(
-                                            'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                                            filter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background'
-                                        )}
-                                    >
-                                        {value === 'lent' || value === 'borrowed'
-                                            ? getLoanDirectionLabel(value, t)
-                                            : (t(`loans.filters.${value}`) || value)}
-                                    </button>
-                                ))}
-                            </div>
+                            <FilterDropdown
+                                dir={i18n.dir() === 'rtl' ? 'rtl' : 'ltr'}
+                                value={filter}
+                                label={t('loans.status') || 'Status'}
+                                hasActiveFilter={filter !== 'all'}
+                                options={(['all', 'lent', 'borrowed', 'completed'] as SimpleLoanFilter[]).map((value) => ({
+                                    value,
+                                    icon: simpleLoanFilterIcons[value],
+                                    label: value === 'lent' || value === 'borrowed'
+                                        ? getLoanDirectionLabel(value, t)
+                                        : (t(`loans.filters.${value}`) || value),
+                                }))}
+                                onValueChange={(value) => {
+                                    setCurrentPage(1)
+                                    setFilter(value)
+                                }}
+                            />
+                            <FilterDropdown
+                                dir={i18n.dir() === 'rtl' ? 'rtl' : 'ltr'}
+                                value={paymentFilter}
+                                label={t('loans.paymentStatus')}
+                                hasActiveFilter={paymentFilter !== 'all'}
+                                options={(['all', 'outstanding', 'partial', 'paid'] as LoanPaymentFilter[]).map((value) => ({
+                                    value,
+                                    icon: loanPaymentFilterIcons[value],
+                                    label: value === 'all'
+                                        ? (t('common.all') || 'All')
+                                        : t(`loans.paymentFilters.${value}`, { defaultValue: value }),
+                                }))}
+                                onValueChange={(value) => {
+                                    setCurrentPage(1)
+                                    setPaymentFilter(value)
+                                }}
+                            />
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
                                 <Printer className="h-4 w-4" />
                                 <span className="hidden sm:inline">{t('common.print') || 'Print'}</span>
                             </Button>
-                            {!isReadOnly && (
-                                <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
-                                    <Plus className="h-4 w-4" />
-                                    <span>{t('loans.createSimpleLoan', { defaultValue: 'Create Simple Loan' })}</span>
-                                </Button>
-                            )}
                         </div>
                     </div>
 

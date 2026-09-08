@@ -22,6 +22,7 @@ import { useWorkspacePermissions } from "@/permissions";
 import { useDateRange, type DateRangeType } from "@/context/DateRangeContext";
 import { ModulePageFreshness } from "@/ui/components/ModulePageFreshness";
 import { DateRangeFilters } from "@/ui/components/DateRangeFilters";
+import { FilterDropdown } from "@/ui/components/FilterDropdown";
 import { AddPartnerButton } from "@/ui/components/crm/AddPartnerButton";
 import { PartnerAutocompleteInput } from "@/ui/components/crm/PartnerAutocompleteInput";
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from "@/ui/components/crm/BusinessPartnerFormDialog";
@@ -29,7 +30,7 @@ import { DeleteConfirmationModal } from "@/ui/components/DeleteConfirmationModal
 import {
   AppDialog, AppDialogBody, AppDialogContent, AppDialogDescription, AppDialogFooter, AppDialogHeader, AppDialogTitle,
   Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, CurrencySelector, Dialog, DialogBody, DialogContent, DialogDescription,
-  DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger,
+  DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger,
   SelectValue, Switch, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow, Tabs, TabsContent, TabsList,
   TabsTrigger, Textarea, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, useToast,
 } from "@/ui/components";
@@ -1837,9 +1838,9 @@ export function PostService() {
             <div className="flex flex-col gap-2 sm:items-end">
               <span className="text-sm text-muted-foreground">{t("postService.selectedForDispatch", { count: selectedCount })}</span>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <FilterDropdown dir={pageDirection} value={statusFilter} icon={statusFilterIcons[statusFilter]} label={t("common.status")} options={statusFilterOptions(t)} onChange={(value) => { const nextStatus = value as PostStatusFilter; setPendingChangeRequestFilter(false); setCompletedOnly(false); setShowCompleted(false); setShowReturned(nextStatus === "returned"); setShowCancelled(nextStatus === "cancelled"); setStatusFilter(nextStatus); }} />
-                <FilterDropdown dir={pageDirection} value={handoverFilter} icon={settlementFilterIcons[handoverFilter]} label={t("postService.table.cashHandover")} options={settlementFilterOptions(t, t("postService.settlementStatus.handedOver"))} onChange={(value) => setHandoverFilter(value as PostSettlementFilter)} />
-                <FilterDropdown dir={pageDirection} value={payoutFilter} icon={settlementFilterIcons[payoutFilter]} label={t("postService.table.merchantPayout")} options={settlementFilterOptions(t, t("postService.settlementStatus.paid"))} onChange={(value) => setPayoutFilter(value as PostSettlementFilter)} />
+                <FilterDropdown dir={pageDirection} value={statusFilter} label={t("common.status")} hasActiveFilter={statusFilter !== "all"} options={statusFilterOptions(t)} onValueChange={(value) => { const nextStatus = value as PostStatusFilter; setPendingChangeRequestFilter(false); setCompletedOnly(false); setShowCompleted(false); setShowReturned(nextStatus === "returned"); setShowCancelled(nextStatus === "cancelled"); setStatusFilter(nextStatus); }} />
+                <FilterDropdown dir={pageDirection} value={handoverFilter} label={t("postService.table.cashHandover")} hasActiveFilter={handoverFilter !== "all"} options={settlementFilterOptions(t, t("postService.settlementStatus.handedOver"))} onValueChange={(value) => setHandoverFilter(value as PostSettlementFilter)} />
+                <FilterDropdown dir={pageDirection} value={payoutFilter} label={t("postService.table.merchantPayout")} hasActiveFilter={payoutFilter !== "all"} options={settlementFilterOptions(t, t("postService.settlementStatus.paid"))} onValueChange={(value) => setPayoutFilter(value as PostSettlementFilter)} />
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
                   <Checkbox className="h-5 w-5 rounded-[6px]" checked={showCompleted} onCheckedChange={(checked) => { const nextShowCompleted = checked === true; setShowCompleted(nextShowCompleted); if (!nextShowCompleted) setCompletedOnly(false); }} />
                   {t("postService.filters.showCompleted")}
@@ -2643,37 +2644,13 @@ function EmptyRow({ columns, label }: { columns: number; label: string }) {
 }
 function statusFilterOptions(t: TFunction) {
   return (["all", "received", "assigned", "delivered", "postponed", "returned", "return_history", "cancelled"] as PostStatusFilter[]).map((value) => ({
-    value, icon: statusFilterIcons[value], label: value === "all" ? t("common.all") : value === "returned" ? t("postService.status.returnAwaitingReceipt") : value === "return_history" ? t("postService.status.returnHistory") : shipmentStatusLabel(t, value), rose: value === "returned" || value === "cancelled",
+    value, icon: statusFilterIcons[value], label: value === "all" ? t("common.all") : value === "returned" ? t("postService.status.returnAwaitingReceipt") : value === "return_history" ? t("postService.status.returnHistory") : shipmentStatusLabel(t, value), tone: value === "returned" || value === "cancelled" ? "danger" as const : undefined,
   }));
 }
 function settlementFilterOptions(t: TFunction, settledLabel: string) {
   return (["all", "settled", "partial", "outstanding"] as PostSettlementFilter[]).map((value) => ({
     value, icon: settlementFilterIcons[value], label: value === "all" ? t("common.all") : value === "settled" ? settledLabel : t(`postService.settlementStatus.${value}`),
   }));
-}
-function FilterDropdown({ dir, value, icon: Icon, label, options, onChange }: { dir: "ltr" | "rtl"; value: string; icon: LucideIcon; label: string; options: Array<{ value: string; icon: LucideIcon; label: string; rose?: boolean }>; onChange: (value: string) => void }) {
-  return (
-    <DropdownMenu dir={dir}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" allowViewer className={cn("h-10 justify-between gap-2 rounded-xl border-border/70 bg-background px-3 font-semibold shadow-sm hover:border-primary/30 hover:bg-primary/5", value !== "all" && "border-primary/30 bg-primary/5 text-primary")}>
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="hidden text-xs text-muted-foreground sm:inline">{label}</span>
-            <span className="truncate text-sm">{options.find((option) => option.value === value)?.label}</span>
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44 rounded-xl border-border/70 p-1.5">
-        {options.map((option) => (
-          <DropdownMenuItem key={option.value} onSelect={() => onChange(option.value)} className={cn("rounded-lg px-3 py-2 text-sm font-medium", option.rose && "text-rose-600 focus:text-rose-700 dark:text-rose-400", value === option.value && (option.rose ? "bg-rose-500/10 text-rose-700 focus:bg-rose-500/10 focus:text-rose-700 dark:text-rose-300" : "bg-primary/10 text-primary focus:bg-primary/10 focus:text-primary"))}>
-            <option.icon className="me-2 h-4 w-4" />
-            {option.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 function PostsViewModeToggle({ t, value, onChange }: { t: TFunction; value: PostsViewMode; onChange: (value: PostsViewMode) => void }) {
   return <div className="hidden items-center rounded-lg border bg-muted/30 p-1 md:flex" role="group" aria-label={t("postService.cards.allPosts")}>

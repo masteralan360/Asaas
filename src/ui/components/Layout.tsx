@@ -37,8 +37,6 @@ import { recordTauriStartupVersion } from '@/lib/tauriVersionReporting'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
 import { NotificationCenter } from './NotificationCenter'
 import { ManualRateModals } from './exchange/ManualRateModals'
-import { GlobalLoanReminders } from './loans/GlobalLoanReminders'
-import { GlobalBudgetReminders } from './budget/GlobalBudgetReminders'
 import { LoanPaymentModalProvider } from './loans/LoanPaymentModalProvider'
 import { UnifiedSnoozeProvider } from '@/context/UnifiedSnoozeContext'
 import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateReminders'
@@ -1076,8 +1074,6 @@ export function Layout({ children }: LayoutProps) {
           <ResourceSyncOverlay />
           {features.allowed_currencies.length > 1 && <ManualRateModals />}
           {features.allowed_currencies.length > 1 && <GlobalExchangeRateReminders />}
-          {user?.role === 'admin' && hasFeature('budget') && <GlobalBudgetReminders />}
-          {hasFeature('loans') && <GlobalLoanReminders />}
           {/* Mobile sidebar backdrop */}
           {mobileSidebarOpen && (
             <div

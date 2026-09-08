@@ -516,7 +516,10 @@
     "openAction": "بیکەرەوە",
     "freshness": {
       "updated": "نوێکرایەوە {{time}}",
-      "unavailable": "نوێکردنەوە بەردەست نییە"
+      "unavailable": "نوێکردنەوە بەردەست نییە",
+      "checking": "پشکنینی نوێکردنەوەکان دەکرێت…",
+      "upToDate": "نوێترینە",
+      "checkFailed": "نەتوانرا نوێترین داتا پشکنین بکرێت"
     },
     "viewModes": {
       "detail": "وردی",
@@ -3209,6 +3212,8 @@
     "summary": "پوختەی قەرز",
     "principalOnly": "تەنها قەرز",
     "totalPrincipal": "کۆی قەرز",
+    "totalPaid": "کۆی پارەدراو",
+    "totalBalance": "کۆی ماوە",
     "totalRepaid": "کۆی پارەدراو",
     "balanceDue": "ماوە بۆ پارەدان",
     "cancelledBalance": "باڵانسی هەڵوەشاوە",
@@ -3219,14 +3224,11 @@
     "recentActivity": "کۆتا چالاکی",
     "currencyHint": "دراوی یەکلاکردنەوە",
     "pay": "پارەدان",
+    "reverseRepayment": "پێچەوانەکردنی پارەدانەوە",
     "totalLent": "کۆی قەرزی دراو",
     "totalBorrowed": "کۆی قەرزی وەرگیراو",
     "activeEntries": "تۆمارە چالاکەکان",
     "settledEntries": "تۆمارە یەکلاکراوەکان",
-    "snoozedItems": "بیرخستنەوە دواخراوەکانی قەرز",
-    "snoozedItemsDesc": "ئەم بیرخستنەوە بەسەرچووانەی قەرز دواخراون تا کاتێک دووبارە دەیانکەیتەوە.",
-    "snoozedAt": "دواخراوە لە",
-    "unsnooze": "لابردنی دواخستن",
     "completedPercent": "تەواوبووە",
     "frequencies": {
       "daily": "ڕۆژانە",
@@ -3246,6 +3248,12 @@
       "lent": "دراو",
       "borrowed": "وەرگیراو"
     },
+    "paymentFilters": {
+      "outstanding": "ماوە",
+      "partial": "بەشەکی پارەدراو",
+      "paid": "پارەدراو"
+    },
+    "paymentStatus": "دۆخی پارەدان",
     "statuses": {
       "active": "چالاک",
       "overdue": "بەسەرچوو",
@@ -3278,30 +3286,16 @@
       "amountLent": "بڕی قەرزی دراو",
       "amountBorrowed": "بڕی قەرزی وەرگیراو"
     },
-    "reminder": {
-      "title": "پارەدانی قەرزی بەسەرچوو",
-      "description": "ئەم قەرزە پارەدانێکی بەسەرچووی هەیە. دەتەوێت ئێستا پارەدانێک تۆمار بکەیت؟",
-      "queueProgress": "{{current}} لە کۆی {{total}} بیرخستنەوەی بەسەرچوو",
-      "overdueAmount": "بڕی بەسەرچوو",
-      "totalBalance": "کۆی گشتی ماوە",
-      "oldestDueDate": "کۆنترین وادەی پارەدان",
-      "overdueInstallments_one": "{{count}} قیستی بەسەرچوو",
-      "overdueInstallments_other": "{{count}} قیستی بەسەرچوو",
-      "payNow": "بەڵێ، پارەدان بکەرەوە",
-      "snooze": "دواخستن"
-    },
     "messages": {
       "loanCreated": "قەرز بە سەرکەوتوویی دروستکرا.",
       "loanCreateFailed": "دروستکردنی قەرز شکستی هێنا.",
       "loanDeleted": "قەرز بە سەرکەوتوویی سڕایەوە.",
       "loanDeleteFailed": "سڕینەوەی قەرز شکستی هێنا.",
       "loanDeleteBlocked": "تەنها ئەو قەرزانە دەتوانرێت بسڕدرێنەوە کە هیچ قەرەبوونەوەیەکی تۆمارکراویان نەبێت، هەروەها یاخود بە دەستی دروستکرابن یان فرۆشتنە پەیوەندیدارەکەیان سڕدرابێت.",
-      "reminderSnoozed": "بیرخستنەوەی قەرز دواخرا.",
-      "reminderSnoozeFailed": "دواخستنی بیرخستنەوە شکستی هێنا.",
-      "reminderUnsnoozed": "دواخستنی بیرخستنەوەی قەرز لابرا.",
-      "reminderUnsnoozeFailed": "لابردنی دواخستنی بیرخستنەوە شکستی هێنا.",
       "paymentRecorded": "پارەدان بە سەرکەوتوویی تۆمارکرا.",
       "paymentRecordFailed": "تۆمارکردنی پارەدان شکستی هێنا.",
+      "paymentReversed": "پارەدانەوە بە سەرکەوتوویی پێچەوانە کرایەوە.",
+      "paymentReverseFailed": "نەتوانرا ئەم پارەدانەوەیە پێچەوانە بکرێتەوە. قەرزەکە نوێ بکەرەوە و دووبارە هەوڵ بدە.",
       "loanNotFound": "قەرز نەدۆزرایەوە.",
       "borrowerSavedAsPartner": "قەرزدار وەک هاوبەشی بازرگانی پاشەکەوتکرا و بە قەرزەکەوە بەسترا",
       "borrowerSavePartnerFailed": "پاشەکەوتکردنی قەرزدار وەک هاوبەشی بازرگانی شکستی هێنا"
@@ -4214,13 +4208,6 @@
     "futureMonthConfirmTitle": "کردنەوەی {{month}} زووتر؟",
     "futureMonthConfirmDesc": "هێشتا نەگەیشتووین بە {{month}}. تۆ هێشتا لە {{currentMonth}} یت، و هیچ تەرخانکردنێکی بودجە نییە بۆ {{month}}. دەتەوێت بەردەوام بیت؟",
     "futureMonthConfirmAction": "بەردەوامبوون بۆ {{month}}",
-    "snoozedItems": "بیرخستنەوە دواخراوەکان",
-    "snoozedItemsDesc": "ئەم بڕگانە لە ئێستادا دواخراون. دواخستنەکەیان لابدە بۆ ئەوەی دووبارە بیرتبخرێتەوە.",
-    "snoozedItemsOtherMonths": "بیرخستنەوە دواخراوەکان (مانگەکانی تر)",
-    "snoozedItemsOtherMonthsDesc": "ئەم بیرخستنەوانە سەر بە مانگەکانی ترن.",
-    "snoozedUntil": "دواخراوە تا",
-    "unsnooze": "لابردنی دواخستن",
-    "snoozedIndefinitely": "دواخراوە تا خۆت لایدەبەیت",
     "deleteSeries": "سڕینەوەی زنجیرەی دووبارەبووەوە",
     "deleteOccurrence": "سڕینەوەی تەنها ئەم مانگە",
     "deletedOccurrenceKeepsSeries": "کالای ئەم مانگە سڕایەوە. زنجیرە دووبارەبووەوەکە هێشتا چالاکە.",
@@ -4266,35 +4253,15 @@
       "snoozed": "دواخراو"
     },
     "reminder": {
-      "didYouPay": "پارەت دا؟",
-      "yesPaid": "بەڵێ، پارەم دا",
-      "noSnooze": "سبەینێ بیرم بخەرەوە",
-      "queueProgress": "{{current}} لە {{total}}",
-      "overdue": "بەسەرچوو",
-      "dueToday": "ئەمڕۆ وادەکەیەتی",
-      "dueTomorrow": "سبەینێ وادەکەیەتی",
-      "dueIn": "لە ماوەی {{days}} ڕۆژدا",
-      "snoozedTimes": "{{count}} جار دواخراوە",
-      "snoozed": "بیرخستنەوە دواخرا.",
-      "snoozeFailed": "دواخستنی بیرخستنەوە شکستی هێنا.",
-      "unsnoozed": "بیرخستنەوە گەڕێندرایەوە.",
-      "unsnoozeFailed": "گەڕاندنەوەی بیرخستنەوە شکستی هێنا.",
       "paid": "وەک پارەدراو دیاریکرا.",
       "unpaid": "وەک پارەنەدراو دیاریکرا.",
       "payFailed": "نوێکردنەوەی پارەدان شکستی هێنا.",
-      "lockFailed": "قوفڵکردنی پارەدان شکستی هێنا.",
-      "snoozeNow": "دواخستن بۆ ئێستا",
       "lockTitle": "ئەم پارەدانە قوفڵ دەکەیت؟",
       "lockDesc": "قوفڵکردن ڕێگە لە دەستکاریکردنی بەهەڵە دەگرێت. ئەم کردارە پاشگەزبوونەوەی تێدا نییە.",
       "lockConfirm": "قوفڵکردن",
       "lockSkip": "پەڕاندن",
       "snoozeTitle": "دواخستنی بیرخستنەوە",
       "snoozeDesc": "کەی دەتەوێت دووبارە بیرت بخەینەوە دەربارەی ئەمە؟",
-      "category": {
-        "expense": "خەرجی",
-        "salary": "مووچە",
-        "dividend": "قازانجی پشک"
-      },
       "snooze": {
         "30m": "٣٠ خولەک",
         "12h": "١٢ کاتژمێر",

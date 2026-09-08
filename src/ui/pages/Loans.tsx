@@ -11,15 +11,20 @@ import {
     useLoan,
     useLoanInstallments,
     useLoanPayments,
+    useLoanSettlementTransactions,
     deleteLoan,
     hasLoanTransactionHistory,
     isLoanDeletionAllowed,
+    getPaymentSourceKey,
+    reversePaymentTransaction,
     type Loan,
     type LoanInstallment,
-    type LoanPayment
+    type LoanPayment,
+    type PaymentTransaction
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isDateInDateRange } from '@/lib/dateRangeFilters'
+import { calculateInstallmentLoanListMetrics } from '@/lib/loanListMetrics'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
 import { getReportOriginId } from '@/lib/printIdentity'
 import {
@@ -31,6 +36,7 @@ import {
     getLoanListPath,
     getLoanModuleTitle,
     getLoanPaymentActivityLabel,
+    matchesLoanPaymentFilter,
     getLoanRecordPaymentLabel,
     getLoanScheduleAmountLabel,
     getLoanScheduleIndexLabel,
@@ -38,6 +44,7 @@ import {
     getLoanScheduleTitle,
     getStandardLoanModuleTitle,
     getLoanSummaryTitle,
+    type LoanPaymentFilter,
 } from '@/lib/loanPresentation'
 import { setPendingSaleDetailsId } from '@/lib/saleNavigation'
 import { formatCurrency, formatDate, formatDateTime, cn, formatLoanDetailsForWhatsApp } from '@/lib/utils'
@@ -73,7 +80,7 @@ import {
     TabsList,
     TabsTrigger,
 } from '@/ui/components'
-import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt, CircleX, Undo2 } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt, CircleDashed, CircleX, Clock3, CreditCard, BadgeCheck, ListFilter, Undo2, Wallet, type LucideIcon } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { LoanAccountStatementPrintFlow } from '@/ui/components/loans/LoanAccountStatementPrintFlow'
@@ -86,9 +93,44 @@ import { LoanNoteActionButton } from '@/ui/components/loans/LoanNoteActionButton
 import { LoanNoteDialog } from '@/ui/components/loans/LoanNoteDialog'
 import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
 import { InstallmentSalesPanel } from '@/ui/components/installment-sales/InstallmentSalesPanel'
+import { FilterDropdown } from '@/ui/components/FilterDropdown'
+import { ReverseTransactionCofirmationDialog } from '@/ui/components/payments/ReverseTransactionCofirmationDialog'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
+
+const installmentLoanFilterIcons = {
+    all: ListFilter,
+    active: Clock3,
+    overdue: CircleX,
+    completed: BadgeCheck,
+} satisfies Record<LoanFilter, LucideIcon>
+
+const loanPaymentFilterIcons = {
+    all: CreditCard,
+    outstanding: Wallet,
+    partial: CircleDashed,
+    paid: BadgeCheck,
+} satisfies Record<LoanPaymentFilter, LucideIcon>
+
+function getLoanPaymentId(transaction: Pick<PaymentTransaction, 'metadata'>) {
+    const loanPaymentId = transaction.metadata?.loanPaymentId
+    return typeof loanPaymentId === 'string' && loanPaymentId ? loanPaymentId : null
+}
+
+function getTouchedLoanInstallmentIds(transaction: Pick<PaymentTransaction, 'metadata' | 'sourceType' | 'sourceSubrecordId'>) {
+    const touchedInstallmentIds = transaction.metadata?.touchedInstallmentIds
+    if (Array.isArray(touchedInstallmentIds)) {
+        const ids = touchedInstallmentIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        if (ids.length > 0) return ids
+    }
+
+    if (transaction.sourceType === 'loan_installment' && transaction.sourceSubrecordId) {
+        return [transaction.sourceSubrecordId]
+    }
+
+    return []
+}
 
 type PartialSaleReturnSummary = {
     returnedAmount: number
@@ -137,6 +179,7 @@ function LoanListView({
     const canUseWhatsApp = hasCapability('whatsappSharing')
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<LoanFilter>('all')
+    const [paymentFilter, setPaymentFilter] = useState<LoanPaymentFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
     const [pageSize, setPageSize] = useState(() => {
         return Number(localStorage.getItem('loans_page_size')) || 10
@@ -227,21 +270,10 @@ function LoanListView({
         [loanPaymentHistoryIds]
     )
 
-    const metrics = useMemo(() => {
-        const today = new Date().toISOString().slice(0, 10)
-        const totalOutstanding = dateScopedInstallments.reduce((sum, item) => sum + item.balanceAmount, 0)
-        const activeLoans = dateScopedLoans.filter(loan => loan.status === 'active' && loan.balanceAmount > 0).length
-        const overdueLoans = dateScopedLoans.filter(loan => isLoanOverdue(loan)).length
-        const dueToday = dateScopedInstallments
-            .filter(item => item.dueDate === today && item.balanceAmount > 0 && item.status !== 'paid')
-            .reduce((sum, item) => sum + item.balanceAmount, 0)
-
-        return { totalOutstanding, activeLoans, overdueLoans, dueToday }
-    }, [dateScopedInstallments, dateScopedLoans])
-
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase()
         return dateScopedLoans.filter(loan => {
+            if (!matchesLoanPaymentFilter(loan, paymentFilter)) return false
             if (filter === 'active' && loan.status !== 'active') return false
             if (filter === 'completed' && loan.status !== 'completed') return false
             if (filter === 'overdue' && !isLoanOverdue(loan)) return false
@@ -253,7 +285,17 @@ function LoanListView({
                 loan.loanNo.toLowerCase().includes(query)
             )
         })
-    }, [dateScopedLoans, search, filter])
+    }, [dateScopedLoans, search, filter, paymentFilter])
+
+    const metrics = useMemo(
+        () => calculateInstallmentLoanListMetrics(
+            filtered,
+            dateScopedInstallments,
+            new Date().toISOString().slice(0, 10),
+            isLoanOverdue
+        ),
+        [dateScopedInstallments, filtered]
+    )
 
     const paginated = useMemo(() => {
         const from = (currentPage - 1) * pageSize
@@ -441,6 +483,14 @@ function LoanListView({
 
     return (
         <div className="space-y-4">
+            <div className="flex min-h-10 items-center justify-end">
+                {!isReadOnly && (
+                    <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
+                        <Plus className="w-4 h-4" />
+                        <span>{t('loans.createManualLoan') || 'Create Manual Loan'}</span>
+                    </Button>
+                )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <Card>
                     <CardContent className="pt-6">
@@ -472,7 +522,7 @@ function LoanListView({
                 <CardContent className="pt-6 space-y-4">
                     <DateRangeFilters />
 
-                    <div className="flex flex-col lg:flex-row gap-3">
+                    <div className="flex flex-col gap-3 xl:flex-row">
                         <div className="relative flex-1">
                             <Search className="w-4 h-4 absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <Input
@@ -520,7 +570,7 @@ function LoanListView({
                                 {filtered.length <= pageSize && t('loans.view.grid')}
                             </Button>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-4">
                             <AppPagination
                                 currentPage={currentPage}
                                 totalCount={filtered.length}
@@ -532,35 +582,44 @@ function LoanListView({
                                 }}
                                 className="w-auto"
                             />
-                            <div className="flex items-center gap-1 bg-muted/30 rounded-md p-1">
-                                {(['all', 'active', 'overdue', 'completed'] as LoanFilter[]).map(value => (
-                                    <button
-                                        key={value}
-                                        onClick={() => {
-                                            setCurrentPage(1)
-                                            setFilter(value)
-                                        }}
-                                        className={cn(
-                                            'px-3 py-1.5 text-xs rounded-md font-medium transition-colors',
-                                            filter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background'
-                                        )}
-                                    >
-                                        {t(`loans.filters.${value}`) || value}
-                                    </button>
-                                ))}
-                            </div>
+                            <FilterDropdown
+                                dir={i18n.dir() === 'rtl' ? 'rtl' : 'ltr'}
+                                value={filter}
+                                label={t('common.status') || 'Status'}
+                                hasActiveFilter={filter !== 'all'}
+                                options={(['all', 'active', 'overdue', 'completed'] as LoanFilter[]).map(value => ({
+                                    value,
+                                    icon: installmentLoanFilterIcons[value],
+                                    label: t(`loans.filters.${value}`) || value,
+                                }))}
+                                onValueChange={(value) => {
+                                    setCurrentPage(1)
+                                    setFilter(value)
+                                }}
+                            />
+                            <FilterDropdown
+                                dir={i18n.dir() === 'rtl' ? 'rtl' : 'ltr'}
+                                value={paymentFilter}
+                                label={t('loans.paymentStatus')}
+                                hasActiveFilter={paymentFilter !== 'all'}
+                                options={(['all', 'outstanding', 'partial', 'paid'] as LoanPaymentFilter[]).map(value => ({
+                                    value,
+                                    icon: loanPaymentFilterIcons[value],
+                                    label: value === 'all'
+                                        ? (t('common.all') || 'All')
+                                        : t(`loans.paymentFilters.${value}`, { defaultValue: value }),
+                                }))}
+                                onValueChange={(value) => {
+                                    setCurrentPage(1)
+                                    setPaymentFilter(value)
+                                }}
+                            />
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
                                 <Printer className="w-4 h-4" />
                                 <span className="hidden sm:inline">{t('common.print') || 'Print'}</span>
                             </Button>
-                            {!isReadOnly && (
-                                <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
-                                    <Plus className="w-4 h-4" />
-                                    <span>{t('loans.createManualLoan') || 'Create Manual Loan'}</span>
-                                </Button>
-                            )}
                         </div>
                     </div>
 
@@ -927,6 +986,7 @@ function LoanDetailsView({
     const loan = useLoan(loanId)
     const installments = useLoanInstallments(loanId, workspaceId)
     const payments = useLoanPayments(loanId, workspaceId)
+    const settlementTransactions = useLoanSettlementTransactions(loanId, workspaceId)
     const partialSaleReturnSummary = useLiveQuery(async (): Promise<PartialSaleReturnSummary | null> => {
         if (!loan?.saleId || loan.source !== 'pos' || loan.status === 'cancelled') {
             return null
@@ -1004,6 +1064,8 @@ function LoanDetailsView({
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [showLoanAccountStatementPaymentPicker, setShowLoanAccountStatementPaymentPicker] = useState(false)
+    const [transactionToReverse, setTransactionToReverse] = useState<PaymentTransaction | null>(null)
+    const [reversingTransactionId, setReversingTransactionId] = useState<string | null>(null)
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const buildQrValue = useCallback((effectiveId: string) => {
         if (!features.print_qr || !workspaceId || isLocalWorkspaceMode(workspaceId)) return undefined
@@ -1075,6 +1137,50 @@ function LoanDetailsView({
         },
         [loan?.id, loan?.workspaceId]
     )
+
+    const reversibleRepaymentTransactionsByInstallmentId = useMemo(() => {
+        const activeLoanPaymentIds = new Set(payments.map((payment) => payment.id))
+        const reversedTransactionIds = new Set(
+            settlementTransactions
+                .filter((transaction) => !!transaction.reversalOfTransactionId)
+                .map((transaction) => transaction.reversalOfTransactionId as string)
+        )
+        const latestUnreversedTransactionBySource = new Map<string, PaymentTransaction>()
+
+        for (const transaction of settlementTransactions) {
+            if (transaction.reversalOfTransactionId || reversedTransactionIds.has(transaction.id)) {
+                continue
+            }
+
+            const sourceKey = getPaymentSourceKey(transaction)
+            if (!latestUnreversedTransactionBySource.has(sourceKey)) {
+                latestUnreversedTransactionBySource.set(sourceKey, transaction)
+            }
+        }
+
+        const transactionByInstallmentId = new Map<string, PaymentTransaction>()
+        for (const transaction of latestUnreversedTransactionBySource.values()) {
+            const loanPaymentId = getLoanPaymentId(transaction)
+            if (!loanPaymentId || !activeLoanPaymentIds.has(loanPaymentId)) {
+                continue
+            }
+
+            const touchedInstallmentIds = getTouchedLoanInstallmentIds(transaction)
+            const targetInstallmentIds = touchedInstallmentIds.length > 0
+                ? touchedInstallmentIds
+                : loan?.loanCategory === 'simple' && installments[0]
+                    ? [installments[0].id]
+                    : []
+
+            for (const installmentId of targetInstallmentIds) {
+                if (!transactionByInstallmentId.has(installmentId)) {
+                    transactionByInstallmentId.set(installmentId, transaction)
+                }
+            }
+        }
+
+        return transactionByInstallmentId
+    }, [installments, loan?.loanCategory, payments, settlementTransactions])
 
     const loanDetailsViewPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!loan) return undefined
@@ -1149,6 +1255,32 @@ function LoanDetailsView({
             })
         } finally {
             setIsDeletingLoan(false)
+        }
+    }
+
+    const confirmReverseRepayment = async () => {
+        if (!transactionToReverse || reversingTransactionId) {
+            return
+        }
+
+        setReversingTransactionId(transactionToReverse.id)
+        try {
+            await reversePaymentTransaction(workspaceId, transactionToReverse.id, {
+                createdBy: user?.id || null
+            })
+            toast({
+                title: t('common.success'),
+                description: t('loans.messages.paymentReversed')
+            })
+            setTransactionToReverse(null)
+        } catch {
+            toast({
+                title: t('common.error'),
+                description: t('loans.messages.paymentReverseFailed'),
+                variant: 'destructive'
+            })
+        } finally {
+            setReversingTransactionId(null)
         }
     }
 
@@ -1614,15 +1746,27 @@ function LoanDetailsView({
                                                 </div>
                                             </div>
 
-                                            {!isReadOnly && item.balanceAmount > 0 && (
-                                                <div className="pt-1">
-                                                    <Button
-                                                        variant="secondary"
-                                                        className="w-full h-9 rounded-xl font-bold gap-2 text-xs"
-                                                        onClick={() => onOpenPayment(loan, item)}
-                                                    >
-                                                        {t('loans.pay') || 'Pay'}
-                                                    </Button>
+                                            {!isReadOnly && (item.balanceAmount > 0 || reversibleRepaymentTransactionsByInstallmentId.has(item.id)) && (
+                                                <div className="flex gap-2 pt-1">
+                                                    {item.balanceAmount > 0 && (
+                                                        <Button
+                                                            variant="secondary"
+                                                            className="h-9 flex-1 rounded-xl font-bold gap-2 text-xs"
+                                                            onClick={() => onOpenPayment(loan, item)}
+                                                        >
+                                                            {t('loans.pay') || 'Pay'}
+                                                        </Button>
+                                                    )}
+                                                    {reversibleRepaymentTransactionsByInstallmentId.has(item.id) && (
+                                                        <Button
+                                                            variant="outline"
+                                                            className="h-9 flex-1 rounded-xl font-bold gap-2 text-xs"
+                                                            onClick={() => setTransactionToReverse(reversibleRepaymentTransactionsByInstallmentId.get(item.id) || null)}
+                                                        >
+                                                            <Undo2 className="h-3.5 w-3.5" />
+                                                            {t('loans.reverseRepayment')}
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1666,6 +1810,17 @@ function LoanDetailsView({
                                                             {t('loans.pay') || 'Pay'}
                                                         </Button>
                                                     )}
+                                                    {!isReadOnly && reversibleRepaymentTransactionsByInstallmentId.has(item.id) && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="gap-1.5 text-destructive hover:text-destructive"
+                                                            onClick={() => setTransactionToReverse(reversibleRepaymentTransactionsByInstallmentId.get(item.id) || null)}
+                                                        >
+                                                            <Undo2 className="h-3.5 w-3.5" />
+                                                            {t('loans.reverseRepayment')}
+                                                        </Button>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -1688,6 +1843,18 @@ function LoanDetailsView({
                 isLoading={isDeletingLoan}
                 title={t('loans.confirmDelete')}
                 description={getLoanDeleteWarning(loan, t)}
+            />
+            <ReverseTransactionCofirmationDialog
+                open={!!transactionToReverse}
+                onOpenChange={(open) => {
+                    if (!open && !reversingTransactionId) {
+                        setTransactionToReverse(null)
+                    }
+                }}
+                onConfirm={confirmReverseRepayment}
+                isProcessing={!!reversingTransactionId}
+                transaction={transactionToReverse}
+                iqdPreference={features.iqd_display_preference}
             />
             <PrintPreviewModal module="loans"
                 isOpen={showPrintPreview}
