@@ -8,9 +8,32 @@ type PwaWorkerMessage =
     | { type: 'SET_UPDATE_POLICY'; disabled: boolean }
     | { type: 'CHECK_FOR_UPDATE' }
     | { type: 'REFRESH_TO_LATEST' }
+    | { type: 'PREPARE_OFFLINE'; allowUpdate: boolean }
+    | { type: 'GET_OFFLINE_STATUS' }
     | { type: 'APPLY_UPDATE' }
 
 type PwaRefreshResult = 'updated' | 'current' | 'failed' | 'unavailable'
+
+export type PwaOfflinePreparationStatus =
+    | 'ready'
+    | 'updated'
+    | 'failed'
+    | 'updates-disabled-incomplete'
+    | 'unavailable'
+
+export interface PwaOfflineShellStatus {
+    ready: boolean
+    buildId?: string
+    cachedAssets?: number
+    preparedAt?: number
+    status?: PwaOfflinePreparationStatus
+}
+
+export interface PwaOfflinePreparationProgress {
+    phase: 'caching'
+    completed: number
+    total: number
+}
 
 let messagingInitialized = false
 
@@ -30,6 +53,16 @@ async function getActiveWorker(): Promise<ServiceWorker | null> {
     } catch (error) {
         console.warn('Unable to reach the Atlas service worker:', error)
         return null
+    }
+}
+
+async function updateStableWorker(): Promise<void> {
+    if (!canUseServiceWorkers()) return
+    try {
+        const registration = await navigator.serviceWorker.ready
+        await registration.update()
+    } catch (error) {
+        console.warn('Unable to update the Atlas service worker:', error)
     }
 }
 
@@ -126,6 +159,126 @@ export async function refreshPwaDeployment(): Promise<PwaRefreshResult> {
         } catch (error) {
             console.warn('Unable to request an Atlas deployment refresh:', error)
             settle('unavailable')
+        }
+    })
+}
+
+/**
+ * Downloads and verifies the complete application bundle in a separate cache.
+ * The worker keeps the existing cache active unless every required asset is
+ * present, so an interrupted preparation cannot damage an installed PWA.
+ */
+export async function preparePwaOfflineShell(
+    options: {
+        allowUpdate: boolean
+        onProgress?: (progress: PwaOfflinePreparationProgress) => void
+    }
+): Promise<PwaOfflineShellStatus & { status: PwaOfflinePreparationStatus }> {
+    if (!canUseServiceWorkers() || typeof MessageChannel === 'undefined') {
+        return { ready: false, status: 'unavailable' }
+    }
+
+    await updateStableWorker()
+    const worker = await getActiveWorker()
+    if (!worker) return { ready: false, status: 'unavailable' }
+
+    return new Promise((resolve) => {
+        const channel = new MessageChannel()
+        let settled = false
+        const settle = (result: PwaOfflineShellStatus & { status: PwaOfflinePreparationStatus }) => {
+            if (settled) return
+            settled = true
+            window.clearTimeout(timeout)
+            channel.port1.close()
+            resolve(result)
+        }
+        const timeout = window.setTimeout(() => {
+            settle({ ready: false, status: 'unavailable' })
+        }, 120_000)
+
+        channel.port1.onmessage = (event: MessageEvent<{
+            type?: string
+            status?: PwaOfflinePreparationStatus
+            ready?: boolean
+            buildId?: string
+            cachedAssets?: number
+            preparedAt?: number
+            phase?: 'caching'
+            completed?: number
+            total?: number
+        }>) => {
+            if (event.data?.type === 'PREPARE_OFFLINE_PROGRESS') {
+                options.onProgress?.({
+                    phase: 'caching',
+                    completed: event.data.completed ?? 0,
+                    total: event.data.total ?? 0
+                })
+                return
+            }
+            if (event.data?.type !== 'PREPARE_OFFLINE_COMPLETE') return
+            const status = event.data.status ?? 'failed'
+            settle({
+                ready: event.data.ready === true || status === 'ready' || status === 'updated',
+                status,
+                buildId: event.data.buildId,
+                cachedAssets: event.data.cachedAssets,
+                preparedAt: event.data.preparedAt
+            })
+        }
+
+        try {
+            worker.postMessage({
+                type: 'PREPARE_OFFLINE',
+                allowUpdate: options.allowUpdate
+            } satisfies PwaWorkerMessage, [channel.port2])
+        } catch (error) {
+            console.warn('Unable to prepare Atlas for offline use:', error)
+            settle({ ready: false, status: 'unavailable' })
+        }
+    })
+}
+
+/** Read-only cache inspection used by the Settings readiness card. */
+export async function getPwaOfflineShellStatus(): Promise<PwaOfflineShellStatus> {
+    if (!canUseServiceWorkers() || typeof MessageChannel === 'undefined') {
+        return { ready: false }
+    }
+
+    const worker = await getActiveWorker()
+    if (!worker) return { ready: false }
+
+    return new Promise((resolve) => {
+        const channel = new MessageChannel()
+        let settled = false
+        const settle = (result: PwaOfflineShellStatus) => {
+            if (settled) return
+            settled = true
+            window.clearTimeout(timeout)
+            channel.port1.close()
+            resolve(result)
+        }
+        const timeout = window.setTimeout(() => settle({ ready: false }), 5_000)
+
+        channel.port1.onmessage = (event: MessageEvent<{
+            type?: string
+            ready?: boolean
+            buildId?: string
+            cachedAssets?: number
+            preparedAt?: number
+        }>) => {
+            if (event.data?.type !== 'OFFLINE_STATUS') return
+            settle({
+                ready: event.data.ready === true,
+                buildId: event.data.buildId,
+                cachedAssets: event.data.cachedAssets,
+                preparedAt: event.data.preparedAt
+            })
+        }
+
+        try {
+            worker.postMessage({ type: 'GET_OFFLINE_STATUS' } satisfies PwaWorkerMessage, [channel.port2])
+        } catch {
+            settle({ ready: false })
         }
     })
 }

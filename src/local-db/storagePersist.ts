@@ -1,12 +1,28 @@
 const PERSIST_KEY = "atlas_storage_persist_requested";
 
+export async function getPersistentStorageStatus(): Promise<boolean | null> {
+  if (
+    typeof navigator === "undefined" ||
+    !("storage" in navigator) ||
+    typeof navigator.storage.persisted !== "function"
+  ) {
+    return null;
+  }
+
+  try {
+    return await navigator.storage.persisted();
+  } catch {
+    return null;
+  }
+}
+
 export async function requestPersistentStorage(): Promise<boolean> {
   if (typeof navigator === "undefined" || !("storage" in navigator)) {
     return false;
   }
 
   try {
-    const alreadyPersisted = await navigator.storage.persisted();
+    const alreadyPersisted = await getPersistentStorageStatus();
     if (alreadyPersisted) {
       return true;
     }

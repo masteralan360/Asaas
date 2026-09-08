@@ -55,6 +55,7 @@ import { requestPwaDeploymentUpdate } from '@/lib/pwaUpdateControl'
 import { enrollLocalAccountCredential } from '@/auth/localAccountAuth'
 import { ModuleLockerSettingsCard } from '@/ui/components/module-locker/ModuleLockerSettingsCard'
 import { canChangeRestaurantTableConfiguration, normalizeRestaurantTableCount, normalizeVipTableNumbers } from '@/lib/restaurantTableView'
+import { OfflineReadinessCard } from '@/ui/components/settings/OfflineReadinessCard'
 
 function getDateFilterDayBoundaryDate(value: string) {
     const [hours, minutes] = value.split(':').map(Number)
@@ -2355,6 +2356,8 @@ export function Settings() {
                             </CardContent>
                         </Card>
                     )}
+
+                    <OfflineReadinessCard />
 
                     {/* Biometric Authentication (Mobile Only) */}
                     {isElectron && isMobile() && (

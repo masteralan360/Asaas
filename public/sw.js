@@ -1,14 +1,19 @@
 /*
- * This worker is deliberately deployment-stable. A web host can deploy a new app
- * shell without replacing this worker, so an installed Local Mode PWA keeps
- * serving its cached shell until the application explicitly stages an update.
+ * This worker is deliberately deployment-stable. Existing Atlas installations
+ * keep their working cache while a complete replacement is downloaded and
+ * verified in a separate cache.
  */
 const APP_CACHE = 'atlas-app-shell-v2'
 const NEXT_APP_CACHE = 'atlas-app-shell-v2-next'
 const LEGACY_APP_CACHES = ['atlas-app-shell-v1']
+const PREPARED_CACHE_PREFIX = 'atlas-app-shell-prepared-v1-'
+const CACHE_STATE = 'atlas-app-shell-state-v1'
+const CACHE_STATE_URL = '/__atlas_pwa_cache_state__'
+const STAGED_METADATA_URL = '/__atlas_pwa_staged_metadata__'
 const ASSET_MANIFEST_URL = '/atlas-assets.json'
 const DEPLOYMENT_CHECK_QUERY_PARAM = '__atlas_deployment_check'
 const RUNTIME_APP_ASSETS = [
+    '/manifest.webmanifest',
     '/sql-wasm.wasm',
     '/pwa-icon.png',
     '/logo.png'
@@ -17,7 +22,16 @@ let updatesEnabled = true
 let updateToken = 0
 let missingAssetRecoveryPromise = null
 
-const appShellRequest = () => new Request(new URL('/', self.location.origin).href)
+const absoluteUrl = (path) => new URL(path, self.location.origin).href
+const appShellRequest = () => new Request(absoluteUrl('/'))
+const cacheStateRequest = () => new Request(absoluteUrl(CACHE_STATE_URL))
+const stagedMetadataRequest = () => new Request(absoluteUrl(STAGED_METADATA_URL))
+
+function jsonResponse(value) {
+    return new Response(JSON.stringify(value), {
+        headers: { 'Content-Type': 'application/json' }
+    })
+}
 
 function isCacheableRequest(request) {
     if (request.mode === 'navigate') return true
@@ -37,30 +51,59 @@ function isMissingBuildAsset(request) {
 }
 
 async function putResponse(cacheName, request, response) {
-    if (!response || (!response.ok && response.type !== 'opaque')) return
+    if (!response || (!response.ok && response.type !== 'opaque')) return false
     const cache = await caches.open(cacheName)
     await cache.put(request, response.clone())
+    return true
 }
 
-async function cacheUrls(cacheName, urls, reload) {
-    const failedUrls = []
-    for (const value of urls) {
+async function readJsonEntry(cacheName, request) {
+    try {
+        const cache = await caches.open(cacheName)
+        const response = await cache.match(request)
+        return response ? await response.json() : null
+    } catch {
+        return null
+    }
+}
+
+async function readCacheState() {
+    return readJsonEntry(CACHE_STATE, cacheStateRequest())
+}
+
+async function writeCacheState(state) {
+    const cache = await caches.open(CACHE_STATE)
+    await cache.put(cacheStateRequest(), jsonResponse(state))
+}
+
+async function cacheUrls(cacheName, urls, reload, onProgress) {
+    const sameOriginUrls = [...new Set(urls.map((value) => {
         try {
             const url = new URL(value, self.location.origin)
-            if (url.origin !== self.location.origin) continue
+            return url.origin === self.location.origin ? url.href : null
+        } catch {
+            return null
+        }
+    }).filter(Boolean))]
+    const failedUrls = []
 
-            const request = new Request(url.href, { cache: reload ? 'reload' : 'default' })
+    for (let index = 0; index < sameOriginUrls.length; index += 1) {
+        const value = sameOriginUrls[index]
+        try {
+            const request = new Request(value, { cache: reload ? 'reload' : 'default' })
             const response = await fetch(request)
             if (!response.ok && response.type !== 'opaque') {
-                failedUrls.push(url.href)
-                continue
+                failedUrls.push(value)
+            } else {
+                await putResponse(cacheName, request, response)
             }
-            await putResponse(cacheName, request, response)
         } catch {
             failedUrls.push(value)
         }
+        onProgress?.(index + 1, sameOriginUrls.length)
     }
-    return failedUrls
+
+    return { failedUrls, attempted: sameOriginUrls.length }
 }
 
 async function retainCachedUrls(urls) {
@@ -78,27 +121,25 @@ async function retainCachedUrls(urls) {
     }
 }
 
-async function getCachedResponse(request) {
-    const current = await caches.open(APP_CACHE)
-    const currentMatch = await current.match(request, {
-        ignoreSearch: request.mode === 'navigate'
-    })
-    if (currentMatch) return currentMatch
+async function getCacheCandidates() {
+    const state = await readCacheState()
+    return [...new Set([
+        state?.activeCacheName,
+        state?.previousCacheName,
+        APP_CACHE,
+        ...LEGACY_APP_CACHES,
+    ].filter(Boolean))]
+}
 
-    // This allows a seamless migration from the first custom Atlas worker.
-    // Never search the staged cache here: an incomplete staged deployment must
-    // never be served as the active app.
-    for (const legacyCacheName of LEGACY_APP_CACHES) {
-        const legacy = await caches.open(legacyCacheName)
-        const legacyMatch = await legacy.match(request, {
+async function getCachedResponse(request) {
+    const candidates = await getCacheCandidates()
+    for (const cacheName of candidates) {
+        const cache = await caches.open(cacheName)
+        const match = await cache.match(request, {
             ignoreSearch: request.mode === 'navigate'
         })
-        if (legacyMatch) {
-            await current.put(request, legacyMatch.clone())
-            return legacyMatch
-        }
+        if (match) return match
     }
-
     return undefined
 }
 
@@ -117,76 +158,127 @@ function extractInitialAssetUrls(html) {
     return urls
 }
 
+function getManifestAssetUrls(manifest) {
+    const urls = new Set()
+    for (const entry of Object.values(manifest || {})) {
+        if (!entry || typeof entry !== 'object') continue
+        for (const value of [entry.file, ...(entry.css || []), ...(entry.assets || [])]) {
+            if (typeof value === 'string' && value) {
+                urls.add(absoluteUrl(value))
+            }
+        }
+    }
+    return [...urls]
+}
+
+function hashDeployment(value) {
+    let hash = 2166136261
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index)
+        hash = Math.imul(hash, 16777619)
+    }
+    return (hash >>> 0).toString(36)
+}
+
 function createFreshDeploymentRequest(path, token) {
     const url = new URL(path, self.location.origin)
-    // The host can legitimately cache static documents at the edge. A distinct
-    // URL plus no-store makes an explicit Atlas update check reach the current
-    // deployment instead of comparing a cached document with itself.
     url.searchParams.set(DEPLOYMENT_CHECK_QUERY_PARAM, `${Date.now()}-${token}`)
     return new Request(url.href, { cache: 'no-store' })
 }
 
-async function getDeploymentAssetUrls(token) {
+async function getDeploymentAssets(token) {
     try {
         const manifestRequest = createFreshDeploymentRequest(ASSET_MANIFEST_URL, token)
         const response = await fetch(manifestRequest)
         if (!response.ok) return null
-
+        const manifestResponse = response.clone()
         const manifest = await response.json()
         if (!manifest || typeof manifest !== 'object') return null
-        const urls = new Set([manifestRequest.url])
-        for (const entry of Object.values(manifest)) {
-            if (!entry || typeof entry !== 'object') continue
-
-            for (const value of [entry.file, ...(entry.css || []), ...(entry.assets || [])]) {
-                if (typeof value === 'string' && value) {
-                    urls.add(new URL(value, self.location.origin).href)
-                }
-            }
+        return {
+            manifest,
+            manifestResponse,
+            urls: getManifestAssetUrls(manifest)
         }
-        return [...urls]
     } catch {
         return null
     }
 }
 
-async function stageLatestDeployment(token) {
+async function verifyCacheEntries(cacheName, expectedUrls) {
+    const cache = await caches.open(cacheName)
+    const missingUrls = []
+    for (const value of expectedUrls) {
+        const response = await cache.match(new Request(value))
+        if (!response || (!response.ok && response.type !== 'opaque')) {
+            missingUrls.push(value)
+        }
+    }
+    return missingUrls
+}
+
+async function stageLatestDeployment(token, options = {}) {
     const shellRequest = appShellRequest()
     const current = await getCachedResponse(shellRequest)
     const latestResponse = await fetch(createFreshDeploymentRequest('/', token))
-    if (!latestResponse.ok) return 'failed'
+    if (!latestResponse.ok) return { status: 'failed' }
 
     const latestHtml = await latestResponse.clone().text()
     const currentHtml = current ? await current.clone().text() : ''
-    if (latestHtml === currentHtml) return 'current'
+    const wasCurrent = latestHtml === currentHtml
+    if (wasCurrent && !options.force) return { status: 'current' }
 
-    const deploymentAssets = await getDeploymentAssetUrls(token)
-    if (!deploymentAssets) {
-        // Do not switch an offline-capable app to a deployment whose complete
-        // bundle could not be verified. It is safer to keep the current app.
-        return 'failed'
-    }
+    const deploymentAssets = await getDeploymentAssets(token)
+    if (!deploymentAssets) return { status: 'failed' }
+
+    const buildId = hashDeployment(`${latestHtml}\n${JSON.stringify(deploymentAssets.manifest)}`)
+    const expectedUrls = [...new Set([
+        shellRequest.url,
+        absoluteUrl(ASSET_MANIFEST_URL),
+        ...deploymentAssets.urls,
+        ...extractInitialAssetUrls(latestHtml),
+        ...RUNTIME_APP_ASSETS.map(absoluteUrl),
+    ])]
 
     await caches.delete(NEXT_APP_CACHE)
     await putResponse(NEXT_APP_CACHE, shellRequest, latestResponse)
-    const failedUrls = await cacheUrls(NEXT_APP_CACHE, [
-        ...deploymentAssets,
-        ...extractInitialAssetUrls(latestHtml),
-        ...RUNTIME_APP_ASSETS,
-    ], true)
+    await putResponse(
+        NEXT_APP_CACHE,
+        new Request(absoluteUrl(ASSET_MANIFEST_URL)),
+        deploymentAssets.manifestResponse,
+    )
 
-    if (failedUrls.length > 0) {
-        console.warn('[Atlas PWA] Update was not staged because assets are unavailable:', failedUrls)
+    const urlsToFetch = expectedUrls.filter((url) => (
+        url !== shellRequest.url && url !== absoluteUrl(ASSET_MANIFEST_URL)
+    ))
+    const { failedUrls, attempted } = await cacheUrls(
+        NEXT_APP_CACHE,
+        urlsToFetch,
+        true,
+        options.onProgress,
+    )
+    const missingUrls = await verifyCacheEntries(NEXT_APP_CACHE, expectedUrls)
+    const unavailableUrls = [...new Set([...failedUrls, ...missingUrls])]
+
+    if (unavailableUrls.length > 0) {
+        console.warn('[Atlas PWA] Deployment was not staged because assets are unavailable:', unavailableUrls)
         await caches.delete(NEXT_APP_CACHE)
-        return 'failed'
+        return { status: 'failed', failedUrls: unavailableUrls }
     }
 
     if (!updatesEnabled || token !== updateToken) {
         await caches.delete(NEXT_APP_CACHE)
-        return 'failed'
+        return { status: 'failed' }
     }
 
-    return 'staged'
+    const metadata = {
+        buildId,
+        expectedUrls,
+        cachedAssets: expectedUrls.length,
+        wasCurrent,
+        stagedAt: Date.now(),
+    }
+    await putResponse(NEXT_APP_CACHE, stagedMetadataRequest(), jsonResponse(metadata))
+    return { status: 'staged', ...metadata, attempted }
 }
 
 async function notifyClients(message) {
@@ -194,55 +286,199 @@ async function notifyClients(message) {
     clients.forEach((client) => client.postMessage(message))
 }
 
+async function cleanupPreparedCaches(activeCacheName, previousCacheName) {
+    const cacheNames = await caches.keys()
+    await Promise.all(cacheNames
+        .filter((name) => name.startsWith(PREPARED_CACHE_PREFIX))
+        .filter((name) => name !== activeCacheName && name !== previousCacheName)
+        .map((name) => caches.delete(name)))
+}
+
 async function applyStagedDeployment(notify = true) {
-    if (!updatesEnabled) return false
+    if (!updatesEnabled) return { applied: false }
 
     const next = await caches.open(NEXT_APP_CACHE)
+    const metadataResponse = await next.match(stagedMetadataRequest())
+    if (!metadataResponse) return { applied: false }
+    const metadata = await metadataResponse.json()
+    if (!metadata?.buildId || !Array.isArray(metadata.expectedUrls)) return { applied: false }
+
+    const missingBeforeCopy = await verifyCacheEntries(NEXT_APP_CACHE, metadata.expectedUrls)
+    if (missingBeforeCopy.length > 0) return { applied: false }
+
+    const targetCacheName = `${PREPARED_CACHE_PREFIX}${metadata.buildId}-${Date.now().toString(36)}`
+    const target = await caches.open(targetCacheName)
     const keys = await next.keys()
-    if (keys.length === 0) return false
+    try {
+        for (const request of keys) {
+            if (request.url === stagedMetadataRequest().url) continue
+            const response = await next.match(request)
+            if (!response) throw new Error(`Missing staged response for ${request.url}`)
+            await target.put(request, response)
+        }
 
-    await caches.delete(APP_CACHE)
-    const current = await caches.open(APP_CACHE)
-    for (const request of keys) {
-        const response = await next.match(request)
-        if (response) await current.put(request, response)
+        const missingAfterCopy = await verifyCacheEntries(targetCacheName, metadata.expectedUrls)
+        if (missingAfterCopy.length > 0) {
+            throw new Error(`Prepared cache verification failed for ${missingAfterCopy.length} asset(s)`)
+        }
+    } catch (error) {
+        await caches.delete(targetCacheName)
+        console.warn('[Atlas PWA] Prepared cache copy failed; the existing cache remains active:', error)
+        return { applied: false }
     }
+
+    const currentState = await readCacheState()
+    const previousCacheName = currentState?.activeCacheName || APP_CACHE
+    await writeCacheState({
+        version: 1,
+        activeCacheName: targetCacheName,
+        previousCacheName,
+        buildId: metadata.buildId,
+        expectedUrls: metadata.expectedUrls,
+        cachedAssets: metadata.cachedAssets,
+        preparedAt: Date.now(),
+    })
     await caches.delete(NEXT_APP_CACHE)
-    await Promise.all(LEGACY_APP_CACHES.map((cacheName) => caches.delete(cacheName)))
+    await cleanupPreparedCaches(targetCacheName, previousCacheName)
 
-    if (notify) {
-        await notifyClients({ type: 'UPDATE_APPLIED' })
+    if (notify) await notifyClients({ type: 'UPDATE_APPLIED' })
+    return {
+        applied: true,
+        buildId: metadata.buildId,
+        cachedAssets: metadata.cachedAssets,
+        updated: metadata.wasCurrent !== true,
     }
-    return true
+}
+
+async function expectedUrlsFromExistingCache(cacheName) {
+    try {
+        const cache = await caches.open(cacheName)
+        const shellResponse = await cache.match(appShellRequest(), { ignoreSearch: true })
+        if (!shellResponse) return null
+        const html = await shellResponse.clone().text()
+        const keys = await cache.keys()
+        const manifestRequest = keys.find((request) => new URL(request.url).pathname === ASSET_MANIFEST_URL)
+        if (!manifestRequest) return null
+        const manifestResponse = await cache.match(manifestRequest)
+        if (!manifestResponse) return null
+        const manifest = await manifestResponse.json()
+        const expectedUrls = [...new Set([
+            appShellRequest().url,
+            ...getManifestAssetUrls(manifest),
+            ...extractInitialAssetUrls(html),
+            ...RUNTIME_APP_ASSETS.map(absoluteUrl),
+        ])]
+        return {
+            expectedUrls,
+            buildId: hashDeployment(`${html}\n${JSON.stringify(manifest)}`),
+        }
+    } catch {
+        return null
+    }
+}
+
+async function inspectOfflineReadiness() {
+    const state = await readCacheState()
+    if (state?.activeCacheName && Array.isArray(state.expectedUrls)) {
+        const missingUrls = await verifyCacheEntries(state.activeCacheName, state.expectedUrls)
+        if (missingUrls.length === 0) {
+            return {
+                ready: true,
+                cacheName: state.activeCacheName,
+                buildId: state.buildId,
+                cachedAssets: state.expectedUrls.length,
+                preparedAt: state.preparedAt,
+            }
+        }
+    }
+
+    for (const cacheName of [...new Set([
+        state?.previousCacheName,
+        APP_CACHE,
+        ...LEGACY_APP_CACHES,
+    ].filter(Boolean))]) {
+        const existing = await expectedUrlsFromExistingCache(cacheName)
+        if (!existing) continue
+        const missingUrls = await verifyCacheEntries(cacheName, existing.expectedUrls)
+        if (missingUrls.length === 0) {
+            return {
+                ready: true,
+                cacheName,
+                buildId: existing.buildId,
+                cachedAssets: existing.expectedUrls.length,
+            }
+        }
+    }
+
+    return { ready: false }
 }
 
 async function refreshToLatestDeployment(port) {
     const token = ++updateToken
     let status = 'failed'
-
     try {
         const staged = await stageLatestDeployment(token)
-        if (staged === 'staged') {
-            status = await applyStagedDeployment(false) ? 'updated' : 'failed'
-        } else if (staged === 'current') {
+        if (staged.status === 'staged') {
+            const applied = await applyStagedDeployment(false)
+            status = applied.applied ? 'updated' : 'failed'
+        } else if (staged.status === 'current') {
             status = 'current'
         }
     } catch (error) {
         console.warn('[Atlas PWA] Manual refresh could not complete:', error)
     }
+    port?.postMessage({ type: 'REFRESH_COMPLETE', status })
+}
 
+async function prepareOffline(port, allowUpdate) {
     try {
-        port?.postMessage({ type: 'REFRESH_COMPLETE', status })
-    } catch {
-        // The page may have closed while the deployment was being staged.
+        if (!allowUpdate || !updatesEnabled) {
+            const inspection = await inspectOfflineReadiness()
+            port?.postMessage({
+                type: 'PREPARE_OFFLINE_COMPLETE',
+                status: inspection.ready ? 'ready' : 'updates-disabled-incomplete',
+                ...inspection,
+            })
+            return
+        }
+
+        const token = ++updateToken
+        const staged = await stageLatestDeployment(token, {
+            force: true,
+            onProgress: (completed, total) => port?.postMessage({
+                type: 'PREPARE_OFFLINE_PROGRESS',
+                phase: 'caching',
+                completed,
+                total,
+            }),
+        })
+        if (staged.status !== 'staged') {
+            port?.postMessage({
+                type: 'PREPARE_OFFLINE_COMPLETE',
+                status: 'failed',
+                failedUrls: staged.failedUrls || [],
+            })
+            return
+        }
+
+        const applied = await applyStagedDeployment(false)
+        if (!applied.applied) {
+            port?.postMessage({ type: 'PREPARE_OFFLINE_COMPLETE', status: 'failed' })
+            return
+        }
+        port?.postMessage({
+            type: 'PREPARE_OFFLINE_COMPLETE',
+            status: applied.updated ? 'updated' : 'ready',
+            ready: true,
+            buildId: applied.buildId,
+            cachedAssets: applied.cachedAssets,
+        })
+    } catch (error) {
+        console.warn('[Atlas PWA] Offline preparation failed:', error)
+        port?.postMessage({ type: 'PREPARE_OFFLINE_COMPLETE', status: 'failed' })
     }
 }
 
-/**
- * A cached index can occasionally reference a hashed module that the host has
- * already removed. Recover from that precise situation without clearing the
- * current cache: only a fully verified deployment is allowed to replace it.
- */
 function recoverFromMissingBuildAsset() {
     if (!updatesEnabled) return Promise.resolve()
     if (missingAssetRecoveryPromise) return missingAssetRecoveryPromise
@@ -251,9 +487,7 @@ function recoverFromMissingBuildAsset() {
     missingAssetRecoveryPromise = (async () => {
         try {
             const staged = await stageLatestDeployment(token)
-            if (staged === 'staged') {
-                await applyStagedDeployment()
-            }
+            if (staged.status === 'staged') await applyStagedDeployment()
         } catch (error) {
             console.warn('[Atlas PWA] Missing build asset recovery failed:', error)
         } finally {
@@ -295,9 +529,6 @@ self.addEventListener('fetch', (event) => {
     })()
 
     if (isMissingBuildAsset(request)) {
-        // Attach this while the fetch event is still active. The original 404
-        // is returned to the browser, while the safe recovery runs in the
-        // background and reloads clients only after its cache swap succeeds.
         event.waitUntil(responsePromise.then((response) => (
             response.status === 404 ? recoverFromMissingBuildAsset() : undefined
         )).catch(() => undefined))
@@ -319,8 +550,6 @@ self.addEventListener('message', (event) => {
     }
 
     if (message.type === 'CACHE_CURRENT_VERSION' && Array.isArray(message.urls)) {
-        // Never fetch here. This command only preserves the version that is
-        // already cached/running, which keeps the disabled policy offline-safe.
         event.waitUntil(retainCachedUrls(message.urls))
         return
     }
@@ -330,9 +559,7 @@ self.addEventListener('message', (event) => {
         const token = ++updateToken
         event.waitUntil((async () => {
             const staged = await stageLatestDeployment(token)
-            if (staged === 'staged') {
-                await notifyClients({ type: 'UPDATE_READY' })
-            }
+            if (staged.status === 'staged') await notifyClients({ type: 'UPDATE_READY' })
         })())
         return
     }
@@ -340,6 +567,18 @@ self.addEventListener('message', (event) => {
     if (message.type === 'REFRESH_TO_LATEST') {
         if (!updatesEnabled) return
         event.waitUntil(refreshToLatestDeployment(event.ports?.[0]))
+        return
+    }
+
+    if (message.type === 'PREPARE_OFFLINE') {
+        event.waitUntil(prepareOffline(event.ports?.[0], message.allowUpdate !== false))
+        return
+    }
+
+    if (message.type === 'GET_OFFLINE_STATUS') {
+        event.waitUntil(inspectOfflineReadiness().then((status) => {
+            event.ports?.[0]?.postMessage({ type: 'OFFLINE_STATUS', ...status })
+        }))
         return
     }
 
