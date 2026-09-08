@@ -75,6 +75,9 @@ const SYNC_PULL_TABLES = [
   "delivery_shipments",
   "delivery_shipment_events",
   "delivery_shipment_cod_adjustment_requests",
+  "delivery_shipment_cod_corrections",
+  "delivery_shipment_recipient_payout_corrections",
+  "delivery_shipment_recipient_payout_adjustment_requests",
   "delivery_runs",
   "delivery_run_items",
   "delivery_settlements",
@@ -332,6 +335,20 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
       addParent("agents", "actorAgentId", "actor_agent_id");
       break;
     case "delivery_shipment_cod_adjustment_requests":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      addParent("agents", "requesterAgentId", "requester_agent_id");
+      break;
+    case "delivery_shipment_cod_corrections":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      addParent("delivery_ledger_entries", "courierLedgerEntryId", "courier_ledger_entry_id");
+      addParent("delivery_ledger_entries", "merchantLedgerEntryId", "merchant_ledger_entry_id");
+      break;
+    case "delivery_shipment_recipient_payout_corrections":
+      addParent("delivery_shipments", "shipmentId", "shipment_id");
+      addParent("delivery_ledger_entries", "courierLedgerEntryId", "courier_ledger_entry_id");
+      addParent("delivery_ledger_entries", "merchantLedgerEntryId", "merchant_ledger_entry_id");
+      break;
+    case "delivery_shipment_recipient_payout_adjustment_requests":
       addParent("delivery_shipments", "shipmentId", "shipment_id");
       addParent("agents", "requesterAgentId", "requester_agent_id");
       break;

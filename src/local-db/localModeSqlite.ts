@@ -56,6 +56,9 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "delivery_shipments",
   "delivery_shipment_events",
   "delivery_shipment_cod_adjustment_requests",
+  "delivery_shipment_cod_corrections",
+  "delivery_shipment_recipient_payout_corrections",
+  "delivery_shipment_recipient_payout_adjustment_requests",
   "delivery_runs",
   "delivery_run_items",
   "delivery_settlements",
@@ -386,6 +389,13 @@ async function purgeRetiredModuleEntities(connection: SqliteConnection) {
   );
 }
 
+async function purgeRetiredRecipientPayoutSettlementObligations(connection: SqliteConnection) {
+  await connection.execute(
+    'DELETE FROM local_entities WHERE entity_type = $1',
+    ['delivery_shipment_settlement_obligations'],
+  );
+}
+
 async function ensureCashierShiftActiveClaimsTable(
   connection: SqliteConnection,
 ) {
@@ -560,6 +570,7 @@ async function ensureConnection() {
 
       await ensureCashierShiftActiveClaimsTable(connection);
       await purgeRetiredModuleEntities(connection);
+      await purgeRetiredRecipientPayoutSettlementObligations(connection);
       return connection;
     })().catch((error) => {
       sqlitePromise = null;

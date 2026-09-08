@@ -6,6 +6,7 @@ import {
   signOutCurrentSupabaseSession
 } from './supabase'
 import { isSupabaseRateLimitedError } from './sessionManager'
+import { isAuthenticatedState } from './authenticationState'
 import type { User, Session } from '@supabase/supabase-js'
 import type { CashierShiftAssignment, CashierShiftOccurrence, UserRole, WorkspaceDataMode } from '@/local-db/models'
 import { connectionManager } from '@/lib/connectionManager'
@@ -872,11 +873,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           if (isSupabaseRateLimitedError(refreshError)) {
-            // Do not turn a temporary throttle into a logout/fallback-workspace
-            // loop. The user can retry a password login once Auth accepts
-            // requests again, while their local recovery data remains intact.
-            setSession(null)
-            console.warn('[Auth] Session refresh is rate-limited; waiting for a fresh sign-in.')
+            // Supabase owns the refresh cooldown and preserves a still-valid
+            // stored session. A genuine SIGNED_OUT event clears React state.
+            console.warn('[Auth] Session refresh is rate-limited; preserving current auth state.')
             return
           }
 
@@ -1536,7 +1535,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         isLoading,
-        isAuthenticated: !!session || canRestoreWithoutSupabaseSession(user),
+        isAuthenticated: isAuthenticatedState({
+          hasSession: Boolean(session),
+          hasUser: Boolean(user),
+          canRestoreWithoutSession: canRestoreWithoutSupabaseSession(user)
+        }),
         isKicked,
         isSupabaseConfigured,
         signIn,

@@ -1516,6 +1516,10 @@
       "customer": "کڕیار",
       "supplier": "دابینکەر",
       "selectCustomer": "هەڵبژاردنی کڕیار",
+      "businessPartner": "هاوبەشی بازرگانی",
+      "businessPartnerPickerDescription": "هاوبەشێکی بازرگانی بۆ ئەم داواکارییە هەڵبژێرە.",
+      "searchBusinessPartners": "گەڕان لە هاوبەشە بازرگانییەکان...",
+      "noBusinessPartnersFound": "هیچ هاوبەشێکی بازرگانیی هاوتا نەدۆزرایەوە.",
       "selectBusinessPartnerToUnlock": "هاوبەشی بازرگانی هەڵبژێرە بۆ کردنەوەی ئەم بەشە.",
       "selectSupplier": "هەڵبژاردنی دابینکەر",
       "selectProduct": "هەڵبژاردنی بەرهەم",
@@ -4453,6 +4457,8 @@
         "fullSaleReturnRefund": "گەڕاندنەوەی پارەی داواکاریی گەڕێندراوە",
         "returnCredit": "کریدتی گەڕاندنەوە",
         "deliveryCodPayable": "بڕی CODی پۆست",
+        "deliveryCodCorrection": "دەستکاریکردنی CODی گەیەندراو",
+        "deliveryRecipientPayoutCorrection": "دەستکاریکردنی پارەدانی وەرگری گەیەندراو",
         "deliveryFee": "کرێی پۆست",
         "deliveryRecipientPayout": "پارەدانی وەرگر",
         "deliveryMerchantPayout": "پارەدانی بازرگان",
@@ -4575,6 +4581,14 @@
       "role": "ڕۆڵ",
       "contactName": "ناوی پەیوەندی",
       "partnerName": "ناوی هاوبەش"
+    },
+    "duplicateDetection": {
+      "nameAvailable": "هیچ هاوبەشێکی بازرگانی بەو ناوە نەدۆزرایەوە",
+      "phoneAvailable": "هیچ هاوبەشێکی بازرگانی بەو ژمارە تەلەفۆنە نەدۆزرایەوە",
+      "nameDuplicate": "هاوبەشێکی بازرگانی بەو ناوە هەیە",
+      "phoneDuplicate": "هاوبەشێکی بازرگانی بەو ژمارە تەلەفۆنە هەیە",
+      "nameDuplicateDescription": "هاوبەشێکی بازرگانی بەو ناوە هەیە. ئەگەر هەمان هاوبەش نییە، بەردەوامبە لە نووسین.",
+      "phoneDuplicateDescription": "هاوبەشێکی بازرگانی بەو ژمارە تەلەفۆنە هەیە. ئەگەر هەمان هاوبەش نییە، بەردەوامبە لە نووسین."
     },
     "agent": {
       "partnerName": "ناوی بریکار",
@@ -6767,7 +6781,14 @@
       "reviewChangeTo": "پێداچوونەوەی گۆڕان بۆ {{amount}}",
       "sendChangeRequest": "ناردنی داوا",
       "approveChange": "پەسەندکردنی گۆڕان",
-      "rejectChange": "ڕەتکردنەوەی گۆڕان"
+      "rejectChange": "ڕەتکردنەوەی گۆڕان",
+      "correctDeliveredCod": "دەستکاریکردنی CODی گەیەندراو",
+      "correctDeliveredRecipientPayout": "دەستکاریکردنی پارەدانی وەرگری گەیەندراو",
+      "requestRecipientPayoutChange": "داوای گۆڕینی پارەدانی وەرگر",
+      "reviewPayoutChangeTo": "پێداچوونەوەی گۆڕینی پارەدانی وەرگر بۆ {{amount}}",
+      "sendRecipientPayoutChangeRequest": "ناردنی داوا",
+      "approveRecipientPayoutChange": "پەسەندکردنی گۆڕان",
+      "rejectRecipientPayoutChange": "ڕەتکردنەوەی گۆڕان"
     },
     "metrics": {
       "readyToDispatch": "ئامادەی دابەشکردن",
@@ -6852,6 +6873,10 @@
       "noteVariance": "تێبینی / ڕوونکردنەوەی جیاوازی",
       "requestedCodAmount": "بڕی داواکراوی پارە لە کاتی وەرگرتن",
       "approvedCodAmount": "بڕی پەسەندکراوی پارە لە کاتی وەرگرتن",
+      "correctedDeliveredCodAmountRequired": "بڕی دەستکاریکراوی COD *",
+      "correctedDeliveredRecipientPayoutAmountRequired": "پارەدانی دەستکاریکراوی وەرگر *",
+      "requestedRecipientPayoutAmount": "پارەدانی داواکراوی وەرگر",
+      "approvedRecipientPayoutAmount": "پارەدانی پەسەندکراوی وەرگر",
       "reviewNote": "تێبینیی پێداچوونەوە",
       "reviewNoteOptional": "تێبینیی پێداچوونەوە (ئارەزوومەندانە)",
       "reasonOptional": "هۆکار (ئارەزوومەندانە)",
@@ -6868,6 +6893,8 @@
       "deliveryNote": "بەڵگە یان تێبینی گەیاندن",
       "codChangeReason": "هۆکاری گۆڕینی بڕی پارە لە کاتی وەرگرتن ڕوون بکەرەوە",
       "codChangeReviewNote": "ڕوونکردنەوەی ئارەزوومەندانە بۆ ئەم پێداچوونەوەیە",
+      "recipientPayoutChangeReason": "هۆکاری گۆڕینی پارەدانی وەرگر ڕوون بکەرەوە",
+      "recipientPayoutChangeReviewNote": "ڕوونکردنەوەی ئارەزوومەندانە بۆ ئەم پێداچوونەوەیە",
       "varianceNote": "کاتێک کەمتر لە باڵانسی قەرزار پارەدەدرێت پێویستە",
       "repaymentVarianceNote": "کاتێک کەمتر لە باڵانسی قەرزار وەردەگیرێت پێویستە",
       "searchPosts": "بە ژمارەی شوێنکەوتن، وەرگر، بازرگان یان پەیامبەر بگەڕێ...",
@@ -6984,7 +7011,12 @@
       "returnHistory": "مێژووی گەڕاوەکان",
       "cancelled": "هەڵوەشاوە",
       "requestChange": "داوای گۆڕین",
-      "requestChangeTo": "داوای گۆڕین بۆ {{amount}}"
+      "requestChangeTo": "داوای گۆڕین بۆ {{amount}}",
+      "requestPayoutChangeTo": "گۆڕینی پارەدانی وەرگر بۆ {{amount}}",
+      "changedTo": "گۆڕدراوە بۆ",
+      "originalCod": "بڕی ڕەسەنی پارە پێش گۆڕین",
+      "originalRecipientPayout": "پارەدانی ڕەسەنی وەرگر",
+      "approvedAt": "کاتی پەسەندکردن"
     },
     "settlementStatus": {
       "handedOver": "تەسلیم کراوە",
@@ -7100,6 +7132,28 @@
         "currentCod": "بڕی ئێستا",
         "requestedCod": "بڕی داواکراو"
       },
+      "deliveredCodCorrection": {
+        "title": "دەستکاریکردنی CODی گەیەندراو",
+        "description": "CODی {{trackingNumber}} دەستکاری بکە پێش دەستپێکردنی تەسویە.",
+        "currentCod": "CODی ئێستا",
+        "settlementRequirement": "تەنها کاتێک ئەم دەستکاریکردنە بەردەستە کە هەردوو پابەندبوونی پەیوەندیدار بە تەواوی چاوەڕێن."
+      },
+      "deliveredRecipientPayoutCorrection": {
+        "title": "دەستکاریکردنی پارەدانی وەرگری گەیەندراو",
+        "description": "پارەدانی وەرگر کە لەلایەن مەندوب پێشەکی دراوە بۆ {{trackingNumber}} دەستکاری بکە پێش دەستپێکردنی هەر یەک لە تەسویە پەیوەندیدارەکان.",
+        "currentRecipientPayout": "پارەدانی ئێستای وەرگر",
+        "paymentPreserved": "هیچ پارەدانێکی نوێ تۆمار ناکرێت: ئەمە پێشەکیی نەپارێزراوی مەندوب و گەڕاندنەوەی پارەی بازرگان دەستکاری دەکات.",
+        "settlementRequirement": "ئەم دەستکارییە تەنها کاتێک بەردەستە کە هەردوو پابەندبوونی تەسویەی پەیوەندیدار بە تەواوی چاوەڕێ بن."
+      },
+      "recipientPayoutChangeRequest": {
+        "title": "داوای گۆڕینی پارەدانی وەرگر",
+        "currentRecipientPayout": "پارەدانی ئێستای وەرگر"
+      },
+      "recipientPayoutChangeReview": {
+        "title": "پێداچوونەوەی گۆڕینی پارەدانی وەرگر",
+        "currentRecipientPayout": "پارەدانی ئێستای وەرگر",
+        "requestedRecipientPayout": "پارەدانی داواکراوی وەرگر"
+      },
       "recipientPayout": {
         "title": "پارەدانی وەرگر",
         "description": "ئەم پارەیەی دەرچوو لە هەژماری بازرگان کەم دەکرێتەوە کاتێک گەیاندن پشتڕاست دەکرێتەوە.",
@@ -7139,6 +7193,7 @@
         "courierRecipientAdvance": "پارەی پێشەکیی مەندوب بۆ وەرگر",
         "merchantPayout": "پارەدانی بازرگان",
         "profit": "قازانجی گەیاندن",
+        "expected": "چاوەڕێکراو",
         "noSettlements": "هێشتا هیچ تەسویەیەکی تایبەت بەم پۆستە تۆمار نەکراوە.",
         "partial": "ئەم حیسابە کاتییە تا کاتێک تەسلیمی مەندوب و پارەدانی بازرگان هەردووکیان تۆمار بکرێن.",
         "courierFeeIncluded": "مەندوب {{amount}}ی لەخۆی هێشتووەتەوە؛ پێشتر لە پارەی تەسلیمی مەندوب کەم کراوەتەوە."
@@ -7202,7 +7257,16 @@
       "codChangeRequestFailed": "نەتوانرا داوای گۆڕینی پارە لە کاتی وەرگرتن بنێردرێت",
       "codChangeApproved": "گۆڕینی پارە لە کاتی وەرگرتن پەسەندکرا",
       "codChangeRejected": "گۆڕینی پارە لە کاتی وەرگرتن ڕەتکرایەوە",
-      "codChangeReviewFailed": "پێداچوونەوەی گۆڕینی پارە لە کاتی وەرگرتن سەرکەوتوو نەبوو"
+      "codChangeReviewFailed": "پێداچوونەوەی گۆڕینی پارە لە کاتی وەرگرتن سەرکەوتوو نەبوو",
+      "deliveredCodCorrected": "CODی گەیەندراو دەستکاری کرا",
+      "deliveredCodCorrectionFailed": "نەتوانرا CODی گەیەندراو دەستکاری بکرێت",
+      "deliveredRecipientPayoutCorrected": "پارەدانی وەرگری گەیەندراو دەستکاری کرا",
+      "deliveredRecipientPayoutCorrectionFailed": "نەتوانرا پارەدانی وەرگری گەیەندراو دەستکاری بکرێت",
+      "recipientPayoutChangeRequested": "داوای گۆڕینی پارەدانی وەرگر نێردرا",
+      "recipientPayoutChangeRequestFailed": "نەتوانرا داوای گۆڕینی پارەدانی وەرگر بنێردرێت",
+      "recipientPayoutChangeApproved": "گۆڕینی پارەدانی وەرگر پەسەندکرا",
+      "recipientPayoutChangeRejected": "گۆڕینی پارەدانی وەرگر ڕەتکرایەوە",
+      "recipientPayoutChangeReviewFailed": "پێداچوونەوەی گۆڕینی پارەدانی وەرگر سەرکەوتوو نەبوو"
     },
     "errors": {
       "generic": "تکایە دووبارە هەوڵ بدە.",
@@ -7236,6 +7300,34 @@
       "codChangeReviewAdminOnly": "تەنها بەڕێوەبەر دەتوانێت پێداچوونەوە بە داوای گۆڕینی پارە لە کاتی وەرگرتن بکات.",
       "codChangeNoLongerReviewable": "ئەم داوای گۆڕینی پارە لە کاتی وەرگرتن چیتر ناتوانرێت پەسەند بکرێت.",
       "codChangePendingEditBlocked": "پێش گۆڕینی وردەکارییەکانی پارە لە کاتی وەرگرتنی پۆستەکە، داواکاری چاوەڕێی گۆڕین پێداچوونەوە بکە.",
+      "deliveredCodCorrectionAdminOnly": "تەنها بەڕێوەبەر دەتوانێت بڕی CODی گەیەندراو دەستکاری بکات.",
+      "deliveredCodCorrectionAmountInvalid": "بڕێکی دەستکاریکراوی COD بنووسە کە لە سفر گەورەتر بێت.",
+      "deliveredCodCorrectionMustDiffer": "بڕێکی دەستکاریکراوی COD بنووسە کە لە بڕی ئێستا جیاواز بێت.",
+      "deliveredCodCorrectionStatusOnly": "تەنها پۆستە گەیەندراوەکانی COD دەتوانرێت بڕەکەیان دەستکاری بکرێت.",
+      "deliveredCodCorrectionSettlementStarted": "ئەم CODیە چیتر ناتوانرێت دەستکاری بکرێت چونکە تەسویە دەستی پێکردووە.",
+      "deliveredCodCorrectionChanged": "ئەم پۆستە گۆڕاوە. پێش دەستکاریکردنی COD نوێی بکەرەوە.",
+      "deliveredCodCorrectionOnlineRequired": "پێش دەستکاریکردنی CODی گەیەندراو پەیوەندی بە ئینتەرنێتەوە بکە.",
+      "deliveredCodCorrectionUnavailable": "ئەم دەستکاریکردنەی CODی گەیەندراو چیتر ناتوانرێت تەواو بکرێت.",
+      "deliveredRecipientPayoutCorrectionAdminOnly": "تەنها بەڕێوەبەر دەتوانێت پارەدانی وەرگری گەیەندراو دەستکاری بکات.",
+      "deliveredRecipientPayoutCorrectionAmountInvalid": "پارەدانێکی دەستکاریکراوی وەرگر بنووسە کە سفر یان لە سفر گەورەتر بێت.",
+      "deliveredRecipientPayoutCorrectionMustDiffer": "پارەدانێکی دەستکاریکراوی وەرگر بنووسە کە لە بڕی ئێستا جیاواز بێت.",
+      "deliveredRecipientPayoutCorrectionStatusOnly": "تەنها پۆستە پێشەکییە ئەلیکترۆنییە گەیەندراوەکانی کە مەندوب پارەکەی پێشەکی داوە دەتوانرێت پارەدانی وەرگریان دەستکاری بکرێت.",
+      "deliveredRecipientPayoutCorrectionSettlementStarted": "ئەم پارەدانەی وەرگر چیتر ناتوانرێت دەستکاری بکرێت چونکە تەسویەیەکی پەیوەندیدار دەستی پێکردووە.",
+      "deliveredRecipientPayoutCorrectionChanged": "ئەم پۆستە گۆڕاوە. پێش دەستکاریکردنی پارەدانی وەرگر نوێی بکەرەوە.",
+      "deliveredRecipientPayoutCorrectionOnlineRequired": "پێش دەستکاریکردنی پارەدانی وەرگری گەیەندراو پەیوەندی بە ئینتەرنێتەوە بکە.",
+      "deliveredRecipientPayoutCorrectionUnavailable": "ئەم دەستکاریکردنەی پارەدانی وەرگری گەیەندراو چیتر ناکرێت تەواو بکرێت.",
+      "recipientPayoutChangePrepaidOnly": "تەنها بۆ پۆستە ئەلیکترۆنی پێشەکی پارەدراوەکان دەتوانرێت داوای گۆڕینی پارەدانی وەرگر بکرێت.",
+      "recipientPayoutChangeStatusOnly": "تەنها بۆ پۆستە دیاریکراوەکان یان دواخراوەکان دەتوانرێت داوای گۆڕینی پارەدانی وەرگر بکرێت.",
+      "recipientPayoutChangeCourierOnly": "تەنها بۆ پۆستە دیاریکراوەکان بۆ مەندوبەکەت دەتوانیت داوای گۆڕینی پارەدانی وەرگر بکەیت.",
+      "recipientPayoutChangeMustDiffer": "بڕێکی پارەدانی وەرگر بنووسە کە لە بڕی ئێستا جیاواز بێت.",
+      "recipientPayoutChangeAmountInvalid": "بڕێکی پارەدانی وەرگر بنووسە کە سفر یان زیاتر بێت.",
+      "recipientPayoutChangeAlreadyPending": "ئەم پۆستە پێشتر داوای گۆڕینی پارەدانی وەرگری چاوەڕوانی هەیە.",
+      "recipientPayoutChangePendingDeliveryBlocked": "پێش نیشانکردنی پۆستەکە وەک گەیشتوو، داوای گۆڕینی پارەدانی وەرگری چاوەڕوان پێداچوونەوە بکە.",
+      "recipientPayoutChangeRequestNotFound": "داوای گۆڕینی پارەدانی وەرگر نەدۆزرایەوە.",
+      "recipientPayoutChangeAlreadyReviewed": "پێشتر پێداچوونەوە بە داوای گۆڕینی پارەدانی وەرگر کراوە.",
+      "recipientPayoutChangeReviewAdminOnly": "تەنها بەڕێوەبەر دەتوانێت پێداچوونەوە بە داوای گۆڕینی پارەدانی وەرگر بکات.",
+      "recipientPayoutChangeNoLongerReviewable": "ئەم داوای گۆڕینی پارەدانی وەرگرە چیتر ناتوانرێت پەسەند بکرێت.",
+      "recipientPayoutChangePendingEditBlocked": "پێش گۆڕینی وردەکارییەکانی پارەدانی پۆستەکە، داواکاری چاوەڕێی گۆڕینی پارەدانی وەرگر پێداچوونەوە بکە.",
       "amountExceedsBalance": "بڕی تەسویە نابێت لە باڵانسی قەرزار زیاتر بێت.",
       "partialExplanationRequired": "پێش پشتڕاستکردنەوەی تەسویەی بەشەکی، ڕوونکردنەوەی بدە.",
       "courierNotFound": "مەندوب نەدۆزرایەوە.",

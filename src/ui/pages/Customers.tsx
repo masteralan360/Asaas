@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
-import { Eye, Pencil, Plus, Search, Trash2, Users, Zap } from 'lucide-react'
+import { Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
@@ -38,10 +38,7 @@ import {
 import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
-import {
-    CompactBusinessPartnerFormDialog,
-    type CompactBusinessPartnerFormPayload
-} from '@/ui/components/crm/CompactBusinessPartnerFormDialog'
+import { QuickCustomerButton } from '@/ui/components/crm/QuickCustomerButton'
 import { UiAccessGate } from '@/context/UiAccessContext'
 
 export function Customers() {
@@ -57,11 +54,9 @@ export function Customers() {
     const customers = useBusinessPartners(user?.workspaceId, { roles: ['customer'] })
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
-    const [quickCustomerDialogOpen, setQuickCustomerDialogOpen] = useState(false)
     const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
     const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
-    const [isCreatingQuickCustomer, setIsCreatingQuickCustomer] = useState(false)
     const [showEcommerceCustomers, setShowEcommerceCustomers] = useState(true)
 
     const availableCurrencies = useMemo(() => {
@@ -118,25 +113,6 @@ export function Customers() {
         }
     }
 
-    async function handleQuickCustomerSubmit(payload: CompactBusinessPartnerFormPayload) {
-        if (!user?.workspaceId) return
-
-        setIsCreatingQuickCustomer(true)
-        try {
-            await createBusinessPartner(user.workspaceId, payload)
-            setQuickCustomerDialogOpen(false)
-            toast({ title: t('customers.messages.addSuccess') || 'Customer added successfully' })
-        } catch (error: any) {
-            toast({
-                title: t('common.error') || 'Error',
-                description: error?.message || t('customers.messages.addError') || 'Failed to create customer',
-                variant: 'destructive'
-            })
-        } finally {
-            setIsCreatingQuickCustomer(false)
-        }
-    }
-
     async function handleDelete() {
         if (!deleteTarget) return
         try {
@@ -168,14 +144,7 @@ export function Customers() {
                 </div>
                 {canEdit && (
                     <div className="flex flex-wrap gap-2 self-start">
-                        <Button
-                            variant="outline"
-                            onClick={() => setQuickCustomerDialogOpen(true)}
-                            className="gap-2 rounded-xl"
-                        >
-                            <Zap className="h-4 w-4" />
-                            {t('customers.addQuickCustomer') || 'Add Quick Customer'}
-                        </Button>
+                        <QuickCustomerButton workspaceId={user?.workspaceId} />
                         <Button onClick={() => { setEditingPartner(null); setDialogOpen(true) }} className="gap-2 rounded-xl">
                             <Plus className="h-4 w-4" />
                             {t('customers.addCustomer') || 'Add Customer'}
@@ -377,17 +346,6 @@ export function Customers() {
                 title={editingPartner ? (t('customers.editCustomer') || 'Edit Customer') : (t('customers.addCustomer') || 'Add Customer')}
                 submitLabel={editingPartner ? (t('common.save') || 'Save') : (t('common.create') || 'Create')}
                 onSubmit={handleSubmit}
-            />
-
-            <CompactBusinessPartnerFormDialog
-                isOpen={quickCustomerDialogOpen}
-                onOpenChange={setQuickCustomerDialogOpen}
-                defaultCurrency={features.default_currency}
-                role="customer"
-                title={t('customers.addQuickCustomer') || 'Add Quick Customer'}
-                submitLabel={t('common.create') || 'Create'}
-                isSaving={isCreatingQuickCustomer}
-                onSubmit={handleQuickCustomerSubmit}
             />
 
             <DeleteConfirmationModal

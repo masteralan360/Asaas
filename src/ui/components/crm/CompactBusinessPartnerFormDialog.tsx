@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
@@ -14,6 +14,15 @@ import {
     Input,
     Label
 } from '@/ui/components'
+import {
+    BusinessPartnerDuplicateStatusDescription,
+    BusinessPartnerDuplicateStatusIcon
+} from './BusinessPartnerDuplicateStatusIcon'
+import {
+    shouldInterruptDuplicateSave,
+    useBusinessPartnerDuplicateDetection,
+    type BusinessPartnerDuplicateField
+} from './useBusinessPartnerDuplicateDetection'
 
 type CompactBusinessPartnerFormState = {
     partnerName: string
@@ -53,6 +62,8 @@ interface CompactBusinessPartnerFormDialogProps {
     role: BusinessPartnerRole
     /** The workspace/default currency to persist for the new partner. */
     defaultCurrency: CurrencyCode
+    /** Used to compare the new partner with partners in this workspace. */
+    workspaceId?: string
     title?: string
     submitLabel?: string
     isSaving?: boolean
@@ -69,6 +80,7 @@ export function CompactBusinessPartnerFormDialog({
     onOpenChange,
     role,
     defaultCurrency,
+    workspaceId,
     title,
     submitLabel,
     isSaving = false,
@@ -77,13 +89,28 @@ export function CompactBusinessPartnerFormDialog({
     const { t } = useTranslation()
     const [formState, setFormState] = useState<CompactBusinessPartnerFormState>(() => createEmptyState(defaultCurrency))
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [duplicateWarningField, setDuplicateWarningField] = useState<BusinessPartnerDuplicateField | null>(null)
+    const acknowledgedDuplicateStateRef = useRef<string | null>(null)
+    const nameInputRef = useRef<HTMLInputElement>(null)
+    const phoneInputRef = useRef<HTMLInputElement>(null)
     const isProcessing = isSaving || isSubmitting
+    const { statuses: duplicateStatuses, firstDuplicateField, duplicateStateKey, checkNow } = useBusinessPartnerDuplicateDetection({
+        isOpen,
+        workspaceId,
+        name: formState.partnerName,
+        phone: formState.phone
+    })
 
     useEffect(() => {
         if (isOpen) {
             setFormState(createEmptyState(defaultCurrency))
         }
     }, [defaultCurrency, isOpen])
+
+    useEffect(() => {
+        acknowledgedDuplicateStateRef.current = null
+        setDuplicateWarningField(null)
+    }, [formState.partnerName, formState.phone, isOpen])
 
     const canSubmit = Boolean(
         formState.partnerName.trim()
@@ -97,9 +124,33 @@ export function CompactBusinessPartnerFormDialog({
         }
     }
 
+    const showDuplicateWarning = (field: BusinessPartnerDuplicateField) => {
+        acknowledgedDuplicateStateRef.current = duplicateStateKey
+        setDuplicateWarningField(field)
+        window.requestAnimationFrame(() => {
+            const input = field === 'name' ? nameInputRef.current : phoneInputRef.current
+            input?.focus()
+            input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        })
+    }
+
+    const updateDuplicateCheckedValue = (field: 'partnerName' | 'phone', value: string) => {
+        acknowledgedDuplicateStateRef.current = null
+        setDuplicateWarningField(null)
+        setFormState((current) => ({ ...current, [field]: value }))
+    }
+
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
+        // Dialogs rendered from a page form still bubble through React's tree.
+        // Keep this compact partner submission from invoking the host workflow.
+        event.stopPropagation()
         if (!canSubmit || isProcessing) {
+            return
+        }
+        if (shouldInterruptDuplicateSave(firstDuplicateField, acknowledgedDuplicateStateRef.current, duplicateStateKey)) {
+            checkNow()
+            showDuplicateWarning(firstDuplicateField)
             return
         }
 
@@ -142,32 +193,42 @@ export function CompactBusinessPartnerFormDialog({
                             <Label htmlFor="compact-business-partner-name">
                                 {t('businessPartners.form.partnerName')} <span className="text-destructive">*</span>
                             </Label>
-                            <Input
-                                id="compact-business-partner-name"
-                                name="partnerName"
-                                value={formState.partnerName}
-                                onChange={(event) => setFormState((current) => ({
-                                    ...current,
-                                    partnerName: event.target.value
-                                }))}
-                                required
-                            />
+                            <div className="relative">
+                                <Input
+                                    ref={nameInputRef}
+                                    id="compact-business-partner-name"
+                                    name="partnerName"
+                                    value={formState.partnerName}
+                                    onChange={(event) => updateDuplicateCheckedValue('partnerName', event.target.value)}
+                                    className={duplicateWarningField === 'name'
+                                        ? 'pe-11 border-amber-500 ring-2 ring-amber-500/20'
+                                        : 'pe-11'}
+                                    required
+                                />
+                                <BusinessPartnerDuplicateStatusIcon field="name" status={duplicateStatuses.name} />
+                            </div>
+                            <BusinessPartnerDuplicateStatusDescription field="name" status={duplicateStatuses.name} />
                         </div>
 
                         <div className="space-y-2">
                             <Label htmlFor="compact-business-partner-phone">
                                 {t('customers.form.phone')} <span className="text-destructive">*</span>
                             </Label>
-                            <Input
-                                id="compact-business-partner-phone"
-                                name="phone"
-                                value={formState.phone}
-                                onChange={(event) => setFormState((current) => ({
-                                    ...current,
-                                    phone: event.target.value
-                                }))}
-                                required
-                            />
+                            <div className="relative">
+                                <Input
+                                    ref={phoneInputRef}
+                                    id="compact-business-partner-phone"
+                                    name="phone"
+                                    value={formState.phone}
+                                    onChange={(event) => updateDuplicateCheckedValue('phone', event.target.value)}
+                                    className={duplicateWarningField === 'phone'
+                                        ? 'pe-11 border-amber-500 ring-2 ring-amber-500/20'
+                                        : 'pe-11'}
+                                    required
+                                />
+                                <BusinessPartnerDuplicateStatusIcon field="phone" status={duplicateStatuses.phone} />
+                            </div>
+                            <BusinessPartnerDuplicateStatusDescription field="phone" status={duplicateStatuses.phone} />
                         </div>
 
                         <div className="space-y-2">

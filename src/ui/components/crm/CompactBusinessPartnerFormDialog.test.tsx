@@ -7,6 +7,14 @@ vi.mock('react-i18next', () => ({
     })
 }))
 
+vi.mock('@/local-db', () => ({
+    useBusinessPartners: () => []
+}))
+
+vi.mock('@/lib/utils', () => ({
+    convertArabicIndicToLatin: (value: string) => value
+}))
+
 vi.mock('@/ui/components', async () => {
     const React = await import('react')
     const Container = ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>

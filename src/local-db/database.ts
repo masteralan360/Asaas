@@ -54,6 +54,9 @@ import type {
   DeliveryShipment,
   DeliveryShipmentEvent,
   DeliveryShipmentCodAdjustmentRequest,
+  DeliveryShipmentCodCorrection,
+  DeliveryShipmentRecipientPayoutCorrection,
+  DeliveryShipmentRecipientPayoutAdjustmentRequest,
   DeliveryRun,
   DeliveryRunItem,
   DeliverySettlement,
@@ -434,6 +437,9 @@ export class AtlasDatabase extends Dexie {
   delivery_shipments!: EntityTable<DeliveryShipment, 'id'>
   delivery_shipment_events!: EntityTable<DeliveryShipmentEvent, 'id'>
   delivery_shipment_cod_adjustment_requests!: EntityTable<DeliveryShipmentCodAdjustmentRequest, 'id'>
+  delivery_shipment_cod_corrections!: EntityTable<DeliveryShipmentCodCorrection, 'id'>
+  delivery_shipment_recipient_payout_corrections!: EntityTable<DeliveryShipmentRecipientPayoutCorrection, 'id'>
+  delivery_shipment_recipient_payout_adjustment_requests!: EntityTable<DeliveryShipmentRecipientPayoutAdjustmentRequest, 'id'>
   delivery_runs!: EntityTable<DeliveryRun, 'id'>
   delivery_run_items!: EntityTable<DeliveryRunItem, 'id'>
   delivery_settlements!: EntityTable<DeliverySettlement, 'id'>
@@ -3290,6 +3296,32 @@ export class AtlasDatabase extends Dexie {
         'id, workspaceId, bookingId, transportationType, createdAt, updatedAt, isDeleted, syncStatus, [bookingId+transportationType], [workspaceId+bookingId]'
     })
 
+    this.version(116).stores({
+      delivery_shipment_recipient_payout_adjustment_requests:
+        'id, workspaceId, shipmentId, requesterUserId, requesterAgentId, status, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+shipmentId+status], [workspaceId+requesterUserId], [workspaceId+status]'
+    })
+
+    this.version(118)
+      .stores({
+        delivery_shipment_settlement_obligations: null,
+      })
+      .upgrade((tx) =>
+        Promise.all([
+          tx.table('offline_mutations').where('entityType').equals('delivery_shipment_settlement_obligations').delete(),
+          tx.table('syncQueue').where('entityType').equals('delivery_shipment_settlement_obligations').delete(),
+        ]),
+      )
+
+    this.version(119).stores({
+      delivery_shipment_cod_corrections:
+        'id, workspaceId, shipmentId, correctedBy, correctedAt, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+correctedAt], [shipmentId+correctedAt]'
+    })
+
+    this.version(120).stores({
+      delivery_shipment_recipient_payout_corrections:
+        'id, workspaceId, shipmentId, correctedBy, correctedAt, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+correctedAt], [shipmentId+correctedAt]'
+    })
+
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()
   }
@@ -3432,6 +3464,9 @@ export class AtlasDatabase extends Dexie {
       'delivery_shipments',
       'delivery_shipment_events',
       'delivery_shipment_cod_adjustment_requests',
+      'delivery_shipment_cod_corrections',
+      'delivery_shipment_recipient_payout_corrections',
+      'delivery_shipment_recipient_payout_adjustment_requests',
       'delivery_runs',
       'delivery_run_items',
       'delivery_settlements',
@@ -3623,6 +3658,9 @@ export async function clearDatabase(): Promise<void> {
       db.delivery_shipments,
       db.delivery_shipment_events,
       db.delivery_shipment_cod_adjustment_requests,
+      db.delivery_shipment_cod_corrections,
+      db.delivery_shipment_recipient_payout_corrections,
+      db.delivery_shipment_recipient_payout_adjustment_requests,
       db.delivery_runs,
       db.delivery_run_items,
       db.delivery_settlements,
@@ -3691,6 +3729,9 @@ export async function clearDatabase(): Promise<void> {
       await db.delivery_shipments.clear()
       await db.delivery_shipment_events.clear()
       await db.delivery_shipment_cod_adjustment_requests.clear()
+      await db.delivery_shipment_cod_corrections.clear()
+      await db.delivery_shipment_recipient_payout_corrections.clear()
+      await db.delivery_shipment_recipient_payout_adjustment_requests.clear()
       await db.delivery_runs.clear()
       await db.delivery_run_items.clear()
       await db.delivery_settlements.clear()

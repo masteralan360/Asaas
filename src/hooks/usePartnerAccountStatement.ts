@@ -146,6 +146,8 @@ export function usePartnerAccountStatement(
         )
         const merchantKinds = new Set([
             'merchant_cod_payable',
+            'merchant_cod_correction',
+            'merchant_recipient_payout_correction',
             'merchant_fee',
             'merchant_recipient_payout',
             'merchant_payout',

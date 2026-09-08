@@ -752,7 +752,7 @@ export function PurchaseOrderFormPage({
                                                         onClick={() => setIsSupplierPickerOpen(true)}
                                                     >
                                                         <Users className="h-4 w-4" />
-                                                        {t('loans.selectParty', { defaultValue: 'Business Partner' })}
+                                                        {t('orders.form.businessPartner')}
                                                     </Button>
                                                 </div>
                                                 {supplierId && selectedSupplier ? (
@@ -816,6 +816,12 @@ export function PurchaseOrderFormPage({
                                     workspaceId={workspaceId}
                                     roles={['supplier']}
                                     selectedPartyId={supplierId}
+                                    copy={{
+                                        title: t('orders.form.businessPartner'),
+                                        description: t('orders.form.businessPartnerPickerDescription'),
+                                        searchPlaceholder: t('orders.form.searchBusinessPartners'),
+                                        noResultsMessage: t('orders.form.noBusinessPartnersFound')
+                                    }}
                                     onSelect={(selection) => {
                                         if (selection.linkedPartyId) {
                                             const partner = supplierPartners.find((entry) => entry.id === selection.linkedPartyId)

@@ -649,12 +649,16 @@ export interface DeliverySettlement extends BaseEntity {
 
 export type DeliveryLedgerEntryKind =
   | 'courier_collection'
+  | 'courier_cod_correction'
+  | 'courier_recipient_payout_correction'
   | 'courier_delivery_fee'
   | 'courier_recipient_advance'
   | 'courier_remittance'
   | 'courier_fee_payout'
   | 'courier_reimbursement'
   | 'merchant_cod_payable'
+  | 'merchant_cod_correction'
+  | 'merchant_recipient_payout_correction'
   | 'merchant_fee'
   | 'merchant_recipient_payout'
   | 'merchant_payout'
@@ -669,6 +673,10 @@ export type DeliveryLedgerEntryKind =
 export interface DeliveryLedgerEntry extends BaseEntity {
   kind: DeliveryLedgerEntryKind
   shipmentId?: string | null
+  /** Links a delivered-COD adjustment to its immutable audit record. */
+  codCorrectionId?: string | null
+  /** Links a delivered recipient-payout correction to its immutable audit record. */
+  recipientPayoutCorrectionId?: string | null
   settlementId?: string | null
   agentId?: string | null
   merchantProfileId?: string | null
@@ -2169,6 +2177,55 @@ export interface DeliveryShipmentCodAdjustmentRequest extends BaseEntity {
   reviewedAt?: string | null
 }
 
+/**
+ * Immutable audit record for an administrator's correction of a COD amount
+ * after delivery and before either settlement side has started.
+ */
+export interface DeliveryShipmentCodCorrection extends BaseEntity {
+  shipmentId: string
+  currency: CurrencyCode
+  originalCodAmount: number
+  correctedCodAmount: number
+  correctedBy: string
+  correctedAt: string
+  courierLedgerEntryId: string
+  merchantLedgerEntryId: string
+}
+
+/**
+ * Immutable audit record for an administrator's correction of a courier-funded
+ * recipient payout after delivery and before either linked settlement starts.
+ */
+export interface DeliveryShipmentRecipientPayoutCorrection extends BaseEntity {
+  shipmentId: string
+  currency: CurrencyCode
+  originalRecipientPayoutAmount: number
+  correctedRecipientPayoutAmount: number
+  correctedBy: string
+  correctedAt: string
+  courierLedgerEntryId: string
+  merchantLedgerEntryId: string
+}
+
+/**
+ * A courier's auditable request to change the amount paid out to a recipient
+ * for a prepaid post. The payout funding method is deliberately unchanged.
+ */
+export interface DeliveryShipmentRecipientPayoutAdjustmentRequest extends BaseEntity {
+  shipmentId: string
+  requesterUserId: string
+  requesterAgentId: string
+  currency: CurrencyCode
+  originalRecipientPayoutAmount: number
+  requestedRecipientPayoutAmount: number
+  reason: string | null
+  status: DeliveryShipmentCodAdjustmentRequestStatus
+  reviewedRecipientPayoutAmount?: number | null
+  reviewNote?: string | null
+  reviewedBy?: string | null
+  reviewedAt?: string | null
+}
+
 export type CashierShiftStatus = 'open' | 'closed'
 
 export type CashierShiftOccurrenceStatus = 'active' | 'paused' | 'completed' | 'terminated'
@@ -2391,6 +2448,9 @@ export interface SyncQueueItem {
     | 'delivery_shipments'
     | 'delivery_shipment_events'
     | 'delivery_shipment_cod_adjustment_requests'
+    | 'delivery_shipment_cod_corrections'
+    | 'delivery_shipment_recipient_payout_corrections'
+    | 'delivery_shipment_recipient_payout_adjustment_requests'
     | 'delivery_runs'
     | 'delivery_run_items'
     | 'delivery_settlements'
@@ -2571,6 +2631,9 @@ export interface OfflineMutation {
     | 'delivery_shipments'
     | 'delivery_shipment_events'
     | 'delivery_shipment_cod_adjustment_requests'
+    | 'delivery_shipment_cod_corrections'
+    | 'delivery_shipment_recipient_payout_corrections'
+    | 'delivery_shipment_recipient_payout_adjustment_requests'
     | 'delivery_runs'
     | 'delivery_run_items'
     | 'delivery_settlements'

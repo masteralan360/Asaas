@@ -7,7 +7,7 @@ import { getSupabaseClientForTable } from "@/lib/supabaseSchema";
 import { runSupabaseAction } from "@/lib/supabaseRequest";
 import { generateId, toSnakeCase } from "@/lib/utils";
 import { isVisibleDeliveryLedgerEntry } from "@/lib/postServiceLedgerVisibility";
-import { courierReimbursementBreakdownByParty, courierSettlementBreakdownByParty, merchantAccountSettlementBreakdownByParty, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
+import { courierHandoverStatusByShipment, courierReimbursementBreakdownByParty, courierReimbursementStatusByShipment, courierSettlementBreakdownByParty, merchantAccountSettlementBreakdownByParty, merchantPayoutStatusByShipment, merchantRepaymentStatusByShipment, merchantSettlementBreakdownByParty } from "@/lib/postServiceSettlementStatus";
 import { useViewOwnRecordScope, type ViewOwnRecordScope } from "@/permissions/useViewOwnRecordScope";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 
@@ -33,7 +33,10 @@ import type {
   DeliverySettlementType,
   DeliveryShipment,
   DeliveryShipmentCodAdjustmentRequest,
+  DeliveryShipmentCodCorrection,
+  DeliveryShipmentRecipientPayoutCorrection,
   DeliveryShipmentCodAdjustmentRequestStatus,
+  DeliveryShipmentRecipientPayoutAdjustmentRequest,
   DeliveryShipmentEvent,
   DeliveryShipmentStatus,
   WorkspacePaymentMethod,
@@ -43,6 +46,9 @@ const PROFILE_TABLE = "delivery_merchant_profiles";
 const SHIPMENT_TABLE = "delivery_shipments";
 const EVENT_TABLE = "delivery_shipment_events";
 const COD_ADJUSTMENT_REQUEST_TABLE = "delivery_shipment_cod_adjustment_requests";
+const COD_CORRECTION_TABLE = "delivery_shipment_cod_corrections";
+const RECIPIENT_PAYOUT_CORRECTION_TABLE = "delivery_shipment_recipient_payout_corrections";
+const RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE = "delivery_shipment_recipient_payout_adjustment_requests";
 const RUN_TABLE = "delivery_runs";
 const RUN_ITEM_TABLE = "delivery_run_items";
 const SETTLEMENT_TABLE = "delivery_settlements";
@@ -53,6 +59,9 @@ type DeliveryTableName =
   | typeof SHIPMENT_TABLE
   | typeof EVENT_TABLE
   | typeof COD_ADJUSTMENT_REQUEST_TABLE
+  | typeof COD_CORRECTION_TABLE
+  | typeof RECIPIENT_PAYOUT_CORRECTION_TABLE
+  | typeof RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE
   | typeof RUN_TABLE
   | typeof RUN_ITEM_TABLE
   | typeof SETTLEMENT_TABLE
@@ -62,6 +71,9 @@ type DeliveryEntity =
   | DeliveryShipment
   | DeliveryShipmentEvent
   | DeliveryShipmentCodAdjustmentRequest
+  | DeliveryShipmentCodCorrection
+  | DeliveryShipmentRecipientPayoutCorrection
+  | DeliveryShipmentRecipientPayoutAdjustmentRequest
   | DeliveryRun
   | DeliveryRunItem
   | DeliverySettlement
@@ -71,9 +83,9 @@ export type PostServiceTab = "posts" | "dispatch" | "my-deliveries" | "merchants
 type PostServiceRefreshTableName = DeliveryTableName | "business_partners" | "agents" | "fleet_vehicles";
 
 const POST_SERVICE_TAB_REFRESH_TABLES: Record<PostServiceTab, readonly PostServiceRefreshTableName[]> = {
-  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE, COD_ADJUSTMENT_REQUEST_TABLE, LEDGER_TABLE],
+  posts: ["business_partners", PROFILE_TABLE, SHIPMENT_TABLE, EVENT_TABLE, COD_ADJUSTMENT_REQUEST_TABLE, COD_CORRECTION_TABLE, RECIPIENT_PAYOUT_CORRECTION_TABLE, RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE, LEDGER_TABLE],
   dispatch: ["business_partners", "agents", "fleet_vehicles", SHIPMENT_TABLE, RUN_TABLE],
-  "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE, LEDGER_TABLE],
+  "my-deliveries": ["business_partners", "agents", SHIPMENT_TABLE, COD_ADJUSTMENT_REQUEST_TABLE, RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE, LEDGER_TABLE],
   merchants: ["business_partners", PROFILE_TABLE, LEDGER_TABLE],
   courier: ["business_partners", "agents", SHIPMENT_TABLE, LEDGER_TABLE],
   settlements: ["business_partners", "agents", PROFILE_TABLE, SETTLEMENT_TABLE, LEDGER_TABLE],
@@ -242,6 +254,43 @@ export interface ReviewDeliveryShipmentCodAdjustmentInput {
   decision: Extract<DeliveryShipmentCodAdjustmentRequestStatus, "approved" | "rejected">;
   /** Required for an approval; may differ from the courier's requested amount. */
   approvedCodAmount?: number | null;
+  /** Optional audit context for the review decision. */
+  reviewNote?: string | null;
+}
+
+/** One atomic admin-only correction of a delivered post's COD amount. */
+export interface CorrectDeliveredDeliveryShipmentCodInput {
+  operationId: string;
+  shipmentId: string;
+  expectedVersion: number;
+  actorRole: "admin";
+  actorUserId: string;
+  correctedCodAmount: number;
+}
+
+/** One atomic admin-only correction of a delivered courier-funded recipient payout. */
+export interface CorrectDeliveredDeliveryShipmentRecipientPayoutInput {
+  operationId: string;
+  shipmentId: string;
+  expectedVersion: number;
+  actorRole: "admin";
+  actorUserId: string;
+  correctedRecipientPayoutAmount: number;
+}
+
+export interface RequestDeliveryShipmentRecipientPayoutAdjustmentInput {
+  shipmentId: string;
+  requesterUserId: string;
+  requesterAgentId: string;
+  requestedRecipientPayoutAmount: number;
+  reason: string;
+}
+
+export interface ReviewDeliveryShipmentRecipientPayoutAdjustmentInput {
+  reviewerUserId: string;
+  decision: Extract<DeliveryShipmentCodAdjustmentRequestStatus, "approved" | "rejected">;
+  /** Required for an approval; may differ from the courier's requested amount. */
+  approvedRecipientPayoutAmount?: number | null;
   /** Optional audit context for the review decision. */
   reviewNote?: string | null;
 }
@@ -533,6 +582,12 @@ function getTable(tableName: DeliveryTableName) {
       return db.delivery_shipment_events;
     case COD_ADJUSTMENT_REQUEST_TABLE:
       return db.delivery_shipment_cod_adjustment_requests;
+    case COD_CORRECTION_TABLE:
+      return db.delivery_shipment_cod_corrections;
+    case RECIPIENT_PAYOUT_CORRECTION_TABLE:
+      return db.delivery_shipment_recipient_payout_corrections;
+    case RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE:
+      return db.delivery_shipment_recipient_payout_adjustment_requests;
     case RUN_TABLE:
       return db.delivery_runs;
     case RUN_ITEM_TABLE:
@@ -1036,6 +1091,35 @@ export function useDeliveryShipmentCodAdjustmentRequests(workspaceId?: string) {
     if (workspaceId && online) {
       void hydrateTable(COD_ADJUSTMENT_REQUEST_TABLE, workspaceId).catch((error) =>
         console.error("[Post Service] Failed to hydrate COD adjustment requests:", error),
+      );
+    }
+  }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
+
+  return rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+/** Recipient-payout adjustment requests are a separate review trail, not a shipment status. */
+export function useDeliveryShipmentRecipientPayoutAdjustmentRequests(workspaceId?: string) {
+  const online = useNetworkStatus();
+  const viewOwnScope = useViewOwnRecordScope("postService.view_own");
+  const rows = useLiveQuery(
+    async () => {
+      if (!workspaceId) return [];
+      const requests = await db.delivery_shipment_recipient_payout_adjustment_requests
+        .where("workspaceId")
+        .equals(workspaceId)
+        .and((request) => !request.isDeleted)
+        .toArray();
+      const visibleShipmentIds = await getVisibleDeliveryShipmentIds(workspaceId, viewOwnScope);
+      return requests.filter((request) => visibleShipmentIds.has(request.shipmentId));
+    },
+    [workspaceId, viewOwnScope.isRestricted, viewOwnScope.userId],
+  ) ?? [];
+
+  useEffect(() => {
+    if (workspaceId && online) {
+      void hydrateTable(RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE, workspaceId).catch((error) =>
+        console.error("[Post Service] Failed to hydrate recipient payout adjustment requests:", error),
       );
     }
   }, [online, viewOwnScope.isRestricted, viewOwnScope.userId, workspaceId]);
@@ -1728,12 +1812,25 @@ export async function adminEditAndRedispatchDeliveryShipment(
     .equals([workspaceId, original.id, "pending"])
     .and((request) => !request.isDeleted)
     .first();
+  const pendingRecipientPayoutAdjustment = await db.delivery_shipment_recipient_payout_adjustment_requests
+    .where("[workspaceId+shipmentId+status]")
+    .equals([workspaceId, original.id, "pending"])
+    .and((request) => !request.isDeleted)
+    .first();
   if (pendingCodAdjustment && (
     edit.codAmount !== original.codAmount
     || edit.currency !== original.currency
     || edit.customerPaymentStatus !== original.customerPaymentStatus
   )) {
     throw new Error("Review the pending COD change before changing the post COD details");
+  }
+  if (pendingRecipientPayoutAdjustment && (
+    edit.recipientPayoutAmount !== original.recipientPayoutAmount
+    || edit.recipientPayoutFunding !== original.recipientPayoutFunding
+    || edit.currency !== original.currency
+    || edit.customerPaymentStatus !== original.customerPaymentStatus
+  )) {
+    throw new Error("Review the pending recipient payout change before changing the post payout details");
   }
   const changedFields = (Object.keys(edit) as Array<keyof DeliveryShipmentRedispatchEdit>)
     .filter((key) => original[key] !== edit[key])
@@ -1864,13 +1961,23 @@ export async function updateDeliveryShipmentStatus(
     throw new Error("A courier can only update shipments assigned to them");
   }
   if (input.status === "delivered") {
-    const pendingCodAdjustment = await db.delivery_shipment_cod_adjustment_requests
-      .where("[workspaceId+shipmentId+status]")
-      .equals([original.workspaceId, original.id, "pending"])
-      .and((request) => !request.isDeleted)
-      .first();
+    const [pendingCodAdjustment, pendingRecipientPayoutAdjustment] = await Promise.all([
+      db.delivery_shipment_cod_adjustment_requests
+        .where("[workspaceId+shipmentId+status]")
+        .equals([original.workspaceId, original.id, "pending"])
+        .and((request) => !request.isDeleted)
+        .first(),
+      db.delivery_shipment_recipient_payout_adjustment_requests
+        .where("[workspaceId+shipmentId+status]")
+        .equals([original.workspaceId, original.id, "pending"])
+        .and((request) => !request.isDeleted)
+        .first(),
+    ]);
     if (pendingCodAdjustment) {
       throw new Error("Review the pending COD change before marking the post delivered");
+    }
+    if (pendingRecipientPayoutAdjustment) {
+      throw new Error("Review the pending recipient payout change before marking the post delivered");
     }
   }
 
@@ -2043,7 +2150,6 @@ export async function updateDeliveryShipmentStatus(
       entry.id = await deliveryOperationId(`obligation:${operationKey}:${entry.kind}`);
     }));
   }
-
   await db.transaction("rw", [db.delivery_shipments, db.delivery_shipment_events, db.delivery_ledger_entries], async () => {
     await db.delivery_shipments.put(updated);
     await db.delivery_shipment_events.put(event);
@@ -2200,6 +2306,488 @@ export async function reviewDeliveryShipmentCodAdjustment(
   );
   const syncOperations: Array<readonly [DeliveryTableName, DeliveryEntity[]]> = [
     [COD_ADJUSTMENT_REQUEST_TABLE, [reviewedRequest]],
+  ];
+  if (adjustedShipment) syncOperations.push([SHIPMENT_TABLE, [adjustedShipment]]);
+  await syncEntitiesInDependencyOrder(originalRequest.workspaceId, syncOperations);
+  return { request: reviewedRequest, shipment: adjustedShipment };
+}
+
+/**
+ * Corrects a delivered cash-on-delivery amount before either side of that
+ * post's settlement has started. This is an accounting adjustment, not a
+ * payment: the delivery's custody and merchant payable obligations receive
+ * matching signed deltas and no payment transaction is created.
+ */
+export async function correctDeliveredDeliveryShipmentCod(
+  workspaceId: string,
+  input: CorrectDeliveredDeliveryShipmentCodInput,
+) {
+  if (input.actorRole !== "admin") {
+    throw new Error("Only an administrator can correct a delivered COD amount");
+  }
+  const operationId = input.operationId.trim();
+  if (!operationId) throw new Error("A delivered COD correction operation ID is required");
+  if (!input.actorUserId) throw new Error("Only an administrator can correct a delivered COD amount");
+  const correctedCodAmount = positiveMoney(input.correctedCodAmount, "Corrected COD amount", false);
+
+  if (shouldUseCloudDeliveryData(workspaceId)) {
+    if (!isOnline(workspaceId)) {
+      throw new Error("Connect to the internet before correcting a delivered COD amount");
+    }
+    const client = getSupabaseClientForTable(SHIPMENT_TABLE);
+    const { error } = (await runSupabaseAction("delivery.correctDeliveredCod", () =>
+      client.rpc("correct_delivered_shipment_cod", {
+        p_workspace_id: workspaceId,
+        p_shipment_id: input.shipmentId,
+        p_expected_version: input.expectedVersion,
+        p_corrected_cod_amount: correctedCodAmount,
+        p_operation_id: operationId,
+      }),
+    )) as { error?: unknown };
+    if (error) throw error;
+
+    // The remote procedure is the atomic source of truth. Hydrate its three
+    // changed entity types together rather than creating separately syncable
+    // local mutations that could drift from the correction transaction.
+    await Promise.all([
+      hydrateTable(SHIPMENT_TABLE, workspaceId),
+      hydrateTable(COD_CORRECTION_TABLE, workspaceId),
+      hydrateTable(LEDGER_TABLE, workspaceId),
+    ]);
+    const correctedShipment = await db.delivery_shipments.get(input.shipmentId);
+    if (!correctedShipment || correctedShipment.isDeleted || correctedShipment.workspaceId !== workspaceId) {
+      throw new Error("Could not load the corrected post");
+    }
+    const courier = correctedShipment.assignedAgentId
+      ? await db.agents.get(correctedShipment.assignedAgentId)
+      : null;
+    await refreshDeliveryPartnerBalances(workspaceId, [
+      correctedShipment.merchantBusinessPartnerId,
+      courier?.businessPartnerId,
+    ]);
+    return correctedShipment;
+  }
+
+  const existingCorrection = await db.delivery_shipment_cod_corrections.get(operationId);
+  if (existingCorrection) {
+    if (
+      existingCorrection.workspaceId !== workspaceId
+      || existingCorrection.shipmentId !== input.shipmentId
+      || Math.abs(existingCorrection.correctedCodAmount - correctedCodAmount) > 0.000001
+    ) {
+      throw new Error("This delivered COD correction operation cannot be reused");
+    }
+    const correctedShipment = await db.delivery_shipments.get(input.shipmentId);
+    if (!correctedShipment || correctedShipment.isDeleted) throw new Error("Shipment not found");
+    return correctedShipment;
+  }
+
+  const original = await db.delivery_shipments.get(input.shipmentId);
+  if (!original || original.isDeleted || original.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (original.version !== input.expectedVersion) {
+    throw new Error("This post has changed. Refresh it before correcting the COD");
+  }
+  if (original.status !== "delivered" || original.customerPaymentStatus !== "cash_on_delivery") {
+    throw new Error("Only delivered cash-on-delivery posts can have their COD corrected");
+  }
+  if (!original.assignedAgentId) {
+    throw new Error("A delivered post must have a courier assignment");
+  }
+  if (Math.abs(original.codAmount - correctedCodAmount) <= 0.000001) {
+    throw new Error("Corrected COD amount must differ from the current COD amount");
+  }
+
+  const activeEntries = (await db.delivery_ledger_entries
+    .where("workspaceId")
+    .equals(workspaceId)
+    .toArray())
+    .filter((entry) => !entry.isDeleted);
+  const courierStatus = courierHandoverStatusByShipment(activeEntries).get(original.id)
+    ?? courierReimbursementStatusByShipment(activeEntries).get(original.id);
+  const merchantStatus = merchantPayoutStatusByShipment(activeEntries).get(original.id)
+    ?? merchantRepaymentStatusByShipment(activeEntries).get(original.id);
+  if (courierStatus !== "outstanding" || merchantStatus !== "outstanding") {
+    throw new Error("Both related settlement obligations must still be fully outstanding");
+  }
+
+  const now = new Date().toISOString();
+  const delta = correctedCodAmount - original.codAmount;
+  const courierLedgerEntry = makeLedgerEntry(workspaceId, {
+    kind: "courier_cod_correction",
+    shipmentId: original.id,
+    codCorrectionId: operationId,
+    settlementId: null,
+    agentId: original.assignedAgentId,
+    merchantProfileId: null,
+    businessPartnerId: null,
+    amount: delta,
+    currency: original.currency,
+    occurredAt: now,
+    note: null,
+    createdBy: input.actorUserId,
+  });
+  const merchantLedgerEntry = makeLedgerEntry(workspaceId, {
+    kind: "merchant_cod_correction",
+    shipmentId: original.id,
+    codCorrectionId: operationId,
+    settlementId: null,
+    agentId: null,
+    merchantProfileId: original.merchantProfileId,
+    businessPartnerId: original.merchantBusinessPartnerId,
+    amount: delta,
+    currency: original.currency,
+    occurredAt: now,
+    note: null,
+    createdBy: input.actorUserId,
+  });
+  const correction: DeliveryShipmentCodCorrection = {
+    ...(makeBase(workspaceId, {
+      shipmentId: original.id,
+      currency: original.currency,
+      originalCodAmount: original.codAmount,
+      correctedCodAmount,
+      correctedBy: input.actorUserId,
+      correctedAt: now,
+      courierLedgerEntryId: courierLedgerEntry.id,
+      merchantLedgerEntryId: merchantLedgerEntry.id,
+    }) as DeliveryShipmentCodCorrection),
+    id: operationId,
+  };
+  const correctedShipment: DeliveryShipment = {
+    ...original,
+    codAmount: correctedCodAmount,
+    updatedAt: now,
+    version: original.version + 1,
+    ...getSyncMetadata(workspaceId, now),
+  };
+
+  await db.transaction(
+    "rw",
+    [db.delivery_shipments, db.delivery_shipment_cod_corrections, db.delivery_ledger_entries],
+    async () => {
+      await db.delivery_shipments.put(correctedShipment);
+      await db.delivery_shipment_cod_corrections.put(correction);
+      await db.delivery_ledger_entries.bulkPut([courierLedgerEntry, merchantLedgerEntry]);
+    },
+  );
+
+  const courier = await db.agents.get(original.assignedAgentId);
+  await refreshDeliveryPartnerBalances(workspaceId, [
+    original.merchantBusinessPartnerId,
+    courier?.businessPartnerId,
+  ]);
+  return correctedShipment;
+}
+
+/**
+ * Corrects what a courier advanced to the recipient for a delivered prepaid
+ * post. It is deliberately limited to courier-funded payouts: no real
+ * workspace payment exists to amend, so the two unpaid obligations can be
+ * corrected atomically without creating or changing a payment transaction.
+ */
+export async function correctDeliveredDeliveryShipmentRecipientPayout(
+  workspaceId: string,
+  input: CorrectDeliveredDeliveryShipmentRecipientPayoutInput,
+) {
+  if (input.actorRole !== "admin" || !input.actorUserId) {
+    throw new Error("Only an administrator can correct a delivered recipient payout amount");
+  }
+  const operationId = input.operationId.trim();
+  if (!operationId) throw new Error("A delivered recipient payout correction operation ID is required");
+  const correctedRecipientPayoutAmount = positiveMoney(
+    input.correctedRecipientPayoutAmount,
+    "Corrected recipient payout amount",
+  );
+
+  if (shouldUseCloudDeliveryData(workspaceId)) {
+    if (!isOnline(workspaceId)) {
+      throw new Error("Connect to the internet before correcting a delivered recipient payout");
+    }
+    const client = getSupabaseClientForTable(SHIPMENT_TABLE);
+    const { error } = (await runSupabaseAction("delivery.correctDeliveredRecipientPayout", () =>
+      client.rpc("correct_delivered_shipment_recipient_payout", {
+        p_workspace_id: workspaceId,
+        p_shipment_id: input.shipmentId,
+        p_expected_version: input.expectedVersion,
+        p_corrected_recipient_payout_amount: correctedRecipientPayoutAmount,
+        p_operation_id: operationId,
+      }),
+    )) as { error?: unknown };
+    if (error) throw error;
+
+    await Promise.all([
+      hydrateTable(SHIPMENT_TABLE, workspaceId),
+      hydrateTable(RECIPIENT_PAYOUT_CORRECTION_TABLE, workspaceId),
+      hydrateTable(LEDGER_TABLE, workspaceId),
+    ]);
+    const correctedShipment = await db.delivery_shipments.get(input.shipmentId);
+    if (!correctedShipment || correctedShipment.isDeleted || correctedShipment.workspaceId !== workspaceId) {
+      throw new Error("Could not load the corrected post");
+    }
+    const courier = correctedShipment.assignedAgentId
+      ? await db.agents.get(correctedShipment.assignedAgentId)
+      : null;
+    await refreshDeliveryPartnerBalances(workspaceId, [
+      correctedShipment.merchantBusinessPartnerId,
+      courier?.businessPartnerId,
+    ]);
+    return correctedShipment;
+  }
+
+  const existingCorrection = await db.delivery_shipment_recipient_payout_corrections.get(operationId);
+  if (existingCorrection) {
+    if (
+      existingCorrection.workspaceId !== workspaceId
+      || existingCorrection.shipmentId !== input.shipmentId
+      || Math.abs(existingCorrection.correctedRecipientPayoutAmount - correctedRecipientPayoutAmount) > 0.000001
+    ) {
+      throw new Error("This delivered recipient payout correction operation cannot be reused");
+    }
+    const correctedShipment = await db.delivery_shipments.get(input.shipmentId);
+    if (!correctedShipment || correctedShipment.isDeleted) throw new Error("Shipment not found");
+    return correctedShipment;
+  }
+
+  const original = await db.delivery_shipments.get(input.shipmentId);
+  if (!original || original.isDeleted || original.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (original.version !== input.expectedVersion) {
+    throw new Error("This post has changed. Refresh it before correcting the recipient payout");
+  }
+  if (
+    original.status !== "delivered"
+    || original.customerPaymentStatus !== "prepaid_electronically"
+    || original.recipientPayoutFunding !== "courier_advance"
+  ) {
+    throw new Error("Only delivered courier-funded electronically prepaid posts can have their recipient payout corrected");
+  }
+  if (!original.assignedAgentId) {
+    throw new Error("A delivered post must have a courier assignment");
+  }
+  const originalRecipientPayoutAmount = original.recipientPayoutAmount ?? 0;
+  if (Math.abs(originalRecipientPayoutAmount - correctedRecipientPayoutAmount) <= 0.000001) {
+    throw new Error("Corrected recipient payout amount must differ from the current recipient payout amount");
+  }
+
+  const activeEntries = (await db.delivery_ledger_entries
+    .where("workspaceId")
+    .equals(workspaceId)
+    .toArray())
+    .filter((entry) => !entry.isDeleted);
+  const courierStatus = courierReimbursementStatusByShipment(activeEntries).get(original.id);
+  const merchantStatus = merchantRepaymentStatusByShipment(activeEntries).get(original.id);
+  if (courierStatus !== "outstanding" || merchantStatus !== "outstanding") {
+    throw new Error("Courier reimbursement and merchant repayment must still be fully outstanding");
+  }
+
+  const now = new Date().toISOString();
+  const correctionDelta = correctedRecipientPayoutAmount - originalRecipientPayoutAmount;
+  const courierLedgerEntry = makeLedgerEntry(workspaceId, {
+    kind: "courier_recipient_payout_correction",
+    shipmentId: original.id,
+    codCorrectionId: null,
+    recipientPayoutCorrectionId: operationId,
+    settlementId: null,
+    agentId: original.assignedAgentId,
+    merchantProfileId: null,
+    businessPartnerId: null,
+    amount: -correctionDelta,
+    currency: original.currency,
+    occurredAt: now,
+    note: null,
+    createdBy: input.actorUserId,
+  });
+  const merchantLedgerEntry = makeLedgerEntry(workspaceId, {
+    kind: "merchant_recipient_payout_correction",
+    shipmentId: original.id,
+    codCorrectionId: null,
+    recipientPayoutCorrectionId: operationId,
+    settlementId: null,
+    agentId: null,
+    merchantProfileId: original.merchantProfileId,
+    businessPartnerId: original.merchantBusinessPartnerId,
+    amount: -correctionDelta,
+    currency: original.currency,
+    occurredAt: now,
+    note: null,
+    createdBy: input.actorUserId,
+  });
+  const correction: DeliveryShipmentRecipientPayoutCorrection = {
+    ...(makeBase(workspaceId, {
+      shipmentId: original.id,
+      currency: original.currency,
+      originalRecipientPayoutAmount,
+      correctedRecipientPayoutAmount,
+      correctedBy: input.actorUserId,
+      correctedAt: now,
+      courierLedgerEntryId: courierLedgerEntry.id,
+      merchantLedgerEntryId: merchantLedgerEntry.id,
+    }) as DeliveryShipmentRecipientPayoutCorrection),
+    id: operationId,
+  };
+  const correctedShipment: DeliveryShipment = {
+    ...original,
+    recipientPayoutAmount: correctedRecipientPayoutAmount,
+    updatedAt: now,
+    version: original.version + 1,
+    ...getSyncMetadata(workspaceId, now),
+  };
+
+  await db.transaction(
+    "rw",
+    [db.delivery_shipments, db.delivery_shipment_recipient_payout_corrections, db.delivery_ledger_entries],
+    async () => {
+      await db.delivery_shipments.put(correctedShipment);
+      await db.delivery_shipment_recipient_payout_corrections.put(correction);
+      await db.delivery_ledger_entries.bulkPut([courierLedgerEntry, merchantLedgerEntry]);
+    },
+  );
+
+  const courier = await db.agents.get(original.assignedAgentId);
+  await refreshDeliveryPartnerBalances(workspaceId, [
+    original.merchantBusinessPartnerId,
+    courier?.businessPartnerId,
+  ]);
+  return correctedShipment;
+}
+
+/**
+ * Creates a reviewable recipient-payout correction for an in-progress
+ * electronically prepaid post. It never changes the payout funding method.
+ */
+export async function requestDeliveryShipmentRecipientPayoutAdjustment(
+  workspaceId: string,
+  input: RequestDeliveryShipmentRecipientPayoutAdjustmentInput,
+) {
+  const shipment = await db.delivery_shipments.get(input.shipmentId);
+  if (!shipment || shipment.isDeleted || shipment.workspaceId !== workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  if (shipment.customerPaymentStatus !== "prepaid_electronically") {
+    throw new Error("Only electronically prepaid posts can have a recipient payout change requested");
+  }
+  if (!( ["assigned", "postponed"] as DeliveryShipmentStatus[]).includes(shipment.status)) {
+    throw new Error("Recipient payout changes can only be requested for an assigned or postponed post");
+  }
+  if (shipment.assignedAgentId !== input.requesterAgentId) {
+    throw new Error("A courier can only request a recipient payout change for posts assigned to them");
+  }
+
+  const requester = await db.agents.get(input.requesterAgentId);
+  if (!requester
+    || requester.isDeleted
+    || requester.workspaceId !== workspaceId
+    || requester.agentType !== "courier"
+    || requester.linkedUserId !== input.requesterUserId) {
+    throw new Error("A courier can only request a recipient payout change for posts assigned to them");
+  }
+
+  const requestedRecipientPayoutAmount = positiveMoney(input.requestedRecipientPayoutAmount, "Requested recipient payout amount");
+  const originalRecipientPayoutAmount = shipment.recipientPayoutAmount ?? 0;
+  if (Math.abs(requestedRecipientPayoutAmount - originalRecipientPayoutAmount) <= 0.000001) {
+    throw new Error("Requested recipient payout amount must differ from the current recipient payout amount");
+  }
+  const reason = normalizeText(input.reason);
+
+  const existing = await db.delivery_shipment_recipient_payout_adjustment_requests
+    .where("[workspaceId+shipmentId+status]")
+    .equals([workspaceId, shipment.id, "pending"])
+    .and((request) => !request.isDeleted)
+    .first();
+  if (existing) throw new Error("This post already has a pending recipient payout change request");
+
+  const request = makeBase(workspaceId, {
+    shipmentId: shipment.id,
+    requesterUserId: input.requesterUserId,
+    requesterAgentId: input.requesterAgentId,
+    currency: shipment.currency,
+    originalRecipientPayoutAmount,
+    requestedRecipientPayoutAmount,
+    reason,
+    status: "pending" as const,
+    reviewedRecipientPayoutAmount: null,
+    reviewNote: null,
+    reviewedBy: null,
+    reviewedAt: null,
+  }) as DeliveryShipmentRecipientPayoutAdjustmentRequest;
+
+  await db.delivery_shipment_recipient_payout_adjustment_requests.put(request);
+  await syncEntitiesInDependencyOrder(workspaceId, [
+    [RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE, [request]],
+  ]);
+  return request;
+}
+
+/**
+ * An administrator approves the final recipient payout or rejects the
+ * request. Approval creates an auditable, non-cash settlement projection;
+ * delivery later recognizes it through the normal payment and ledger rows.
+ */
+export async function reviewDeliveryShipmentRecipientPayoutAdjustment(
+  requestId: string,
+  input: ReviewDeliveryShipmentRecipientPayoutAdjustmentInput,
+) {
+  const originalRequest = await db.delivery_shipment_recipient_payout_adjustment_requests.get(requestId);
+  if (!originalRequest || originalRequest.isDeleted) throw new Error("Recipient payout change request not found");
+  if (originalRequest.status !== "pending") throw new Error("This recipient payout change request has already been reviewed");
+  if (!input.reviewerUserId) throw new Error("Only an administrator can review a recipient payout change request");
+
+  const shipment = await db.delivery_shipments.get(originalRequest.shipmentId);
+  if (!shipment || shipment.isDeleted || shipment.workspaceId !== originalRequest.workspaceId) {
+    throw new Error("Shipment not found");
+  }
+  const reviewNote = normalizeText(input.reviewNote);
+  const now = new Date().toISOString();
+  const approvedRecipientPayoutAmount = input.decision === "approved"
+    ? positiveMoney(input.approvedRecipientPayoutAmount ?? NaN, "Approved recipient payout amount")
+    : null;
+  const currentRecipientPayoutAmount = shipment.recipientPayoutAmount ?? 0;
+  const shipmentAlreadyHasApprovedRecipientPayout = input.decision === "approved"
+    && Math.abs(currentRecipientPayoutAmount - approvedRecipientPayoutAmount!) <= 0.000001;
+  if (input.decision === "approved" && (
+    shipment.customerPaymentStatus !== "prepaid_electronically"
+    || !( ["assigned", "postponed"] as DeliveryShipmentStatus[]).includes(shipment.status)
+    || (
+      Math.abs(currentRecipientPayoutAmount - originalRequest.originalRecipientPayoutAmount) > 0.000001
+      && !shipmentAlreadyHasApprovedRecipientPayout
+    )
+  )) {
+    throw new Error("This recipient payout change request can no longer be approved");
+  }
+
+  const reviewedRequest: DeliveryShipmentRecipientPayoutAdjustmentRequest = {
+    ...originalRequest,
+    status: input.decision,
+    reviewedRecipientPayoutAmount: approvedRecipientPayoutAmount,
+    reviewNote,
+    reviewedBy: input.reviewerUserId,
+    reviewedAt: now,
+    updatedAt: now,
+    version: originalRequest.version + 1,
+    ...getSyncMetadata(originalRequest.workspaceId, now),
+  };
+  const adjustedShipment: DeliveryShipment | null = input.decision === "approved" && !shipmentAlreadyHasApprovedRecipientPayout
+    ? {
+      ...shipment,
+      recipientPayoutAmount: approvedRecipientPayoutAmount!,
+      updatedAt: now,
+      version: shipment.version + 1,
+      ...getSyncMetadata(shipment.workspaceId, now),
+    }
+    : null;
+  await db.transaction(
+    "rw",
+    [db.delivery_shipment_recipient_payout_adjustment_requests, db.delivery_shipments],
+    async () => {
+      await db.delivery_shipment_recipient_payout_adjustment_requests.put(reviewedRequest);
+      if (adjustedShipment) await db.delivery_shipments.put(adjustedShipment);
+    },
+  );
+  const syncOperations: Array<readonly [DeliveryTableName, DeliveryEntity[]]> = [
+    [RECIPIENT_PAYOUT_ADJUSTMENT_REQUEST_TABLE, [reviewedRequest]],
   ];
   if (adjustedShipment) syncOperations.push([SHIPMENT_TABLE, [adjustedShipment]]);
   await syncEntitiesInDependencyOrder(originalRequest.workspaceId, syncOperations);

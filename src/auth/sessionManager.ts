@@ -3,13 +3,6 @@ export type AuthSessionClient<RefreshResult, SignOutResult> = {
   signOut: (options: { scope: 'local' }) => Promise<SignOutResult>
 }
 
-type AuthSessionManagerOptions = {
-  now?: () => number
-  rateLimitCooldownMs?: number
-}
-
-const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000
-
 /**
  * Detect the error shape returned by Supabase Auth when a refresh request is
  * throttled. Callers use this to preserve a recoverable local session instead
@@ -38,63 +31,23 @@ export function isSupabaseRateLimitedError(error: unknown) {
     && /\b429\b|too many requests|request rate limit reached|rate limit exceeded|over_request_rate_limit/i.test(error)
 }
 
-function isRateLimitedRefreshResult(value: unknown) {
-  if (!value || typeof value !== 'object') return false
-  return isSupabaseRateLimitedError((value as { error?: unknown }).error)
-}
-
 /**
- * Coordinates manual refresh requests and limits sign-out to this device.
+ * Shares concurrent manual refreshes and limits sign-out to this device.
  *
- * Supabase Auth already serializes its internal session work. This manager
- * prevents Atlas's independent callers (wake handling, uploads, and function
- * calls) from initiating duplicate refreshes before the SDK receives them.
+ * Supabase Auth owns refresh retry, backoff, and cooldown behavior. This small
+ * coordinator only prevents Atlas's independent callers from starting the
+ * same refresh at the same time.
  */
 export function createAuthSessionManager<RefreshResult, SignOutResult>(
-  auth: AuthSessionClient<RefreshResult, SignOutResult>,
-  options: AuthSessionManagerOptions = {}
+  auth: AuthSessionClient<RefreshResult, SignOutResult>
 ) {
   let refreshPromise: Promise<RefreshResult> | null = null
-  let rateLimitUntil = 0
-  let lastRateLimitedResult: RefreshResult | null = null
-  let lastRateLimitedError: unknown = null
-  const now = options.now ?? Date.now
-  const rateLimitCooldownMs = options.rateLimitCooldownMs ?? DEFAULT_RATE_LIMIT_COOLDOWN_MS
 
   const refreshSession = () => {
     if (refreshPromise) return refreshPromise
 
-    if (now() < rateLimitUntil) {
-      if (lastRateLimitedResult !== null) {
-        return Promise.resolve(lastRateLimitedResult)
-      }
-      return Promise.reject(lastRateLimitedError)
-    }
-
     refreshPromise = auth
       .refreshSession()
-      .then(
-        (result) => {
-          if (isRateLimitedRefreshResult(result)) {
-            rateLimitUntil = now() + rateLimitCooldownMs
-            lastRateLimitedResult = result
-            lastRateLimitedError = null
-          } else {
-            rateLimitUntil = 0
-            lastRateLimitedResult = null
-            lastRateLimitedError = null
-          }
-          return result
-        },
-        (error) => {
-          if (isSupabaseRateLimitedError(error)) {
-            rateLimitUntil = now() + rateLimitCooldownMs
-            lastRateLimitedResult = null
-            lastRateLimitedError = error
-          }
-          throw error
-        }
-      )
       .finally(() => {
         refreshPromise = null
       })

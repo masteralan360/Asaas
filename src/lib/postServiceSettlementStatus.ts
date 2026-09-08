@@ -112,7 +112,7 @@ function computeSettlementBreakdown(
     clearingAmount?: (entry: DeliveryLedgerEntry) => number;
   },
 ) {
-  const groups = new Map<string, { obligations: FifoObligation[]; clearances: Array<{ occurredAt: string; amount: number; shipmentId: string | null }> }>();
+  const groups = new Map<string, { obligations: FifoObligation[]; clearances: Array<{ occurredAt: string; createdAt: string; id: string; amount: number; shipmentId: string | null }> }>();
   for (const entry of entries) {
     if (entry.isDeleted) continue;
     const key = partyKey(entry);
@@ -131,7 +131,13 @@ function computeSettlementBreakdown(
     } else if (clearingKinds.includes(entry.kind)) {
       const credit = options?.clearingAmount?.(entry) ?? -Number(entry.amount || 0);
       if (credit > EPSILON) {
-        group.clearances.push({ occurredAt: entry.occurredAt, amount: credit, shipmentId: entry.shipmentId ?? null });
+        group.clearances.push({
+          occurredAt: entry.occurredAt,
+          createdAt: entry.createdAt,
+          id: entry.id,
+          amount: credit,
+          shipmentId: entry.shipmentId ?? null,
+        });
       }
     }
   }
@@ -150,8 +156,12 @@ function computeSettlementBreakdown(
     const obligations = [...byShipment.entries()]
       .map(([shipmentId, value]) => ({ shipmentId, amount: value.amount, occurredAt: value.occurredAt }))
       .filter((obligation) => obligation.amount > EPSILON)
-      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-    const clearances = group.clearances.sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.shipmentId.localeCompare(right.shipmentId));
+    const clearances = group.clearances.sort((left, right) =>
+      left.occurredAt.localeCompare(right.occurredAt)
+      || left.createdAt.localeCompare(right.createdAt)
+      || left.id.localeCompare(right.id),
+    );
 
     const remaining = new Map(obligations.map((obligation) => [obligation.shipmentId, obligation.amount]));
     for (const clearance of clearances) {
@@ -215,7 +225,7 @@ export function courierHandoverStatusByShipment(entries: DeliveryLedgerEntry[]) 
     // Both the courier's fee and a recipient payout the courier funded are
     // negative custody entries, so they reduce the cash due for that exact
     // post before any remittance is made.
-    ["courier_collection", "courier_delivery_fee", "courier_recipient_advance"],
+    ["courier_collection", "courier_cod_correction", "courier_recipient_payout_correction", "courier_delivery_fee", "courier_recipient_advance"],
     ["courier_remittance", "adjustment"],
     (entry) => entry.agentId,
   ));
@@ -225,7 +235,7 @@ export function courierHandoverStatusByShipment(entries: DeliveryLedgerEntry[]) 
 export function merchantPayoutStatusByShipment(entries: DeliveryLedgerEntry[]) {
   return toStatuses(computeSettlementBreakdown(
     entries,
-    ["merchant_cod_payable", "merchant_fee", "merchant_recipient_payout"],
+    ["merchant_cod_payable", "merchant_cod_correction", "merchant_recipient_payout_correction", "merchant_fee", "merchant_recipient_payout"],
     ["merchant_payout", "adjustment"],
     (entry) => entry.merchantProfileId,
   ));
@@ -235,7 +245,7 @@ export function merchantPayoutStatusByShipment(entries: DeliveryLedgerEntry[]) {
 export function courierSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(
     entries,
-    ["courier_collection", "courier_delivery_fee", "courier_recipient_advance"],
+    ["courier_collection", "courier_cod_correction", "courier_recipient_payout_correction", "courier_delivery_fee", "courier_recipient_advance"],
     ["courier_remittance", "adjustment"],
     (entry) => entry.agentId,
   ));
@@ -257,6 +267,8 @@ export function courierReimbursementBreakdownByParty(entries: DeliveryLedgerEntr
       || !entry.shipmentId
       || ![
         "courier_collection",
+        "courier_cod_correction",
+        "courier_recipient_payout_correction",
         "courier_delivery_fee",
         "courier_recipient_advance",
         "courier_remittance",
@@ -321,26 +333,33 @@ export function courierReimbursementPaidByShipment(entries: DeliveryLedgerEntry[
  * intentionally does not use FIFO allocation.
  */
 export function courierReimbursementStatusByShipment(entries: DeliveryLedgerEntry[]) {
-  const expectedByShipment = new Map<string, number>();
-  const paidByShipment = courierReimbursementPaidByShipment(entries);
-
+  const results = toStatuses(computeSettlementBreakdown(
+    entries,
+    ["courier_collection", "courier_cod_correction", "courier_recipient_payout_correction", "courier_delivery_fee", "courier_recipient_advance"],
+    ["courier_reimbursement"],
+    (entry) => entry.agentId,
+    {
+      obligationAmount: (entry) => -Number(entry.amount || 0),
+      clearingAmount: (entry) => Number(entry.amount || 0),
+    },
+  ));
+  // A correction can reduce a courier-funded recipient payout to zero. The
+  // breakdown omits zero obligations, so retain that terminal state.
+  const correctedShipmentIds = new Set<string>();
+  const reimbursementNetByShipment = new Map<string, number>();
   for (const entry of entries) {
-    if (
-      entry.isDeleted
-      || !entry.shipmentId
-      || !["courier_delivery_fee", "courier_recipient_advance"].includes(entry.kind)
-    ) continue;
-    const amount = Number(entry.amount || 0);
-    if (amount >= -EPSILON) continue;
-    expectedByShipment.set(entry.shipmentId, (expectedByShipment.get(entry.shipmentId) ?? 0) - amount);
+    if (entry.isDeleted || !entry.shipmentId || !entry.agentId) continue;
+    if (!["courier_collection", "courier_cod_correction", "courier_recipient_payout_correction", "courier_delivery_fee", "courier_recipient_advance"].includes(entry.kind)) continue;
+    reimbursementNetByShipment.set(
+      entry.shipmentId,
+      (reimbursementNetByShipment.get(entry.shipmentId) ?? 0) - Number(entry.amount || 0),
+    );
+    if (entry.kind === "courier_recipient_payout_correction") correctedShipmentIds.add(entry.shipmentId);
   }
-
-  const results = new Map<string, ShipmentSettlementStatus>();
-  for (const [shipmentId, expected] of expectedByShipment) {
-    const paid = paidByShipment.get(shipmentId) ?? 0;
-    if (paid >= expected - EPSILON) results.set(shipmentId, "settled");
-    else if (paid <= EPSILON) results.set(shipmentId, "outstanding");
-    else results.set(shipmentId, "partial");
+  for (const shipmentId of correctedShipmentIds) {
+    if (Math.abs(reimbursementNetByShipment.get(shipmentId) ?? 0) <= EPSILON) {
+      results.set(shipmentId, "settled");
+    }
   }
   return results;
 }
@@ -349,7 +368,7 @@ export function courierReimbursementStatusByShipment(entries: DeliveryLedgerEntr
 export function merchantSettlementBreakdownByParty(entries: DeliveryLedgerEntry[]) {
   return toBreakdown(computeSettlementBreakdown(
     entries,
-    ["merchant_cod_payable", "merchant_fee", "merchant_recipient_payout"],
+    ["merchant_cod_payable", "merchant_cod_correction", "merchant_recipient_payout_correction", "merchant_fee", "merchant_recipient_payout"],
     ["merchant_payout", "adjustment"],
     (entry) => entry.merchantProfileId,
   ));
@@ -363,7 +382,7 @@ export function merchantAccountSettlementBreakdownByParty(entries: DeliveryLedge
   const payouts = merchantSettlementBreakdownByParty(entries);
   const repayments = toBreakdown(computeSettlementBreakdown(
     entries,
-    ["merchant_cod_payable", "merchant_fee", "merchant_recipient_payout"],
+    ["merchant_cod_payable", "merchant_cod_correction", "merchant_recipient_payout_correction", "merchant_fee", "merchant_recipient_payout"],
     ["merchant_repayment"],
     (entry) => entry.merchantProfileId,
     {
@@ -392,6 +411,31 @@ export function merchantRepaymentStatusByShipment(entries: DeliveryLedgerEntry[]
       if (post.outstanding <= EPSILON) results.set(post.shipmentId, "settled");
       else if (post.paid <= EPSILON) results.set(post.shipmentId, "outstanding");
       else results.set(post.shipmentId, "partial");
+    }
+  }
+  // A delivered recipient-payout correction may explicitly reduce the merchant
+  // repayment to zero. `computeSettlementBreakdown` intentionally omits zero
+  // obligations, so preserve that terminal state for completion checks.
+  const correctedShipmentIds = new Set<string>();
+  const merchantRepaymentNetByShipment = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.isDeleted || !entry.shipmentId || !entry.merchantProfileId) continue;
+    if (![
+      "merchant_cod_payable",
+      "merchant_cod_correction",
+      "merchant_recipient_payout_correction",
+      "merchant_fee",
+      "merchant_recipient_payout",
+    ].includes(entry.kind)) continue;
+    merchantRepaymentNetByShipment.set(
+      entry.shipmentId,
+      (merchantRepaymentNetByShipment.get(entry.shipmentId) ?? 0) - Number(entry.amount || 0),
+    );
+    if (entry.kind === "merchant_recipient_payout_correction") correctedShipmentIds.add(entry.shipmentId);
+  }
+  for (const shipmentId of correctedShipmentIds) {
+    if (Math.abs(merchantRepaymentNetByShipment.get(shipmentId) ?? 0) <= EPSILON) {
+      results.set(shipmentId, "settled");
     }
   }
   return results;

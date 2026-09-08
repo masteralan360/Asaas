@@ -93,6 +93,8 @@ export type PartnerAccountStatementEntryDescriptionKey =
     | 'fullSaleReturnRefund'
     | 'returnCredit'
     | 'deliveryCodPayable'
+    | 'deliveryCodCorrection'
+    | 'deliveryRecipientPayoutCorrection'
     | 'deliveryFee'
     | 'deliveryRecipientPayout'
     | 'deliveryMerchantPayout'
@@ -701,6 +703,10 @@ function deliveryEntryPresentation(kind: DeliveryLedgerEntry['kind']): {
     switch (kind) {
         case 'merchant_cod_payable':
             return { description: 'Delivery COD payable', descriptionKey: 'deliveryCodPayable' }
+        case 'merchant_cod_correction':
+            return { description: 'Delivered COD correction', descriptionKey: 'deliveryCodCorrection' }
+        case 'merchant_recipient_payout_correction':
+            return { description: 'Delivered recipient payout correction', descriptionKey: 'deliveryRecipientPayoutCorrection' }
         case 'merchant_fee':
             return { description: 'Delivery fee', descriptionKey: 'deliveryFee' }
         case 'merchant_recipient_payout':

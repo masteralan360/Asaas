@@ -26,6 +26,12 @@ interface LoanPartyPickerDialogProps {
     onSelect: (selection: LoanPartySelection) => void
     selectedPartyId?: string | null
     roles?: BusinessPartnerRole[]
+    copy?: {
+        title: string
+        description: string
+        searchPlaceholder: string
+        noResultsMessage: string
+    }
 }
 
 function composeAddress(parts: Array<string | null | undefined>) {
@@ -101,7 +107,8 @@ export function LoanPartyPickerDialog({
     workspaceId,
     onSelect,
     selectedPartyId,
-    roles
+    roles,
+    copy
 }: LoanPartyPickerDialogProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -164,8 +171,8 @@ export function LoanPartyPickerDialog({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-3xl">
                 <DialogHeader>
-                    <DialogTitle>{t('loans.selectParty', { defaultValue: 'Business Partner' })}</DialogTitle>
-                    <DialogDescription>{t('loans.selectPartyDescription', { defaultValue: 'Choose an existing business partner to fill the borrower details and mark who this loan belongs to.' })}</DialogDescription>
+                    <DialogTitle>{copy?.title ?? t('loans.selectParty', { defaultValue: 'Business Partner' })}</DialogTitle>
+                    <DialogDescription>{copy?.description ?? t('loans.selectPartyDescription', { defaultValue: 'Choose an existing business partner to fill the borrower details and mark who this loan belongs to.' })}</DialogDescription>
                 </DialogHeader>
 
                 <div className="flex gap-2">
@@ -175,7 +182,7 @@ export function LoanPartyPickerDialog({
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                             className="ps-9"
-                            placeholder={t('loans.searchPartyPlaceholder', { defaultValue: 'Search business partners...' })}
+                            placeholder={copy?.searchPlaceholder ?? t('loans.searchPartyPlaceholder', { defaultValue: 'Search business partners...' })}
                         />
                     </div>
                     <Button type="button" onClick={() => setIsCreateOpen(true)} className="shrink-0">
@@ -188,7 +195,7 @@ export function LoanPartyPickerDialog({
                 <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
                     {filteredPartners.length === 0 ? (
                         <div className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">
-                            {t('loans.noPartyResults', { defaultValue: 'No matching business partners found.' })}
+                            {copy?.noResultsMessage ?? t('loans.noPartyResults', { defaultValue: 'No matching business partners found.' })}
                         </div>
                     ) : filteredPartners.map((partner) => (
                         <CustomerListItem

@@ -818,6 +818,7 @@ export function QuickOrderModal({
             <CompactBusinessPartnerFormDialog
                 isOpen={isCreateCustomerOpen}
                 onOpenChange={setIsCreateCustomerOpen}
+                workspaceId={workspaceId}
                 defaultCurrency={defaultCurrency}
                 role="customer"
                 title={t('customers.addCustomer')}

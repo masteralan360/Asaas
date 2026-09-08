@@ -46,6 +46,15 @@ import {
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { PartnerLocationField } from '@/ui/components/crm/PartnerLocationField'
+import {
+    BusinessPartnerDuplicateStatusDescription,
+    BusinessPartnerDuplicateStatusIcon
+} from './BusinessPartnerDuplicateStatusIcon'
+import {
+    shouldInterruptDuplicateSave,
+    useBusinessPartnerDuplicateDetection,
+    type BusinessPartnerDuplicateField
+} from './useBusinessPartnerDuplicateDetection'
 
 type BusinessPartnerFormState = {
     partnerName: string
@@ -194,10 +203,21 @@ export function BusinessPartnerFormDialog({
     const priceBooks = usePriceBooks(effectiveWorkspaceId, { enabled: priceBooksEnabled && isOpen })
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole, initialAgentType))
     const [priceBookAttention, setPriceBookAttention] = useState(false)
+    const [duplicateWarningField, setDuplicateWarningField] = useState<BusinessPartnerDuplicateField | null>(null)
     const priceBookFieldRef = useRef<HTMLDivElement>(null)
+    const nameInputRef = useRef<HTMLInputElement>(null)
+    const phoneInputRef = useRef<HTMLInputElement>(null)
+    const acknowledgedDuplicateStateRef = useRef<string | null>(null)
     const agent = useAgent(partner?.agentFacetId)
     const agents = useAgents(workspaceId)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
+    const { statuses: duplicateStatuses, firstDuplicateField, duplicateStateKey, checkNow } = useBusinessPartnerDuplicateDetection({
+        isOpen,
+        workspaceId: effectiveWorkspaceId,
+        name: formState.partnerName,
+        phone: formState.phone,
+        excludeBusinessPartnerId: partner?.id
+    })
     const linkedUserIds = useMemo(
         () => new Set(
             agents
@@ -277,14 +297,40 @@ export function BusinessPartnerFormDialog({
     }, [isOpen])
 
     useEffect(() => {
+        acknowledgedDuplicateStateRef.current = null
+        setDuplicateWarningField(null)
+    }, [formState.partnerName, formState.phone, isOpen])
+
+    useEffect(() => {
         if (priceBookAttention) {
             priceBookFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         }
     }, [priceBookAttention])
 
+    const showDuplicateWarning = (field: BusinessPartnerDuplicateField) => {
+        acknowledgedDuplicateStateRef.current = duplicateStateKey
+        setDuplicateWarningField(field)
+        window.requestAnimationFrame(() => {
+            const input = field === 'name' ? nameInputRef.current : phoneInputRef.current
+            input?.focus()
+            input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        })
+    }
+
+    const updateDuplicateCheckedValue = (field: 'partnerName' | 'phone', value: string) => {
+        acknowledgedDuplicateStateRef.current = null
+        setDuplicateWarningField(null)
+        setFormState((current) => ({ ...current, [field]: value }))
+    }
+
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
         if (!formState.partnerName.trim()) {
+            return
+        }
+        if (shouldInterruptDuplicateSave(firstDuplicateField, acknowledgedDuplicateStateRef.current, duplicateStateKey)) {
+            checkNow()
+            showDuplicateWarning(firstDuplicateField)
             return
         }
         if (
@@ -379,23 +425,41 @@ export function BusinessPartnerFormDialog({
                                         : t('businessPartners.form.partnerName')}{' '}
                                     <span className="text-destructive">*</span>
                                 </Label>
-                                <Input
-                                    data-tour-id="tutorial-business-partner-name"
-                                    id="business-partner-name"
-                                    value={formState.partnerName}
-                                    onChange={(event) => setFormState((current) => ({ ...current, partnerName: event.target.value }))}
-                                    required
-                                />
+                                <div className="relative">
+                                    <Input
+                                        ref={nameInputRef}
+                                        data-tour-id="tutorial-business-partner-name"
+                                        id="business-partner-name"
+                                        value={formState.partnerName}
+                                        onChange={(event) => updateDuplicateCheckedValue('partnerName', event.target.value)}
+                                        className={cn(
+                                            'pe-11',
+                                            duplicateWarningField === 'name' && 'border-amber-500 ring-2 ring-amber-500/20'
+                                        )}
+                                        required
+                                    />
+                                    <BusinessPartnerDuplicateStatusIcon field="name" status={duplicateStatuses.name} />
+                                </div>
+                                <BusinessPartnerDuplicateStatusDescription field="name" status={duplicateStatuses.name} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="business-partner-phone">{t('customers.form.phone') || 'Phone'} <span className="text-destructive">*</span></Label>
-                                <Input
-                                    data-tour-id="tutorial-business-partner-phone"
-                                    id="business-partner-phone"
-                                    value={formState.phone}
-                                    onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))}
-                                    required
-                                />
+                                <div className="relative">
+                                    <Input
+                                        ref={phoneInputRef}
+                                        data-tour-id="tutorial-business-partner-phone"
+                                        id="business-partner-phone"
+                                        value={formState.phone}
+                                        onChange={(event) => updateDuplicateCheckedValue('phone', event.target.value)}
+                                        className={cn(
+                                            'pe-11',
+                                            duplicateWarningField === 'phone' && 'border-amber-500 ring-2 ring-amber-500/20'
+                                        )}
+                                        required
+                                    />
+                                    <BusinessPartnerDuplicateStatusIcon field="phone" status={duplicateStatuses.phone} />
+                                </div>
+                                <BusinessPartnerDuplicateStatusDescription field="phone" status={duplicateStatuses.phone} />
                             </div>
                             {!lockedRole ? (
                                 <div className="space-y-2">

@@ -1513,6 +1513,10 @@
       "customer": "العميل",
       "supplier": "المورد",
       "selectCustomer": "اختيار العميل",
+      "businessPartner": "شريك أعمال",
+      "businessPartnerPickerDescription": "اختر شريك أعمال لهذا الطلب.",
+      "searchBusinessPartners": "البحث في شركاء الأعمال...",
+      "noBusinessPartnersFound": "لم يتم العثور على شركاء أعمال مطابقين.",
       "selectBusinessPartnerToUnlock": "اختر شريك أعمال لفتح هذا القسم.",
       "selectSupplier": "اختيار المورد",
       "selectProduct": "اختيار المنتج",
@@ -4456,6 +4460,8 @@
         "fullSaleReturnRefund": "استرداد إرجاع بيع كامل",
         "returnCredit": "رصيد مرتجع",
         "deliveryCodPayable": "مبلغ COD مستحق للتوصيل",
+        "deliveryCodCorrection": "تصحيح COD المُسلَّم",
+        "deliveryRecipientPayoutCorrection": "تصحيح دفعة المستلم للشحنة المُسلَّمة",
         "deliveryFee": "رسوم التوصيل",
         "deliveryRecipientPayout": "دفعة للمستلم",
         "deliveryMerchantPayout": "دفعة للتاجر",
@@ -4571,6 +4577,14 @@
       "role": "الدور",
       "contactName": "اسم جهة الاتصال",
       "partnerName": "اسم الشريك"
+    },
+    "duplicateDetection": {
+      "nameAvailable": "لم يتم العثور على شريك أعمال بهذا الاسم",
+      "phoneAvailable": "لم يتم العثور على شريك أعمال برقم الهاتف هذا",
+      "nameDuplicate": "يوجد شريك أعمال بهذا الاسم بالفعل",
+      "phoneDuplicate": "يوجد شريك أعمال برقم الهاتف هذا بالفعل",
+      "nameDuplicateDescription": "يوجد شريك أعمال بهذا الاسم بالفعل. تابع الكتابة إذا لم يكن هو الشريك نفسه.",
+      "phoneDuplicateDescription": "يوجد شريك أعمال برقم الهاتف هذا بالفعل. تابع الكتابة إذا لم يكن هو الشريك نفسه."
     },
     "receivableCreditLimit": "حد الائتمان المستحق",
     "payableCreditLimit": "حد الائتمان الواجب دفعه",
@@ -6716,7 +6730,14 @@
       "reviewChangeTo": "مراجعة التغيير إلى {{amount}}",
       "sendChangeRequest": "إرسال الطلب",
       "approveChange": "اعتماد التغيير",
-      "rejectChange": "رفض التغيير"
+      "rejectChange": "رفض التغيير",
+      "correctDeliveredCod": "تصحيح COD المُسلَّم",
+      "correctDeliveredRecipientPayout": "تصحيح دفعة المستلم",
+      "requestRecipientPayoutChange": "طلب تغيير دفعة المستلم",
+      "reviewPayoutChangeTo": "مراجعة تغيير دفعة المستلم إلى {{amount}}",
+      "sendRecipientPayoutChangeRequest": "إرسال الطلب",
+      "approveRecipientPayoutChange": "اعتماد التغيير",
+      "rejectRecipientPayoutChange": "رفض التغيير"
     },
     "metrics": {
       "readyToDispatch": "جاهز للتوزيع",
@@ -6801,6 +6822,10 @@
       "noteVariance": "ملاحظة / توضيح الفرق",
       "requestedCodAmount": "مبلغ الدفع عند الاستلام المطلوب",
       "approvedCodAmount": "مبلغ الدفع عند الاستلام المعتمد",
+      "correctedDeliveredCodAmountRequired": "مبلغ COD المصحح *",
+      "correctedDeliveredRecipientPayoutAmountRequired": "دفعة المستلم المصححة *",
+      "requestedRecipientPayoutAmount": "دفعة المستلم المطلوبة",
+      "approvedRecipientPayoutAmount": "دفعة المستلم المعتمدة",
       "reviewNote": "ملاحظة المراجعة",
       "reviewNoteOptional": "ملاحظة المراجعة (اختياري)",
       "reasonOptional": "السبب (اختياري)",
@@ -6817,6 +6842,8 @@
       "deliveryNote": "إثبات أو ملاحظة التوصيل",
       "codChangeReason": "اشرح سبب تغيير مبلغ الدفع عند الاستلام",
       "codChangeReviewNote": "سياق اختياري لهذه المراجعة",
+      "recipientPayoutChangeReason": "اشرح سبب تغيير دفعة المستلم",
+      "recipientPayoutChangeReviewNote": "سياق اختياري لهذه المراجعة",
       "varianceNote": "مطلوب عند دفع مبلغ أقل من الرصيد المستحق",
       "repaymentVarianceNote": "مطلوب عند استلام مبلغ أقل من الرصيد المستحق",
       "searchPosts": "ابحث برقم التتبع أو المستلم أو التاجر أو المندوب...",
@@ -6933,7 +6960,12 @@
       "returnHistory": "سجل المرتجعات",
       "cancelled": "ملغى",
       "requestChange": "طلب تغيير",
-      "requestChangeTo": "طلب تغيير إلى {{amount}}"
+      "requestChangeTo": "طلب تغيير إلى {{amount}}",
+      "requestPayoutChangeTo": "تغيير دفعة المستلم إلى {{amount}}",
+      "changedTo": "تم التغيير إلى",
+      "originalCod": "مبلغ الدفع قبل التغيير",
+      "originalRecipientPayout": "دفعة المستلم الأصلية",
+      "approvedAt": "تمت الموافقة في"
     },
     "settlementStatus": {
       "handedOver": "تم التسليم",
@@ -7049,6 +7081,28 @@
         "currentCod": "المبلغ الحالي",
         "requestedCod": "المبلغ المطلوب"
       },
+      "deliveredCodCorrection": {
+        "title": "تصحيح COD المُسلَّم",
+        "description": "صحّح COD للشحنة {{trackingNumber}} قبل بدء تسويتها.",
+        "currentCod": "COD الحالي",
+        "settlementRequirement": "يتاح هذا التصحيح فقط عندما يكون التزاما التسوية المرتبطان مستحقين بالكامل دون أي تسوية."
+      },
+      "deliveredRecipientPayoutCorrection": {
+        "title": "تصحيح دفعة المستلم للشحنة المُسلَّمة",
+        "description": "صحّح دفعة المستلم المموّلة مقدماً من المندوب للشحنة {{trackingNumber}} قبل بدء أي من التسويتين المرتبطتين.",
+        "currentRecipientPayout": "دفعة المستلم الحالية",
+        "paymentPreserved": "لا تسجل دفعة جديدة: يصحح هذا سلفة المندوب غير المسددة وسداد التاجر.",
+        "settlementRequirement": "يتوفر هذا التصحيح فقط عندما يكون التزاما التسوية المرتبطان مستحقين بالكامل دون أي تسوية."
+      },
+      "recipientPayoutChangeRequest": {
+        "title": "طلب تغيير دفعة المستلم",
+        "currentRecipientPayout": "دفعة المستلم الحالية"
+      },
+      "recipientPayoutChangeReview": {
+        "title": "مراجعة تغيير دفعة المستلم",
+        "currentRecipientPayout": "دفعة المستلم الحالية",
+        "requestedRecipientPayout": "دفعة المستلم المطلوبة"
+      },
       "recipientPayout": {
         "title": "دفعة للمستلم",
         "description": "تُسجّل هذه الدفعة الصادرة وتُخصم من حساب التاجر عند تأكيد التسليم.",
@@ -7088,6 +7142,7 @@
         "courierRecipientAdvance": "دفعة المندوب المقدمة للمستلم",
         "merchantPayout": "دفعة التاجر",
         "profit": "ربح التوصيل",
+        "expected": "متوقع",
         "noSettlements": "لم يتم تسجيل تسويات خاصة بهذه الشحنة بعد.",
         "partial": "هذه الحسبة مؤقتة إلى أن يُسجل تسليم المندوب ودفعة التاجر معاً.",
         "courierFeeIncluded": "احتفظ المندوب بـ {{amount}}، وهي مخصومة بالفعل من تسليم نقد المندوب."
@@ -7151,7 +7206,16 @@
       "codChangeRequestFailed": "تعذر إرسال طلب تغيير مبلغ الدفع عند الاستلام",
       "codChangeApproved": "تم اعتماد تغيير مبلغ الدفع عند الاستلام",
       "codChangeRejected": "تم رفض تغيير مبلغ الدفع عند الاستلام",
-      "codChangeReviewFailed": "تعذرت مراجعة تغيير مبلغ الدفع عند الاستلام"
+      "codChangeReviewFailed": "تعذرت مراجعة تغيير مبلغ الدفع عند الاستلام",
+      "deliveredCodCorrected": "تم تصحيح COD المُسلَّم",
+      "deliveredCodCorrectionFailed": "تعذر تصحيح COD المُسلَّم",
+      "deliveredRecipientPayoutCorrected": "تم تصحيح دفعة المستلم للشحنة المُسلَّمة",
+      "deliveredRecipientPayoutCorrectionFailed": "تعذر تصحيح دفعة المستلم للشحنة المُسلَّمة",
+      "recipientPayoutChangeRequested": "تم إرسال طلب تغيير دفعة المستلم",
+      "recipientPayoutChangeRequestFailed": "تعذر إرسال طلب تغيير دفعة المستلم",
+      "recipientPayoutChangeApproved": "تم اعتماد تغيير دفعة المستلم",
+      "recipientPayoutChangeRejected": "تم رفض تغيير دفعة المستلم",
+      "recipientPayoutChangeReviewFailed": "تعذر مراجعة تغيير دفعة المستلم"
     },
     "errors": {
       "generic": "يرجى المحاولة مرة أخرى.",
@@ -7185,6 +7249,34 @@
       "codChangeReviewAdminOnly": "يمكن للمسؤول فقط مراجعة طلب تغيير مبلغ الدفع عند الاستلام.",
       "codChangeNoLongerReviewable": "لم يعد بالإمكان اعتماد طلب تغيير مبلغ الدفع عند الاستلام.",
       "codChangePendingEditBlocked": "راجع طلب تغيير مبلغ الدفع عند الاستلام المعلّق قبل تعديل تفاصيل الدفع عند الاستلام للشحنة.",
+      "deliveredCodCorrectionAdminOnly": "يمكن للمسؤول فقط تصحيح مبلغ COD المُسلَّم.",
+      "deliveredCodCorrectionAmountInvalid": "أدخل مبلغ COD مصححاً أكبر من صفر.",
+      "deliveredCodCorrectionMustDiffer": "أدخل مبلغ COD مصححاً مختلفاً عن المبلغ الحالي.",
+      "deliveredCodCorrectionStatusOnly": "يمكن تصحيح COD للشحنات المُسلَّمة بنظام الدفع عند الاستلام فقط.",
+      "deliveredCodCorrectionSettlementStarted": "لا يمكن تصحيح مبلغ COD هذا لأن التسوية بدأت بالفعل.",
+      "deliveredCodCorrectionChanged": "تم تغيير هذه الشحنة. حدّثها قبل تصحيح COD.",
+      "deliveredCodCorrectionOnlineRequired": "اتصل بالإنترنت قبل تصحيح COD المُسلَّم.",
+      "deliveredCodCorrectionUnavailable": "لم يعد من الممكن إكمال تصحيح COD المُسلَّم هذا.",
+      "deliveredRecipientPayoutCorrectionAdminOnly": "يمكن للمسؤول فقط تصحيح دفعة مستلم لشحنة مُسلَّمة.",
+      "deliveredRecipientPayoutCorrectionAmountInvalid": "أدخل دفعة مستلم مصححة تساوي صفراً أو أكثر.",
+      "deliveredRecipientPayoutCorrectionMustDiffer": "أدخل دفعة مستلم مصححة تختلف عن المبلغ الحالي.",
+      "deliveredRecipientPayoutCorrectionStatusOnly": "يمكن فقط تصحيح دفعة المستلم للشحنات المُسلَّمة والمدفوعة إلكترونياً والمموّلة مقدماً من المندوب.",
+      "deliveredRecipientPayoutCorrectionSettlementStarted": "لا يمكن تصحيح دفعة المستلم هذه لأن تسوية مرتبطة بدأت بالفعل.",
+      "deliveredRecipientPayoutCorrectionChanged": "تم تغيير هذه الشحنة. حدّثها قبل تصحيح دفعة المستلم.",
+      "deliveredRecipientPayoutCorrectionOnlineRequired": "اتصل بالإنترنت قبل تصحيح دفعة مستلم لشحنة مُسلَّمة.",
+      "deliveredRecipientPayoutCorrectionUnavailable": "تعذر إكمال تصحيح دفعة المستلم للشحنة المُسلَّمة.",
+      "recipientPayoutChangePrepaidOnly": "يمكن طلب تغيير دفعة المستلم للشحنات المدفوعة إلكترونياً مسبقاً فقط.",
+      "recipientPayoutChangeStatusOnly": "يمكن طلب تغيير دفعة المستلم للشحنات المعيّنة أو المؤجلة فقط.",
+      "recipientPayoutChangeCourierOnly": "يمكنك طلب تغيير دفعة المستلم للشحنات المعيّنة لمندوبك فقط.",
+      "recipientPayoutChangeMustDiffer": "أدخل مبلغ دفعة للمستلم مختلفاً عن المبلغ الحالي.",
+      "recipientPayoutChangeAmountInvalid": "أدخل مبلغ دفعة للمستلم يساوي صفراً أو أكثر.",
+      "recipientPayoutChangeAlreadyPending": "لدى هذه الشحنة طلب تغيير دفعة مستلم معلّق بالفعل.",
+      "recipientPayoutChangePendingDeliveryBlocked": "راجع طلب تغيير دفعة المستلم المعلّق قبل تحديد الشحنة كمسلّمة.",
+      "recipientPayoutChangeRequestNotFound": "تعذر العثور على طلب تغيير دفعة المستلم.",
+      "recipientPayoutChangeAlreadyReviewed": "تمت مراجعة طلب تغيير دفعة المستلم هذا مسبقاً.",
+      "recipientPayoutChangeReviewAdminOnly": "يمكن للمسؤول فقط مراجعة طلب تغيير دفعة المستلم.",
+      "recipientPayoutChangeNoLongerReviewable": "لا يمكن اعتماد طلب تغيير دفعة المستلم هذا بعد الآن.",
+      "recipientPayoutChangePendingEditBlocked": "راجع طلب تغيير دفعة المستلم المعلّق قبل تغيير تفاصيل دفعة الشحنة.",
       "amountExceedsBalance": "لا يمكن أن يتجاوز مبلغ التسوية الرصيد المستحق.",
       "partialExplanationRequired": "اشرح التسوية الجزئية قبل تأكيدها.",
       "courierNotFound": "لم يتم العثور على المندوب.",
@@ -7261,9 +7353,31 @@
       "keepHolding": "استمر بالضغط…",
       "advanceHoldHint": "اضغط مع الاستمرار على الزر لتغيير حالة الحجز."
     },
-    "statuses": { "draft": "مسودة", "booked": "مؤكد", "partially_paid": "مدفوع جزئياً", "completed": "مكتمل", "cancelled": "ملغى" },
-    "payment": { "title": "تسجيل دفعة ربح", "description": "سجل تحصيل ربح للحجز {{bookingNumber}}.", "amount": "المبلغ", "maximum": "الحد الأقصى: {{amount}}", "method": "طريقة الدفع", "note": "ملاحظة", "record": "تسجيل الدفعة" },
-    "table": { "created": "تاريخ الإنشاء", "travelDate": "تاريخ السفر", "status": "الحالة", "passengerCount": "المسافرون", "profit": "الربح", "outstanding": "الربح المستحق", "actions": "الإجراءات" },
+    "statuses": {
+      "draft": "مسودة",
+      "booked": "مؤكد",
+      "partially_paid": "مدفوع جزئياً",
+      "completed": "مكتمل",
+      "cancelled": "ملغى"
+    },
+    "payment": {
+      "title": "تسجيل دفعة ربح",
+      "description": "سجل تحصيل ربح للحجز {{bookingNumber}}.",
+      "amount": "المبلغ",
+      "maximum": "الحد الأقصى: {{amount}}",
+      "method": "طريقة الدفع",
+      "note": "ملاحظة",
+      "record": "تسجيل الدفعة"
+    },
+    "table": {
+      "created": "تاريخ الإنشاء",
+      "travelDate": "تاريخ السفر",
+      "status": "الحالة",
+      "passengerCount": "المسافرون",
+      "profit": "الربح",
+      "outstanding": "الربح المستحق",
+      "actions": "الإجراءات"
+    },
     "empty": "لا توجد حجوزات تطابق عوامل التصفية الحالية.",
     "search": "البحث في الحجوزات أو المسافرين...",
     "paymentHistory": "سجل الدفعات",
@@ -7291,8 +7405,17 @@
       "a4": "طباعة A4",
       "a4Description": "جدول للمسافرين مع ملخص إجمالي الحجز."
     },
-    "errors": { "travelDateRequired": "اختر تاريخ السفر.", "passengerRequired": "أضف مسافراً واحداً مكتملاً على الأقل.", "paymentFailed": "تعذر تسجيل دفعة الربح.", "saveFailed": "تعذر حفظ الحجز.", "actionFailed": "تعذر إكمال إجراء الحجز." },
-    "permissions": { "access": "الوصول إلى السفر والنقل", "accessDescription": "الوصول إلى حجوزات ومدفوعات السفر والنقل." }
+    "errors": {
+      "travelDateRequired": "اختر تاريخ السفر.",
+      "passengerRequired": "أضف مسافراً واحداً مكتملاً على الأقل.",
+      "paymentFailed": "تعذر تسجيل دفعة الربح.",
+      "saveFailed": "تعذر حفظ الحجز.",
+      "actionFailed": "تعذر إكمال إجراء الحجز."
+    },
+    "permissions": {
+      "access": "الوصول إلى السفر والنقل",
+      "accessDescription": "الوصول إلى حجوزات ومدفوعات السفر والنقل."
+    }
   },
   "carRental": {
     "title": "خدمة تأجير السيارات",

@@ -25,6 +25,7 @@ import {
     normalizeWorkspaceDataMode,
     writeWorkspaceModeSnapshot
 } from './workspaceMode'
+import { isWorkspaceResolutionPending } from './workspaceLoading'
 import { resolveFetchedWorkspaceLogo, resolvePersistedWorkspaceLogo } from './workspaceLogo'
 import {
     resolveFetchedWorkspaceName,
@@ -1597,6 +1598,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const isDemoMode = features.data_mode === 'demo'
     const isCloudMode = features.data_mode === 'cloud'
     const isHybridMode = features.data_mode === 'hybrid'
+    const isWorkspaceLoading = isWorkspaceResolutionPending({
+        isLoading,
+        isAuthenticated,
+        workspaceId: user?.workspaceId,
+        resolvingWorkspaceId: currentWorkspaceIdRef.current
+    })
     const isLocked = isWorkspaceCurrentlyLocked(features, paymentSummary, new Date(billingNowMs))
         || shouldWorkspacePaymentLockAccess(paymentSummary)
     const planCapabilities = overrides.length
@@ -1611,7 +1618,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             workspaceName,
             branchInfo,
             resolvedBranchInfoWorkspaceId,
-            isLoading,
+            isLoading: isWorkspaceLoading,
             loadedWorkspaceId,
             paymentSummary,
             isPaymentSummaryLoading,

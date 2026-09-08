@@ -84,6 +84,7 @@ import {
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { PartnerBalanceSummary } from '@/ui/components/crm/PartnerBalanceSummary'
+import { QuickCustomerButton } from '@/ui/components/crm/QuickCustomerButton'
 import { ProductsViewModal, ProductsViewModalTrigger } from '@/ui/components/ProductsViewModal'
 import { PaymentMethodSelect } from '@/ui/components/payments/PaymentMethodSelect'
 import { PaymentAccountSelector } from '@/ui/components/payments/PaymentAccountSelector'
@@ -1178,6 +1179,11 @@ export function SalesOrderFormPage({
                                                     roles={['customer']}
                                                     placeholder={t('orders.form.selectCustomer', { defaultValue: 'Select Customer' })}
                                                 />
+                                                <QuickCustomerButton
+                                                    workspaceId={workspaceId}
+                                                    className="w-full shrink-0 md:w-auto"
+                                                    onCreated={selectCustomerPartner}
+                                                />
                                                 <Button
                                                     type="button"
                                                     variant="outline"
@@ -1185,7 +1191,7 @@ export function SalesOrderFormPage({
                                                     onClick={() => setIsCustomerPickerOpen(true)}
                                                 >
                                                     <Users className="h-4 w-4" />
-                                                    {t('loans.selectParty', { defaultValue: 'Business Partner' })}
+                                                    {t('orders.form.businessPartner')}
                                                 </Button>
                                             </div>
                                         ) : null}
@@ -1271,6 +1277,12 @@ export function SalesOrderFormPage({
                             workspaceId={workspaceId}
                             roles={['customer']}
                             selectedPartyId={customerId}
+                            copy={{
+                                title: t('orders.form.businessPartner'),
+                                description: t('orders.form.businessPartnerPickerDescription'),
+                                searchPlaceholder: t('orders.form.searchBusinessPartners'),
+                                noResultsMessage: t('orders.form.noBusinessPartnersFound')
+                            }}
                             onSelect={(selection) => {
                                 if (selection.linkedPartyId) {
                                     const partner = customerPartners.find((entry) => entry.id === selection.linkedPartyId)

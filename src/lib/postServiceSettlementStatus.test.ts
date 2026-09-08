@@ -122,6 +122,63 @@ describe("courierHandoverStatusByShipment", () => {
     );
   });
 
+  it("includes signed delivered-COD corrections in both outstanding settlement calculations", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "courier_collection", shipmentId: "s1", agentId: "a1", amount: 100, currency: "iqd" }),
+      entry({ kind: "merchant_cod_payable", shipmentId: "s1", merchantProfileId: "m1", amount: 100, currency: "iqd" }),
+      entry({ kind: "courier_cod_correction", shipmentId: "s1", agentId: "a1", amount: -25.25, currency: "iqd" }),
+      entry({ kind: "merchant_cod_correction", shipmentId: "s1", merchantProfileId: "m1", amount: -25.25, currency: "iqd" }),
+    ];
+
+    expect(courierHandoverStatusByShipment(entries)).toEqual(new Map([["s1", "outstanding"]]));
+    expect(merchantPayoutStatusByShipment(entries)).toEqual(new Map([["s1", "outstanding"]]));
+    expect(courierSettlementBreakdownByParty(entries).get("a1:iqd")).toEqual([
+      { shipmentId: "s1", amount: 74.75, paid: 0, outstanding: 74.75 },
+    ]);
+    expect(merchantSettlementBreakdownByParty(entries).get("m1:iqd")).toEqual([
+      { shipmentId: "s1", amount: 74.75, paid: 0, outstanding: 74.75 },
+    ]);
+  });
+
+  it("includes signed delivered recipient-payout corrections in courier and merchant repayment calculations", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "courier_recipient_advance", shipmentId: "s1", agentId: "a1", amount: -100.25, currency: "iqd" }),
+      entry({ kind: "merchant_recipient_payout", shipmentId: "s1", merchantProfileId: "m1", amount: -100.25, currency: "iqd" }),
+      entry({ kind: "merchant_fee", shipmentId: "s1", merchantProfileId: "m1", amount: -10, currency: "iqd" }),
+      entry({ kind: "courier_recipient_payout_correction", shipmentId: "s1", agentId: "a1", amount: 25.25, currency: "iqd" }),
+      entry({ kind: "merchant_recipient_payout_correction", shipmentId: "s1", merchantProfileId: "m1", amount: 25.25, currency: "iqd" }),
+    ];
+
+    expect(courierReimbursementStatusByShipment(entries)).toEqual(new Map([["s1", "outstanding"]]));
+    expect(courierReimbursementOutstandingByShipment(entries)).toEqual(new Map([["s1", 75]]));
+    expect(merchantRepaymentStatusByShipment(entries)).toEqual(new Map([["s1", "outstanding"]]));
+    expect(merchantRepaymentOutstandingByShipment(entries)).toEqual(new Map([["s1", 85]]));
+    expect(merchantAccountSettlementBreakdownByParty(entries).get("m1:iqd")).toEqual([
+      { shipmentId: "s1", amount: 85, paid: 0, outstanding: 85, direction: "repayment" },
+    ]);
+  });
+
+  it("treats a recipient payout correction to zero as settled for both related obligations", () => {
+    const entries: DeliveryLedgerEntry[] = [
+      entry({ kind: "courier_recipient_advance", shipmentId: "s1", agentId: "a1", amount: -100, currency: "iqd" }),
+      entry({ kind: "merchant_recipient_payout", shipmentId: "s1", merchantProfileId: "m1", amount: -100, currency: "iqd" }),
+      entry({ kind: "courier_recipient_payout_correction", shipmentId: "s1", agentId: "a1", amount: 100, currency: "iqd" }),
+      entry({ kind: "merchant_recipient_payout_correction", shipmentId: "s1", merchantProfileId: "m1", amount: 100, currency: "iqd" }),
+    ];
+
+    expect(courierReimbursementStatusByShipment(entries)).toEqual(new Map([["s1", "settled"]]));
+    expect(courierReimbursementOutstandingByShipment(entries)).toEqual(new Map());
+    expect(merchantRepaymentStatusByShipment(entries)).toEqual(new Map([["s1", "settled"]]));
+    expect(merchantRepaymentOutstandingByShipment(entries)).toEqual(new Map());
+    expect(isDeliveryShipmentCompleted(
+      { id: "s1", status: "delivered", customerPaymentStatus: "prepaid_electronically" },
+      new Map(),
+      new Map(),
+      courierReimbursementStatusByShipment(entries),
+      merchantRepaymentStatusByShipment(entries),
+    )).toBe(true);
+  });
+
   it("totals collective courier reimbursements without offsetting a cash handover", () => {
     const entries: DeliveryLedgerEntry[] = [
       entry({ kind: "courier_delivery_fee", shipmentId: "s1", agentId: "a1", amount: -2_000, currency: "iqd" }),

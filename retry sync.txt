@@ -6,10 +6,14 @@ usage calculator
 remove R2 Print only
 account switch
 Fix SQLITE loading
-Transaction Reconciliation & Integrity Audit, Expandable, Plain English Explanation
+Transaction Reconciliation & Integrity Audit, Expandable, Plain English Explanation, AGENTS.md guide
 supabase backup
 Quick Customer Order form
+Move Tabs in sidebar
 
 Post Service Local settings
+Instant POS table grid
  client_latitude
 client_longitude
+
+DAILY INSTALLMENT without agressive loading
