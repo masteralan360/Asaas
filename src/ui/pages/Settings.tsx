@@ -2,13 +2,13 @@ import { useAuth } from '@/auth'
 import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
-import { db, hasCurrencyExchangeAccountingData, listLocalCustomTemplates, usePriceBookCatalogState } from '@/local-db'
+import { db, hasCurrencyExchangeAccountingData, listLocalCustomTemplates, saveRestaurantTableSettings, usePriceBookCatalogState, useRestaurantPosTickets, useRestaurantTableSettings } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, AppDialog, AppDialogBody, AppDialogContent, AppDialogDescription, AppDialogFooter, AppDialogHeader, AppDialogTitle, Textarea, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, Bluetooth, CalendarClock, Plus, Menu, ShieldCheck, UsersRound } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, Upload, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, Bluetooth, CalendarClock, Plus, Menu, ShieldCheck, UsersRound, Table2, Crown } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
@@ -54,6 +54,7 @@ import {
 import { requestPwaDeploymentUpdate } from '@/lib/pwaUpdateControl'
 import { enrollLocalAccountCredential } from '@/auth/localAccountAuth'
 import { ModuleLockerSettingsCard } from '@/ui/components/module-locker/ModuleLockerSettingsCard'
+import { canChangeRestaurantTableConfiguration, normalizeRestaurantTableCount, normalizeVipTableNumbers } from '@/lib/restaurantTableView'
 
 function getDateFilterDayBoundaryDate(value: string) {
     const [hours, minutes] = value.split(':').map(Number)
@@ -83,6 +84,8 @@ export function Settings() {
     const { toast } = useToast()
     const { t, i18n } = useTranslation()
     const { alerts, forceAlert } = useExchangeRate()
+    const restaurantTableSettings = useRestaurantTableSettings(user?.workspaceId)
+    const restaurantTickets = useRestaurantPosTickets(user?.workspaceId, restaurantTableSettings?.liveSyncEnabled === true)
     const [copied, setCopied] = useState(false)
     const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false)
     const [pendingCurrency, setPendingCurrency] = useState<'usd' | 'iqd' | 'eur' | 'try' | null>(null)
@@ -120,12 +123,76 @@ export function Settings() {
     const [partnerPrivacySaving, setPartnerPrivacySaving] = useState<
         'private_staff_customers' | 'private_staff_suppliers' | 'suppliers_admin_only' | null
     >(null)
+    const [restaurantTableViewEnabled, setRestaurantTableViewEnabled] = useState(false)
+    const [restaurantLiveSyncEnabled, setRestaurantLiveSyncEnabled] = useState(false)
+    const [restaurantTableCount, setRestaurantTableCount] = useState('20')
+    const [restaurantVipTables, setRestaurantVipTables] = useState<number[]>([])
+    const [isRestaurantTableViewSaving, setIsRestaurantTableViewSaving] = useState(false)
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const canManageClinicalRegistry = canManageClinicalRegistryType(
         user?.role,
         hasFeature('clinical_appointments'),
         clinicalRegistryType,
     )
+
+    useEffect(() => {
+        if (!restaurantTableSettings) return
+        setRestaurantTableViewEnabled(restaurantTableSettings.enabled)
+        setRestaurantLiveSyncEnabled(restaurantTableSettings.liveSyncEnabled)
+        setRestaurantTableCount(String(restaurantTableSettings.tableCount))
+        setRestaurantVipTables(restaurantTableSettings.vipTableNumbers)
+    }, [restaurantTableSettings])
+
+    const saveRestaurantTableView = async () => {
+        if (!user?.workspaceId || isRestaurantTableViewSaving) return
+        const tableCount = normalizeRestaurantTableCount(Number(restaurantTableCount))
+        if (!tableCount) {
+            toast({
+                title: t('common.error'),
+                description: t('settings.restaurantTableView.invalidTableCount'),
+                variant: 'destructive'
+            })
+            return
+        }
+
+        const activeTableNumbers = restaurantTickets.filter((ticket) => !ticket.isDeleted).map((ticket) => ticket.tableNumber)
+        if (!canChangeRestaurantTableConfiguration({
+            currentEnabled: restaurantTableSettings?.enabled ?? false,
+            nextEnabled: restaurantTableViewEnabled,
+            currentTableCount: restaurantTableSettings?.tableCount ?? tableCount,
+            nextTableCount: tableCount,
+            activeTableNumbers,
+        })) {
+            toast({
+                title: t('common.error'),
+                description: t('settings.restaurantTableView.activeTicketsBlocked'),
+                variant: 'destructive'
+            })
+            return
+        }
+
+        setIsRestaurantTableViewSaving(true)
+        try {
+            const vipTableNumbers = normalizeVipTableNumbers(restaurantVipTables, tableCount)
+            await saveRestaurantTableSettings({
+                enabled: restaurantTableViewEnabled,
+                liveSyncEnabled: restaurantLiveSyncEnabled,
+                tableCount,
+                vipTableNumbers,
+            }, user.workspaceId)
+            setRestaurantVipTables(vipTableNumbers)
+            toast({ title: t('settings.restaurantTableView.saveSuccess') })
+        } catch (error) {
+            console.error('[Settings] Failed to save Restaurant Table View settings:', error)
+            toast({
+                title: t('common.error'),
+                description: t('settings.restaurantTableView.saveError'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsRestaurantTableViewSaving(false)
+        }
+    }
 
     // Biometric State
     const [biometricEnabled, setBiometricEnabled] = useState(localStorage.getItem('biometric_enabled') === 'true')
@@ -3286,6 +3353,101 @@ export function Settings() {
 
 
                 <TabsContent value="workspace" className="space-y-6 mt-0">
+                    {user?.role === 'admin' && hasFeature('instant_pos') && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Table2 className="h-5 w-5 text-primary" />
+                                    {t('settings.restaurantTableView.title')}
+                                </CardTitle>
+                                <CardDescription>{t('settings.restaurantTableView.description')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-5">
+                                <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
+                                    <div className="space-y-1">
+                                        <Label className="font-semibold">{t('settings.restaurantTableView.enabled')}</Label>
+                                        <p className="text-sm text-muted-foreground">{t('settings.restaurantTableView.enabledDescription')}</p>
+                                    </div>
+                                    <Switch
+                                        checked={restaurantTableViewEnabled}
+                                        disabled={isRestaurantTableViewSaving}
+                                        onCheckedChange={setRestaurantTableViewEnabled}
+                                        aria-label={t('settings.restaurantTableView.enabled')}
+                                    />
+                                </div>
+
+                                <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
+                                    <div className="space-y-1">
+                                        <Label className="font-semibold">{t('settings.restaurantTableView.liveSyncEnabled')}</Label>
+                                        <p className="text-sm text-muted-foreground">{t('settings.restaurantTableView.liveSyncEnabledDescription')}</p>
+                                    </div>
+                                    <Switch
+                                        checked={restaurantLiveSyncEnabled}
+                                        onCheckedChange={setRestaurantLiveSyncEnabled}
+                                        disabled={isRestaurantTableViewSaving}
+                                        aria-label={t('settings.restaurantTableView.liveSyncEnabled')}
+                                    />
+                                </div>
+
+                                <div className="max-w-sm space-y-2">
+                                    <Label htmlFor="restaurant-table-count">{t('settings.restaurantTableView.tableCountRequired')}</Label>
+                                    <Input
+                                        id="restaurant-table-count"
+                                        type="number"
+                                        min={1}
+                                        max={100}
+                                        inputMode="numeric"
+                                        value={restaurantTableCount}
+                                        onChange={(event) => setRestaurantTableCount(event.target.value)}
+                                        placeholder="0"
+                                        disabled={isRestaurantTableViewSaving}
+                                    />
+                                    <p className="text-xs text-muted-foreground">{t('settings.restaurantTableView.tableCountHint')}</p>
+                                </div>
+
+                                {normalizeRestaurantTableCount(Number(restaurantTableCount)) && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <Crown className="h-4 w-4 text-amber-600" />
+                                            <Label>{t('settings.restaurantTableView.vipTables')}</Label>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground">{t('settings.restaurantTableView.vipTablesDescription')}</p>
+                                        <div className="grid grid-cols-5 gap-2 sm:grid-cols-8 lg:grid-cols-10">
+                                            {Array.from({ length: normalizeRestaurantTableCount(Number(restaurantTableCount))! }, (_, index) => index + 1).map((tableNumber) => {
+                                                const selected = restaurantVipTables.includes(tableNumber)
+                                                return (
+                                                    <Button
+                                                        key={tableNumber}
+                                                        type="button"
+                                                        variant={selected ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        disabled={isRestaurantTableViewSaving}
+                                                        onClick={() => setRestaurantVipTables((current) => selected
+                                                            ? current.filter((value) => value !== tableNumber)
+                                                            : [...current, tableNumber]
+                                                        )}
+                                                    >
+                                                        {tableNumber}
+                                                    </Button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <Button
+                                    onClick={() => void saveRestaurantTableView()}
+                                    disabled={isRestaurantTableViewSaving || !normalizeRestaurantTableCount(Number(restaurantTableCount))}
+                                    className="gap-2"
+                                >
+                                    <Table2 className="h-4 w-4" />
+                                    {isRestaurantTableViewSaving
+                                        ? t('settings.restaurantTableView.saving')
+                                        : t('common.save')}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {canManageClinicalRegistry && user?.workspaceId && (
                         <Card>

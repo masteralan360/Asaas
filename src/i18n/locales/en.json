@@ -2930,6 +2930,23 @@
       "enableDesc": "Enable KDS for your workspace",
       "desktopOnly": "KDS Hosting is only available on Desktop app."
     },
+    "restaurantTableView": {
+      "title": "Restaurant Table View",
+      "description": "Configure the table grid used by restaurant Instant POS staff.",
+      "enabled": "Enable Restaurant Table View",
+      "enabledDescription": "Restaurant staff start from a live table grid instead of assigning a table in the ticket.",
+      "liveSyncEnabled": "Use live ticket sync",
+      "liveSyncEnabledDescription": "Off by default for faster local table actions. Enable it only when multiple devices need shared, real-time restaurant tickets.",
+      "tableCountRequired": "Number of tables *",
+      "tableCountHint": "Choose from 1 to 100 consecutive tables.",
+      "vipTables": "VIP tables",
+      "vipTablesDescription": "Select the individual tables that should display a VIP label.",
+      "invalidTableCount": "Enter a whole number from 1 to 100.",
+      "activeTicketsBlocked": "Close, clear, or transfer the affected active table tickets before changing this configuration.",
+      "saveSuccess": "Restaurant Table View settings saved.",
+      "saveError": "Could not save Restaurant Table View settings.",
+      "saving": "Saving..."
+    },
     "printing": {
       "title": "Printing Settings",
       "desc": "Manage your printing settings",
@@ -3968,6 +3985,7 @@
   },
   "instantPos": {
     "title": "New Order",
+    "table": "Table",
     "serverTicket": "Server: {{server}} | Ticket {{ticket}}",
     "staffFallback": "Staff",
     "kdsLabel": "KDS",
@@ -4010,14 +4028,29 @@
       "pending": "Pending",
       "preparing": "Preparing",
       "ready": "Ready",
-      "served": "Served",
-      "paid": "Paid / Closed"
+      "served": "Served"
     },
     "actions": {
       "startPreparation": "Start Preparation",
       "markReady": "Mark Ready",
       "serveOrder": "Serve Order"
     }
+  },
+  "restaurantTables": {
+    "title": "Restaurant Tables",
+    "description": "Open a table to start or continue its order.",
+    "vip": "VIP",
+    "openActions": "Open actions for table {{table}}",
+    "transferTitle": "Transfer table ticket",
+    "transferFrom": "Move the complete active ticket from Table {{table}}",
+    "transferDestinationRequired": "Destination table *",
+    "noEmptyTables": "There are no empty tables available.",
+    "transfer": "Transfer",
+    "transferring": "Transferring...",
+    "backToTables": "Back to tables",
+    "closeTitle": "Close restaurant ticket",
+    "closeDescription": "This will discard the active table ticket and free its table.",
+    "transferFailed": "The ticket could not be transferred. The destination may no longer be empty."
   },
   "kdsDashboard": {
     "title": "KDS Dashboard",

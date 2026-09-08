@@ -73,6 +73,8 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "payroll_statuses",
   "dividend_statuses",
   "workspace_contacts",
+  "restaurant_table_settings",
+  "restaurant_pos_tickets",
   "loans",
   "loan_installments",
   "loan_payments",

@@ -2561,6 +2561,41 @@ export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
   isPrimary: boolean
 }
 
+export type RestaurantPosTicketStatus = 'pending' | 'preparing' | 'ready' | 'served'
+
+export interface RestaurantPosTicketItem {
+  productId: string
+  storageId?: string
+  name: string
+  sku: string
+  baseUnitPrice: number
+  unitPrice: number
+  quantity: number
+  currency: string
+  discountType?: 'percentage' | 'fixed_amount'
+  discountValue?: number
+  discountSource?: 'product' | 'category'
+  discountEndsAt?: string
+  note?: string
+}
+
+export interface RestaurantTableSettings extends BaseEntity {
+  enabled: boolean
+  liveSyncEnabled: boolean
+  tableCount: number
+  vipTableNumbers: number[]
+}
+
+export interface RestaurantPosTicket extends BaseEntity {
+  tableNumber: number
+  number: string
+  status: RestaurantPosTicketStatus
+  items: RestaurantPosTicketItem[]
+  note?: string
+  kitchenRoutedAt?: string
+  createdBy?: string | null
+}
+
 export interface OfflineMutation {
   id: string
   workspaceId: string
@@ -2664,6 +2699,8 @@ export interface OfflineMutation {
     | 'clinical_presets'
     | 'manual_entry_templates'
     | 'manual_entries'
+    | 'restaurant_table_settings'
+    | 'restaurant_pos_tickets'
   entityId: string
   operation: 'create' | 'update' | 'delete'
   payload: Record<string, unknown>

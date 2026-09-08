@@ -65,6 +65,8 @@ import type {
   BusinessPartnerMergeCandidate,
   Employee,
   WorkspaceContact,
+  RestaurantTableSettings,
+  RestaurantPosTicket,
   Loan,
   LoanInstallment,
   LoanPayment,
@@ -458,6 +460,8 @@ export class AtlasDatabase extends Dexie {
   offline_mutations!: EntityTable<OfflineMutation, 'id'>
   app_settings!: EntityTable<AppSetting, 'key'>
   workspace_contacts!: EntityTable<WorkspaceContact, 'id'>
+  restaurant_table_settings!: EntityTable<RestaurantTableSettings, 'id'>
+  restaurant_pos_tickets!: EntityTable<RestaurantPosTicket, 'id'>
   loans!: EntityTable<Loan, 'id'>
   loan_installments!: EntityTable<LoanInstallment, 'id'>
   loan_payments!: EntityTable<LoanPayment, 'id'>
@@ -3320,6 +3324,11 @@ export class AtlasDatabase extends Dexie {
     this.version(120).stores({
       delivery_shipment_recipient_payout_corrections:
         'id, workspaceId, shipmentId, correctedBy, correctedAt, updatedAt, isDeleted, syncStatus, [workspaceId+shipmentId], [workspaceId+correctedAt], [shipmentId+correctedAt]'
+    })
+
+    this.version(121).stores({
+      restaurant_table_settings: 'id, workspaceId, enabled, updatedAt, isDeleted, syncStatus, [workspaceId+enabled]',
+      restaurant_pos_tickets: 'id, workspaceId, tableNumber, status, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+tableNumber], [workspaceId+status], [workspaceId+updatedAt]'
     })
 
     this.registerLocalModeSqliteAuthority()

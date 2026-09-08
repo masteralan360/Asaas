@@ -22,6 +22,11 @@ import { formatCookOrderTicketTimestamp } from '@/lib/cookOrderTicket'
 import { printService } from '@/services/printService'
 import { CheckoutSuccessModal } from '@/ui/components/pos/CheckoutSuccessModal'
 import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
+import { RestaurantTableGrid } from '@/ui/components/pos/RestaurantTableGrid'
+import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
+import { calculateRestaurantTicketTotal } from '@/lib/restaurantTableView'
+import { closeRestaurantPosTicket, createRestaurantPosTicket, hardDeleteRestaurantPosTicket, moveRestaurantPosTicket, refreshRestaurantPosTicketsFromSupabase, saveRestaurantPosTicket, useRestaurantPosTickets, useRestaurantTableSettings } from '@/local-db/restaurantTables'
+import type { RestaurantPosTicket } from '@/local-db/models'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
@@ -31,7 +36,7 @@ const PENDING_TICKET_TTL_MS = PENDING_TICKET_TTL_MINUTES * 60 * 1000
 const PENDING_TICKET_EXTENSION_MS = PENDING_TICKET_EXTENSION_MINUTES * 60 * 1000
 const TABLE_NUMBER_PRESETS = Array.from({ length: 20 }, (_, index) => String(index + 1))
 
-type InstantPosStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'paid'
+type InstantPosStatus = 'pending' | 'preparing' | 'ready' | 'served'
 
 type InstantPosItem = {
     productId: string
@@ -61,7 +66,46 @@ type InstantPosTicket = {
     expiresAt?: string
 }
 
-const STATUS_FLOW: InstantPosStatus[] = ['pending', 'preparing', 'ready', 'served', 'paid']
+function restaurantTicketToInstantTicket(ticket: RestaurantPosTicket): InstantPosTicket {
+    return {
+        id: ticket.id,
+        number: ticket.number,
+        createdAt: ticket.createdAt,
+        status: ticket.status,
+        items: ticket.items,
+        note: ticket.note,
+        tableNumber: String(ticket.tableNumber),
+        kitchenRoutedAt: ticket.kitchenRoutedAt,
+    }
+}
+
+function instantTicketToRestaurantTicket(
+    ticket: InstantPosTicket,
+    workspaceId: string,
+    userId: string | undefined,
+    existing?: RestaurantPosTicket,
+): RestaurantPosTicket {
+    const timestamp = new Date().toISOString()
+    return {
+        id: ticket.id,
+        workspaceId,
+        tableNumber: Number(ticket.tableNumber),
+        number: ticket.number,
+        status: ticket.status,
+        items: ticket.items,
+        note: ticket.note,
+        kitchenRoutedAt: ticket.kitchenRoutedAt,
+        createdBy: existing?.createdBy ?? userId ?? null,
+        createdAt: existing?.createdAt ?? ticket.createdAt,
+        updatedAt: timestamp,
+        version: existing?.version ?? 1,
+        isDeleted: false,
+        syncStatus: existing?.syncStatus ?? 'pending',
+        lastSyncedAt: existing?.lastSyncedAt ?? null,
+    }
+}
+
+const STATUS_FLOW: InstantPosStatus[] = ['pending', 'preparing', 'ready', 'served']
 
 function buildInstantPosItemKey(productId: string, storageId?: string | null) {
     return `${productId}:${storageId ?? ''}`
@@ -256,6 +300,7 @@ function loadTickets(): InstantPosTicket[] {
             }))
             const normalizedTicket = {
                 ...ticket,
+                status: ticket.status === 'paid' ? 'served' : ticket.status,
                 items: normalizedItems
             }
             if (ticket.expiresAt) return normalizedTicket
@@ -342,6 +387,7 @@ interface MobileTicketPanelProps {
     openTicketNoteEditor: () => void
     openTablePicker: () => void
     closeTicket: (id: string) => void
+    hideTableAssignment?: boolean
 }
 
 function MobileTicketPanel({
@@ -350,7 +396,7 @@ function MobileTicketPanel({
     canPreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
     canCookOrderTicket, isPrintingCookOrderTicket,
     getStorageLabel, checkoutTicket, handlePreprintReceipt, handleCookOrderTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
-    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, hasTicketNote, openTicketNoteEditor, openTablePicker, closeTicket
+    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, hasTicketNote, openTicketNoteEditor, openTablePicker, closeTicket, hideTableAssignment = false
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -464,7 +510,7 @@ function MobileTicketPanel({
                         }}
                     >
                         <div className="flex items-center gap-2">
-                        <Button
+                        {!hideTableAssignment && <Button
                             variant="outline"
                             size="icon"
                             className="h-12 w-12 rounded-2xl border-2"
@@ -477,7 +523,7 @@ function MobileTicketPanel({
                             aria-label={t('instantPos.assignTable', { defaultValue: 'Assign table' })}
                         >
                             <Table2 className="h-5 w-5" />
-                        </Button>
+                        </Button>}
                         {canPreprintReceipt && (
                             <Button
                                 variant="outline"
@@ -586,7 +632,7 @@ function MobileTicketPanel({
                             )}
 
                             {/* Status Actions */}
-                            <div className="grid grid-cols-5 gap-2">
+                            <div className="grid grid-cols-4 gap-2">
                                 {STATUS_FLOW.map(status => (
                                     <button
                                         key={status}
@@ -603,7 +649,7 @@ function MobileTicketPanel({
                                 ))}
                             </div>
 
-                            <button
+                            {!hideTableAssignment && <button
                                 type="button"
                                 onClick={openTablePicker}
                                 disabled={isCheckoutLoading}
@@ -616,7 +662,7 @@ function MobileTicketPanel({
                                 <span className="text-sm text-muted-foreground">
                                     {activeTicket.tableNumber || t('instantPos.assignTable', { defaultValue: 'Assign table' })}
                                 </span>
-                            </button>
+                            </button>}
 
                             {/* Items List */}
                             <div className="space-y-3">
@@ -841,7 +887,54 @@ export function InstantPOS() {
         }
     }, [hasFeature, kdsStatus, startStream])
 
-    const [tickets, setTickets] = useState<InstantPosTicket[]>(() => loadTickets())
+    const restaurantTableSettings = useRestaurantTableSettings(user?.workspaceId)
+    const restaurantLiveSyncEnabled = restaurantTableSettings?.liveSyncEnabled === true
+    const restaurantPosTickets = useRestaurantPosTickets(user?.workspaceId, restaurantLiveSyncEnabled)
+    const restaurantMode = restaurantTableSettings?.enabled === true
+    const restaurantTickets = useMemo(
+        () => restaurantPosTickets.map(restaurantTicketToInstantTicket),
+        [restaurantPosTickets]
+    )
+    const [localTickets, setLocalTickets] = useState<InstantPosTicket[]>(() => loadTickets())
+    const [restaurantTableNumber, setRestaurantTableNumber] = useState<number | null>(null)
+    const [restaurantTicketToClose, setRestaurantTicketToClose] = useState<RestaurantPosTicket | null>(null)
+    const [isRestaurantTicketClosing, setIsRestaurantTicketClosing] = useState(false)
+    const tickets = restaurantMode ? restaurantTickets : localTickets
+
+    const persistRestaurantTickets = useCallback((nextTickets: InstantPosTicket[]) => {
+        if (!user?.workspaceId) return
+        const existingById = new Map(restaurantPosTickets.map((ticket) => [ticket.id, ticket]))
+        const nextIds = new Set(nextTickets.map((ticket) => ticket.id))
+
+        nextTickets.forEach((ticket) => {
+            const existing = existingById.get(ticket.id)
+            const restaurantTicket = instantTicketToRestaurantTicket(ticket, user.workspaceId, user.id, existing)
+            const persist = existing
+                ? saveRestaurantPosTicket(restaurantTicket, restaurantLiveSyncEnabled)
+                : createRestaurantPosTicket(restaurantTicket, restaurantLiveSyncEnabled)
+            void persist.catch((error) => {
+                console.error('[Instant POS] Failed to save restaurant ticket:', error)
+                if (restaurantLiveSyncEnabled) void refreshRestaurantPosTicketsFromSupabase(user.workspaceId)
+            })
+        })
+
+        restaurantPosTickets
+            .filter((ticket) => !nextIds.has(ticket.id))
+            .forEach((ticket) => {
+                void closeRestaurantPosTicket(ticket, restaurantLiveSyncEnabled).catch((error) => {
+                    console.error('[Instant POS] Failed to close restaurant ticket:', error)
+                })
+            })
+    }, [restaurantLiveSyncEnabled, restaurantPosTickets, user?.id, user?.workspaceId])
+
+    const setTickets = useCallback((next: InstantPosTicket[] | ((current: InstantPosTicket[]) => InstantPosTicket[])) => {
+        if (!restaurantMode) {
+            setLocalTickets(next)
+            return
+        }
+        const resolved = typeof next === 'function' ? next(restaurantTickets) : next
+        persistRestaurantTickets(resolved)
+    }, [persistRestaurantTickets, restaurantMode, restaurantTickets])
     const [activeTicketId, setActiveTicketId] = useState<string | null>(null)
     const [search, setSearch] = useState('')
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -878,46 +971,49 @@ export function InstantPOS() {
     }, [instantPosStorages, selectedStorageId, storages])
 
     useEffect(() => {
+        if (restaurantMode) return
         saveTickets(tickets)
         // Broadcast to KDS remote clients whenever tickets change
         if (hasFeature('kds') && kdsStatus === 'host') {
             broadcast('TICKET_UPDATED', tickets)
         }
-    }, [broadcast, tickets, kdsStatus, hasFeature])
+    }, [broadcast, tickets, kdsStatus, hasFeature, restaurantMode])
 
     useEffect(() => {
+        if (restaurantMode) return
         const timer = setInterval(() => setNow(Date.now()), 1000)
         return () => clearInterval(timer)
-    }, [])
+    }, [restaurantMode])
 
     // Automatic expiry deletion: remove pending tickets that have passed their expiresAt time
     useEffect(() => {
+        if (restaurantMode) return
         const expiredIds = tickets
             .filter(ticket => ticket.status === 'pending' && getTicketExpiryDate(ticket).getTime() < now)
             .map(t => t.id)
 
         if (expiredIds.length > 0) {
-            setTickets(prev => prev.filter(t => !expiredIds.includes(t.id)))
+            setLocalTickets(prev => prev.filter(t => !expiredIds.includes(t.id)))
         }
-    }, [now, tickets])
+    }, [now, restaurantMode, tickets])
 
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
             if (event.key === TICKETS_STORAGE_KEY) {
-                setTickets(loadTickets())
+                setLocalTickets(loadTickets())
             }
         }
 
         // Internal event for same-window updates (e.g. from KDS Dashboard to POS)
         const handleInternalSync = () => {
-            setTickets(loadTickets())
+            setLocalTickets(loadTickets())
         }
 
         // Event for updates from remote tablets
         const handleRemoteSync = (event: any) => {
             const updatedTickets = event.detail
             if (updatedTickets && Array.isArray(updatedTickets)) {
-                setTickets(updatedTickets)
+                setLocalTickets(updatedTickets)
             }
         }
 
@@ -933,6 +1029,13 @@ export function InstantPOS() {
     }, [])
 
     useEffect(() => {
+        if (restaurantMode) {
+            const tableTicket = restaurantTableNumber === null
+                ? null
+                : tickets.find((ticket) => ticket.tableNumber === String(restaurantTableNumber))
+            setActiveTicketId(tableTicket?.id ?? null)
+            return
+        }
         if (!tickets.length) {
             setActiveTicketId(null)
             return
@@ -940,7 +1043,7 @@ export function InstantPOS() {
         if (!activeTicketId || !tickets.some(ticket => ticket.id === activeTicketId)) {
             setActiveTicketId(tickets[0].id)
         }
-    }, [tickets, activeTicketId])
+    }, [tickets, activeTicketId, restaurantMode, restaurantTableNumber])
 
     const activeTicket = useMemo(
         () => tickets.find(ticket => ticket.id === activeTicketId) || null,
@@ -1016,11 +1119,19 @@ export function InstantPOS() {
             return
         }
 
-        setTickets((current) => current.map((ticket) => {
+        const removeExcludedItems = (current: InstantPosTicket[]) => current.map((ticket) => {
             const items = ticket.items.filter((item) => !excludedProductIds.has(item.productId))
             return items.length === ticket.items.length ? ticket : { ...ticket, items }
-        }))
-    }, [canSelectProduct, ticketProducts])
+        })
+        if (restaurantMode) {
+            const nextTickets = removeExcludedItems(restaurantTickets)
+            if (nextTickets.some((ticket, index) => ticket !== restaurantTickets[index])) {
+                persistRestaurantTickets(nextTickets)
+            }
+            return
+        }
+        setLocalTickets(removeExcludedItems)
+    }, [canSelectProduct, persistRestaurantTickets, restaurantMode, restaurantTickets, ticketProducts])
 
     const activeTicketTotals = useMemo(() => {
         if (!activeTicket) {
@@ -1169,11 +1280,11 @@ export function InstantPOS() {
         pending: t('instantPos.status.pending') || 'Pending',
         preparing: t('instantPos.status.preparing') || 'Preparing',
         ready: t('instantPos.status.ready') || 'Ready',
-        served: t('instantPos.status.served') || 'Served',
-        paid: t('instantPos.status.paid') || 'Paid / Closed'
+        served: t('instantPos.status.served') || 'Served'
     }), [t])
 
     const createTicket = () => {
+        if (restaurantMode) return
         const createdAt = new Date()
         const ticket: InstantPosTicket = {
             id: generateId(),
@@ -1187,9 +1298,9 @@ export function InstantPOS() {
         setActiveTicketId(ticket.id)
     }
 
-    const updateTicket = (ticketId: string, updater: (ticket: InstantPosTicket) => InstantPosTicket) => {
+    const updateTicket = useCallback((ticketId: string, updater: (ticket: InstantPosTicket) => InstantPosTicket) => {
         setTickets(prev => prev.map(ticket => (ticket.id === ticketId ? updater(ticket) : ticket)))
-    }
+    }, [setTickets])
 
     const openTablePicker = useCallback(() => {
         if (!activeTicket) return
@@ -1212,14 +1323,14 @@ export function InstantPOS() {
 
         updateTicket(activeTicket.id, ticket => ({ ...ticket, tableNumber }))
         setIsTablePickerOpen(false)
-    }, [activeTicket, t, toast])
+    }, [activeTicket, t, toast, updateTicket])
 
     const clearTableNumber = useCallback(() => {
         if (!activeTicket) return
         updateTicket(activeTicket.id, ticket => ({ ...ticket, tableNumber: undefined }))
         setTableNumberInput('')
         setIsTablePickerOpen(false)
-    }, [activeTicket])
+    }, [activeTicket, updateTicket])
 
     const addItemToTicket = (productId: string) => {
         const product = selectableProducts.find(item => item.id === productId && item.storageId === selectedStorageId)
@@ -1251,10 +1362,13 @@ export function InstantPOS() {
         }
 
         if (!activeTicket) {
+            if (restaurantMode && restaurantTableNumber === null) return
             const createdAt = new Date()
             const newTicket: InstantPosTicket = {
                 id: generateId(),
-                number: nextTicketNumber(),
+                number: restaurantMode
+                    ? `R-${String(restaurantTableNumber).padStart(3, '0')}-${String(createdAt.getTime()).slice(-4)}`
+                    : nextTicketNumber(),
                 createdAt: createdAt.toISOString(),
                 status: 'pending',
                 items: [{
@@ -1271,7 +1385,8 @@ export function InstantPOS() {
                     discountSource: activeDiscount?.source,
                     discountEndsAt: activeDiscount?.endsAt
                 }],
-                expiresAt: new Date(createdAt.getTime() + PENDING_TICKET_TTL_MS).toISOString()
+                tableNumber: restaurantMode ? String(restaurantTableNumber) : undefined,
+                expiresAt: restaurantMode ? undefined : new Date(createdAt.getTime() + PENDING_TICKET_TTL_MS).toISOString()
             }
             setTickets(prev => [newTicket, ...prev])
             setActiveTicketId(newTicket.id)
@@ -1349,6 +1464,17 @@ export function InstantPOS() {
 
     const removeItem = (productId: string, storageId: string | undefined) => {
         if (!activeTicket) return
+        if (restaurantMode && activeTicket.items.length === 1
+            && activeTicket.items[0].productId === productId
+            && activeTicket.items[0].storageId === storageId) {
+            const storedTicket = restaurantPosTickets.find((ticket) => ticket.id === activeTicket.id)
+            if (storedTicket) {
+                void hardDeleteRestaurantPosTicket(storedTicket, restaurantLiveSyncEnabled)
+                setRestaurantTableNumber(null)
+                setActiveTicketId(null)
+            }
+            return
+        }
         updateTicket(activeTicket.id, ticket => ({
             ...ticket,
             items: ticket.items.filter(item => item.productId !== productId || item.storageId !== storageId)
@@ -1389,7 +1515,7 @@ export function InstantPOS() {
         updateTicket(activeTicket.id, ticket => ({
             ...ticket,
             status,
-            expiresAt: status === 'pending'
+            expiresAt: !restaurantMode && status === 'pending'
                 ? (ticket.expiresAt || new Date(Date.now() + PENDING_TICKET_TTL_MS).toISOString())
                 : ticket.expiresAt,
             kitchenRoutedAt: status === 'preparing' && hasFeature('kds')
@@ -1405,11 +1531,29 @@ export function InstantPOS() {
         }
     }
 
-    const closeTicket = (ticketId: string) => {
+    const finalizeTicket = async (ticketId: string) => {
+        if (restaurantMode) {
+            const ticket = restaurantPosTickets.find((current) => current.id === ticketId)
+            if (ticket) {
+                await closeRestaurantPosTicket(ticket, restaurantLiveSyncEnabled)
+            }
+            setRestaurantTableNumber(null)
+            setActiveTicketId(null)
+            return
+        }
         setTickets(prev => prev.filter(ticket => ticket.id !== ticketId))
         if (activeTicketId === ticketId) {
             setActiveTicketId(null)
         }
+    }
+
+    const closeTicket = (ticketId: string) => {
+        if (restaurantMode) {
+            const ticket = restaurantPosTickets.find((current) => current.id === ticketId)
+            if (ticket) setRestaurantTicketToClose(ticket)
+            return
+        }
+        finalizeTicket(ticketId)
     }
 
     const checkoutTicket = async () => {
@@ -1669,7 +1813,7 @@ export function InstantPOS() {
                 cashier_name: user.name || 'System'
             } as any)
 
-            closeTicket(activeTicket.id)
+            await finalizeTicket(activeTicket.id)
             setCompletedSaleData(saleData)
             setIsSuccessModalOpen(true)
 
@@ -1814,7 +1958,7 @@ export function InstantPOS() {
 
                     await addToOfflineMutations('sales', saleId, 'create', checkoutPayload, user.workspaceId)
 
-                    closeTicket(activeTicket.id)
+                    await finalizeTicket(activeTicket.id)
                     setCompletedSaleData(saleDataOffline)
                     setIsSuccessModalOpen(true)
 
@@ -1848,6 +1992,13 @@ export function InstantPOS() {
 
     const clearActiveTicket = () => {
         if (!activeTicket) return
+        if (restaurantMode) {
+            const ticket = restaurantPosTickets.find((current) => current.id === activeTicket.id)
+            if (ticket) {
+                setRestaurantTicketToClose(ticket)
+            }
+            return
+        }
         updateTicket(activeTicket.id, ticket => ({ ...ticket, items: [] }))
     }
 
@@ -1863,10 +2014,10 @@ export function InstantPOS() {
     }
 
     const activePendingTimeLeftMs = useMemo(() => {
-        if (!activeTicket || activeTicket.status !== 'pending') return null
+        if (restaurantMode || !activeTicket || activeTicket.status !== 'pending') return null
         const expiry = getTicketExpiryDate(activeTicket)
         return expiry.getTime() - now
-    }, [activeTicket, now])
+    }, [activeTicket, now, restaurantMode])
 
     const statusAction = activeTicket ? (() => {
         switch (activeTicket.status) {
@@ -1881,10 +2032,63 @@ export function InstantPOS() {
         }
     })() : null
 
+    const handleRestaurantTicketMove = async (ticket: RestaurantPosTicket, destinationTableNumber: number) => {
+        try {
+            await moveRestaurantPosTicket(ticket, destinationTableNumber, restaurantLiveSyncEnabled)
+        } catch (error) {
+            console.error('[Instant POS] Failed to transfer restaurant ticket:', error)
+            toast({
+                title: t('common.error'),
+                description: t('restaurantTables.transferFailed'),
+                variant: 'destructive'
+            })
+            throw error
+        }
+    }
+
+    const confirmRestaurantTicketClose = async () => {
+        if (!restaurantTicketToClose || isRestaurantTicketClosing) return
+        setIsRestaurantTicketClosing(true)
+        try {
+            await hardDeleteRestaurantPosTicket(restaurantTicketToClose, restaurantLiveSyncEnabled)
+            if (activeTicketId === restaurantTicketToClose.id) {
+                setRestaurantTableNumber(null)
+                setActiveTicketId(null)
+            }
+            setRestaurantTicketToClose(null)
+        } catch (error) {
+            console.error('[Instant POS] Failed to close restaurant ticket:', error)
+            toast({
+                title: t('common.error'),
+                description: t('instantPos.checkoutError'),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsRestaurantTicketClosing(false)
+        }
+    }
+
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return ''
         if (url.startsWith('http') || url.startsWith('data:')) return url
         return platformService.convertFileSrc(url)
+    }
+
+    if (restaurantMode && restaurantTableNumber === null) {
+        return (
+            <RestaurantTableGrid
+                tableCount={restaurantTableSettings.tableCount}
+                vipTableNumbers={restaurantTableSettings.vipTableNumbers}
+                tickets={restaurantPosTickets}
+                formatTotal={(ticket) => formatCurrency(
+                    calculateRestaurantTicketTotal(ticket.items),
+                    settlementCurrency,
+                    features.iqd_display_preference
+                )}
+                onOpenTable={setRestaurantTableNumber}
+                onMoveTicket={handleRestaurantTicketMove}
+            />
+        )
     }
 
     return (
@@ -1924,16 +2128,23 @@ export function InstantPOS() {
                         />
                     </div>
                     <Button
-                        onClick={createTicket}
+                        onClick={() => {
+                            if (restaurantMode) {
+                                setRestaurantTableNumber(null)
+                                setActiveTicketId(null)
+                                return
+                            }
+                            createTicket()
+                        }}
                         variant="secondary"
                         className="h-12 gap-2 rounded-xl px-4"
                     >
-                        <Receipt className="w-4 h-4" />
-                        {t('instantPos.newTicket') || 'New Ticket'}
+                        {restaurantMode ? <Table2 className="w-4 h-4" /> : <Receipt className="w-4 h-4" />}
+                        {restaurantMode ? t('restaurantTables.backToTables') : (t('instantPos.newTicket') || 'New Ticket')}
                     </Button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
+                {!restaurantMode && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
                         <div className="flex max-w-full flex-1 items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
                             {tickets.length === 0 ? (
                                 <div className="text-xs text-muted-foreground">
@@ -1968,7 +2179,7 @@ export function InstantPOS() {
                             )}
                         </div>
 
-                </div>
+                </div>}
 
                     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none no-scrollbar">
                         <button
@@ -2139,6 +2350,7 @@ export function InstantPOS() {
                             openTicketNoteEditor={openTicketNoteEditor}
                             openTablePicker={openTablePicker}
                             closeTicket={closeTicket}
+                            hideTableAssignment={restaurantMode}
                         />
                     )}
             </div>
@@ -2169,7 +2381,7 @@ export function InstantPOS() {
                                     {t('instantPos.clearAll') || 'Clear All'}
                                 </button>
                                 </div>
-                                <Button
+                                {!restaurantMode && <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={openTablePicker}
@@ -2181,7 +2393,7 @@ export function InstantPOS() {
                                         {t('instantPos.table', { defaultValue: 'Table' })}
                                     </span>
                                     <span>{activeTicket.tableNumber || t('instantPos.assignTable', { defaultValue: 'Assign table' })}</span>
-                                </Button>
+                                </Button>}
                             </div>
 
                             {activePendingTimeLeftMs !== null && (
@@ -2212,7 +2424,7 @@ export function InstantPOS() {
                                 <div className="text-center text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
                                     {t('instantPos.orderStatus') || 'Order Status'}
                                 </div>
-                                <div className="grid grid-cols-5 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                     {STATUS_FLOW.map(status => (
                                         <button
                                             key={status}
@@ -2523,6 +2735,19 @@ export function InstantPOS() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <DeleteConfirmationModal
+                isOpen={!!restaurantTicketToClose}
+                onClose={() => !isRestaurantTicketClosing && setRestaurantTicketToClose(null)}
+                onConfirm={() => void confirmRestaurantTicketClose()}
+                isLoading={isRestaurantTicketClosing}
+                title={t('restaurantTables.closeTitle')}
+                description={t('restaurantTables.closeDescription')}
+                simpleConfirmation
+                itemName={restaurantTicketToClose
+                    ? `${t('instantPos.table')} ${restaurantTicketToClose.tableNumber}`
+                    : ''}
+            />
 
             <CheckoutSuccessModal
                 isOpen={isSuccessModalOpen}

@@ -3,6 +3,8 @@ import { ModulePageFreshness } from '@/ui/components/ModulePageFreshness'
 import { useTranslation } from 'react-i18next'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useWorkspace } from '@/workspace'
+import { useAuth } from '@/auth'
+import { saveRestaurantPosTicket, useRestaurantPosTickets, useRestaurantTableSettings } from '@/local-db/restaurantTables'
 import { cn, formatTime, stylizeText } from '@/lib/utils'
 import { Check } from 'lucide-react'
 import { isDesktop } from '@/lib/platform'
@@ -10,7 +12,7 @@ import { isDesktop } from '@/lib/platform'
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const LATE_THRESHOLD_MS = 10 * 60 * 1000
 
-type InstantPosStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'paid'
+type InstantPosStatus = 'pending' | 'preparing' | 'ready' | 'served'
 
 type InstantPosItem = {
     productId: string
@@ -89,7 +91,14 @@ function loadTickets(): InstantPosTicket[] {
         const raw = localStorage.getItem(TICKETS_STORAGE_KEY)
         if (!raw) return []
         const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed : []
+        return Array.isArray(parsed)
+            ? parsed.map((ticket: InstantPosTicket) => ({
+                ...ticket,
+                status: (ticket as InstantPosTicket & { status?: string }).status === 'paid'
+                    ? 'served'
+                    : ticket.status
+            }))
+            : []
     } catch {
         return []
     }
@@ -117,9 +126,25 @@ function formatClockTime(date: Date, withSeconds: boolean) {
 
 export function KDSDashboard() {
     const { hasFeature, workspaceName } = useWorkspace()
+    const { user } = useAuth()
     const { t } = useTranslation()
 
+    const restaurantTableSettings = useRestaurantTableSettings(user?.workspaceId)
+    const restaurantLiveSyncEnabled = restaurantTableSettings?.liveSyncEnabled === true
+    const restaurantPosTickets = useRestaurantPosTickets(user?.workspaceId, restaurantLiveSyncEnabled)
+    const isRestaurantTableView = restaurantTableSettings?.enabled === true
     const [tickets, setTickets] = useState<InstantPosTicket[]>(() => loadTickets())
+    const activeTickets = isRestaurantTableView
+        ? restaurantPosTickets.map((ticket) => ({
+            id: ticket.id,
+            number: ticket.number,
+            createdAt: ticket.createdAt,
+            status: ticket.status,
+            items: ticket.items,
+            tableNumber: String(ticket.tableNumber),
+            kitchenRoutedAt: ticket.kitchenRoutedAt,
+        }))
+        : tickets
     const [now, setNow] = useState(() => new Date())
     const [draggingId, setDraggingId] = useState<string | null>(null)
     const [dragOverStatus, setDragOverStatus] = useState<KdsColumnStatus | null>(null)
@@ -134,12 +159,13 @@ export function KDSDashboard() {
     }, [])
 
     useEffect(() => {
+        if (isRestaurantTableView) return
         saveTickets(tickets)
         // Broadcast to remote clients whenever tickets change on the main terminal
         if (isMain && streamStatus === 'host') {
             broadcast('TICKET_UPDATED', tickets)
         }
-    }, [tickets])
+    }, [broadcast, isMain, isRestaurantTableView, streamStatus, tickets])
 
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
@@ -183,8 +209,8 @@ export function KDSDashboard() {
     }, [isMain])
 
     const visibleTickets = useMemo(
-        () => tickets.filter((ticket: InstantPosTicket) => ticket.items.length > 0),
-        [tickets]
+        () => activeTickets.filter((ticket: InstantPosTicket) => ticket.items.length > 0),
+        [activeTickets]
     )
 
     const groupedTickets = useMemo(() => {
@@ -196,8 +222,7 @@ export function KDSDashboard() {
         }
 
         visibleTickets.forEach((ticket: InstantPosTicket) => {
-            const normalized = ticket.status === 'paid' ? 'served' : ticket.status
-            groups[normalized as KdsColumnStatus].push(ticket)
+            groups[ticket.status as KdsColumnStatus].push(ticket)
         })
 
         COLUMN_ORDER.forEach(status => {
@@ -220,7 +245,7 @@ export function KDSDashboard() {
             : t('kdsDashboard.hostingDisabled'))
 
     const updateTicketStatus = (ticketId: string, status: KdsColumnStatus) => {
-        const nextTickets = tickets.map((ticket: InstantPosTicket) => {
+        const nextTickets = activeTickets.map((ticket: InstantPosTicket) => {
             if (ticket.id !== ticketId) return ticket
             return {
                 ...ticket,
@@ -230,9 +255,24 @@ export function KDSDashboard() {
                     : ticket.kitchenRoutedAt
             }
         })
-        setTickets(nextTickets)
+        if (isRestaurantTableView) {
+            const sourceTicket = restaurantPosTickets.find((ticket) => ticket.id === ticketId)
+            if (sourceTicket) {
+                void saveRestaurantPosTicket({
+                    ...sourceTicket,
+                    status,
+                    kitchenRoutedAt: status === 'preparing'
+                        ? (sourceTicket.kitchenRoutedAt || new Date().toISOString())
+                        : sourceTicket.kitchenRoutedAt,
+                    updatedAt: new Date().toISOString(),
+                    version: sourceTicket.version + 1,
+                }, restaurantLiveSyncEnabled)
+            }
+        } else {
+            setTickets(nextTickets)
+        }
         // Remote client sends via WebSocket
-        if (!isMain) {
+        if (!isRestaurantTableView && !isMain) {
             sendViaSocket('TICKET_UPDATED', nextTickets)
         }
     }
@@ -389,7 +429,7 @@ export function KDSDashboard() {
                                         </div>
                                     ) : (
                                         columnTickets.map((ticket: InstantPosTicket) => {
-                                            const normalizedStatus = ticket.status === 'paid' ? 'served' : ticket.status
+                                            const normalizedStatus = ticket.status
                                             const action = COLUMN_CONFIG[normalizedStatus as KdsColumnStatus].action
                                             const elapsedFrom = ticket.kitchenRoutedAt || ticket.createdAt
                                             const elapsed = formatElapsed(elapsedFrom, now)
@@ -439,14 +479,16 @@ export function KDSDashboard() {
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                            <div className="text-right">
-                                                                <div className="text-2xl font-black text-[#7A5C33]">
-                                                                    {timeLabel}
+                                                            {!isRestaurantTableView && (
+                                                                <div className="text-right">
+                                                                    <div className="text-2xl font-black text-[#7A5C33]">
+                                                                        {timeLabel}
+                                                                    </div>
+                                                                    <div className="text-[10px] font-bold uppercase tracking-widest text-[#7A5C33]">
+                                                                        {timeCaption}
+                                                                    </div>
                                                                 </div>
-                                                                <div className="text-[10px] font-bold uppercase tracking-widest text-[#7A5C33]">
-                                                                    {timeCaption}
-                                                                </div>
-                                                            </div>
+                                                            )}
                                                         </div>
 
                                                         <div className="mt-4 h-px bg-[#7A5C33]/10" />

@@ -50,6 +50,7 @@ interface DeleteConfirmationModalProps {
     description?: string
     isLoading?: boolean
     itemName?: string
+    simpleConfirmation?: boolean
 }
 
 export function DeleteConfirmationModal({
@@ -59,7 +60,8 @@ export function DeleteConfirmationModal({
     title,
     description,
     isLoading = false,
-    itemName = ''
+    itemName = '',
+    simpleConfirmation = false
 }: DeleteConfirmationModalProps) {
     const { t } = useTranslation()
     const [typedText, setTypedText] = useState('')
@@ -70,6 +72,7 @@ export function DeleteConfirmationModal({
     const animationFrameRef = useRef<number | null>(null)
     const holdCompletedRef = useRef(false)
     const isDeleteEnabled = typedText === 'delete'
+    const showSimpleConfirmation = simpleConfirmation || isQuickDeleteActive
 
     const cancelHold = useCallback(() => {
         if (animationFrameRef.current !== null) {
@@ -183,15 +186,17 @@ export function DeleteConfirmationModal({
                         </div>
                     )}
 
-                    {isQuickDeleteActive ? (
+                    {showSimpleConfirmation ? (
                         <>
                             {/* Quick delete badge */}
-                            <div className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-                                <Zap className="w-4 h-4 text-amber-500" />
-                                <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                                    {t('common.quickDeleteActive') || 'Quick delete is active for 24 hours'}
-                                </span>
-                            </div>
+                            {!simpleConfirmation && (
+                                <div className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+                                    <Zap className="w-4 h-4 text-amber-500" />
+                                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                                        {t('common.quickDeleteActive') || 'Quick delete is active for 24 hours'}
+                                    </span>
+                                </div>
+                            )}
 
                             {/* Simple delete button */}
                             <DialogFooter className="w-full grid grid-cols-2 gap-3 sm:gap-4 !flex-row sm:!flex-row">
