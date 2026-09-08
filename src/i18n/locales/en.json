@@ -4002,6 +4002,8 @@
     "clearAll": "Clear All",
     "subtotal": "Subtotal",
     "newTicket": "New Ticket",
+    "adjust": "Instant POS Adjust",
+    "adjustDescription": "Choose how many products appear in each row.",
     "noTickets": "No open tickets yet.",
     "search": "Search menu items...",
     "allCategories": "All Items",

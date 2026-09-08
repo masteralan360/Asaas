@@ -9,8 +9,10 @@ import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn, stylizeText } from '@/lib/utils'
+import { readInstantPosProductsPerRow, saveInstantPosProductsPerRow } from '@/lib/instantPosLayout'
 import { AppDialog, AppDialogBody, AppDialogContent, AppDialogFooter, AppDialogHeader, AppDialogTitle, Button, Input, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, StorageSelector } from '@/ui/components'
 import { AlertCircle, CheckCircle2, ChefHat, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Package, Plus, Receipt, Search, ShoppingCart, StickyNote, Table2, Trash2 } from 'lucide-react'
+import { UiAccessGate } from '@/context/UiAccessContext'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
@@ -22,6 +24,7 @@ import { INSTANT_HISTORY_RECEIPT_TEMPLATE_KEY } from '@/lib/customTemplates'
 import { formatCookOrderTicketTimestamp } from '@/lib/cookOrderTicket'
 import { printService } from '@/services/printService'
 import { CheckoutSuccessModal } from '@/ui/components/pos/CheckoutSuccessModal'
+import { InstantPosAdjust } from '@/ui/components/pos/InstantPosAdjust'
 import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 import { RestaurantTableGrid } from '@/ui/components/pos/RestaurantTableGrid'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
@@ -1035,6 +1038,9 @@ export function InstantPOS() {
     const [activeTicketId, setActiveTicketId] = useState<string | null>(null)
     const [search, setSearch] = useState('')
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
+    const [isInstantPosAdjustOpen, setIsInstantPosAdjustOpen] = useState(false)
+    const [productsPerRow, setProductsPerRow] = useState(readInstantPosProductsPerRow)
+    const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
     const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
     const [isPreprinting, setIsPreprinting] = useState(false)
     const [isPrintingCookOrderTicket, setIsPrintingCookOrderTicket] = useState(false)
@@ -1053,6 +1059,16 @@ export function InstantPOS() {
             localStorage.setItem('instant_pos_selected_storage', selectedStorageId)
         }
     }, [selectedStorageId])
+
+    useEffect(() => {
+        const handleResize = () => setViewportWidth(window.innerWidth)
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
+
+    useEffect(() => {
+        saveInstantPosProductsPerRow(productsPerRow)
+    }, [productsPerRow])
 
     useEffect(() => {
         if (selectedStorageId && instantPosStorages.some(storage => storage.id === selectedStorageId)) {
@@ -2224,6 +2240,20 @@ export function InstantPOS() {
                         onSelect={handleStorageSelect}
                         className="h-12 w-full bg-background/80 sm:w-[220px]"
                     />
+                    <UiAccessGate>
+                        <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                            <Button
+                                variant="outline"
+                                type="button"
+                                className="h-12 rounded-xl border-dashed border-primary/50 bg-primary/5 px-4 font-bold"
+                                onClick={() => setIsInstantPosAdjustOpen(true)}
+                                title={t('instantPos.adjust')}
+                            >
+                                <Menu className="h-4 w-4 text-primary" />
+                                {t('instantPos.adjust')}
+                            </Button>
+                        </div>
+                    </UiAccessGate>
                     <div className="relative min-w-[13rem] flex-1">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -2327,7 +2357,14 @@ export function InstantPOS() {
                     </div>
 
                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2">
-                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                        <div
+                            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                            style={{
+                                gridTemplateColumns: viewportWidth < 1024
+                                    ? undefined
+                                    : `repeat(${productsPerRow}, minmax(0, 1fr))`,
+                            }}
+                        >
                             {filteredProducts.length === 0 ? (
                                 <div className="col-span-full text-sm text-muted-foreground">
                                     {!selectedStorageId
@@ -2862,6 +2899,13 @@ export function InstantPOS() {
                 itemName={restaurantTicketToClose
                     ? `${t('instantPos.table')} ${restaurantTicketToClose.tableNumber}`
                     : ''}
+            />
+
+            <InstantPosAdjust
+                open={isInstantPosAdjustOpen}
+                onOpenChange={setIsInstantPosAdjustOpen}
+                productsPerRow={productsPerRow}
+                onProductsPerRowChange={setProductsPerRow}
             />
 
             <CheckoutSuccessModal
