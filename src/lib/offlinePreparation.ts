@@ -1,5 +1,4 @@
 import type { AuthUser } from '@/auth/AuthContext'
-import { refreshSupabaseSession } from '@/auth/supabase'
 import { db } from '@/local-db/database'
 import type { WorkspaceDataMode } from '@/local-db/models'
 import { ensurePwaDatabase, isOpfsSupported } from '@/local-db/pwaSqlite'
@@ -10,18 +9,12 @@ import {
 } from '@/local-db/storagePersist'
 import { getAppSetting, setAppSetting } from '@/local-db/settings'
 import {
-    getOfflineLeaseStatus,
-    isOfflineLeaseRequired,
-    markSupabaseReachableFromAccessToken
-} from '@/lib/offlineLease'
-import {
     getPwaOfflineShellStatus,
     preparePwaOfflineShell,
     type PwaOfflinePreparationProgress,
     type PwaOfflineShellStatus
 } from '@/lib/pwaUpdateControl'
 import { areApplicationUpdatesDisabled } from '@/lib/updatePreference'
-import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { LAST_SYNC_KEY } from '@/sync/constants'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
 
@@ -29,7 +22,6 @@ const READINESS_RECORD_VERSION = 1
 
 export type OfflinePreparationPhase =
     | 'storage'
-    | 'session'
     | 'data'
     | 'database'
     | 'shell'
@@ -37,7 +29,6 @@ export type OfflinePreparationPhase =
 
 export type OfflinePreparationErrorCode =
     | 'offline'
-    | 'session-required'
     | 'data-sync-failed'
     | 'database-unavailable'
     | 'shell-unavailable'
@@ -56,7 +47,6 @@ export interface OfflinePreparationRecord {
     storagePersisted: boolean
     storageUsage: number | null
     storageQuota: number | null
-    offlineLeaseExpiresAt: number | null
 }
 
 export interface OfflineReadinessSnapshot {
@@ -64,8 +54,6 @@ export interface OfflineReadinessSnapshot {
     storagePersisted: boolean | null
     shell: PwaOfflineShellStatus
     record: OfflinePreparationRecord | null
-    leaseBlocked: boolean
-    leaseExpiresAt: number | null
 }
 
 export interface OfflinePreparationResult {
@@ -129,8 +117,6 @@ export async function getOfflineReadinessSnapshot(
         getPersistentStorageStatus(),
         readOfflinePreparationRecord(user.id, user.workspaceId)
     ])
-    const leaseStatus = getOfflineLeaseStatus(user.id, user.workspaceId, dataMode)
-    const leaseBlocked = leaseStatus.required && leaseStatus.blocked
     const recordMatches = Boolean(
         record
         && record.userId === user.id
@@ -140,12 +126,10 @@ export async function getOfflineReadinessSnapshot(
     )
 
     return {
-        ready: shell.ready && recordMatches && !leaseBlocked,
+        ready: shell.ready && recordMatches,
         storagePersisted,
         shell,
-        record,
-        leaseBlocked,
-        leaseExpiresAt: leaseStatus.lease?.expiresAtMs ?? null
+        record
     }
 }
 
@@ -173,30 +157,6 @@ async function verifyLocalDatabase(dataMode: WorkspaceDataMode) {
     }
 }
 
-async function renewVerifiedOfflineLease(user: AuthUser, dataMode: WorkspaceDataMode) {
-    if (!isOfflineLeaseRequired(dataMode)) return null
-
-    const { data, error } = await runSupabaseAction(
-        'offlinePreparation.refreshSession',
-        () => refreshSupabaseSession(),
-        { timeoutMs: 8_000, platform: 'all' }
-    )
-    if (error || !data?.session?.access_token) {
-        if (error) console.warn('[OfflinePreparation] Session refresh failed:', normalizeSupabaseActionError(error))
-        throw new OfflinePreparationError('session-required', { cause: error })
-    }
-
-    const lease = markSupabaseReachableFromAccessToken({
-        userId: user.id,
-        workspaceId: user.workspaceId,
-        dataMode,
-        accessToken: data.session.access_token,
-        source: 'offline-preparation'
-    })
-    if (!lease) throw new OfflinePreparationError('session-required')
-    return lease
-}
-
 export async function prepareForOfflineUse(options: {
     user: AuthUser
     dataMode: WorkspaceDataMode
@@ -211,11 +171,8 @@ export async function prepareForOfflineUse(options: {
         report(onPhase, 'storage')
         const storagePersisted = await requestPersistentStorage()
 
-        report(onPhase, 'session')
-        const lease = await renewVerifiedOfflineLease(user, dataMode)
-
         let dataSyncedAt = new Date().toISOString()
-        if (isOfflineLeaseRequired(dataMode)) {
+        if (dataMode === 'cloud' || dataMode === 'hybrid') {
             report(onPhase, 'data')
             const syncResult = await runManagedFullSync(user.id, user.workspaceId, null)
             if (!syncResult.success) {
@@ -255,8 +212,7 @@ export async function prepareForOfflineUse(options: {
             cachedAssets: shell.cachedAssets ?? 0,
             storagePersisted,
             storageUsage: estimate?.usage ?? null,
-            storageQuota: estimate?.quota ?? null,
-            offlineLeaseExpiresAt: lease?.expiresAtMs ?? null
+            storageQuota: estimate?.quota ?? null
         }
         await setAppSetting(readinessKey(user.id, user.workspaceId), JSON.stringify(record))
         report(onPhase, 'complete')

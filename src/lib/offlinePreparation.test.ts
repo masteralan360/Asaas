@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-    refreshSupabaseSession: vi.fn(),
     dbOpen: vi.fn(),
     appSettingsCount: vi.fn(),
     ensurePwaDatabase: vi.fn(),
@@ -11,16 +10,10 @@ const mocks = vi.hoisted(() => ({
     requestPersistentStorage: vi.fn(),
     getAppSetting: vi.fn(),
     setAppSetting: vi.fn(),
-    getOfflineLeaseStatus: vi.fn(),
-    markSupabaseReachableFromAccessToken: vi.fn(),
     getPwaOfflineShellStatus: vi.fn(),
     preparePwaOfflineShell: vi.fn(),
     areApplicationUpdatesDisabled: vi.fn(),
     runManagedFullSync: vi.fn()
-}))
-
-vi.mock('@/auth/supabase', () => ({
-    refreshSupabaseSession: mocks.refreshSupabaseSession
 }))
 
 vi.mock('@/local-db/database', () => ({
@@ -46,12 +39,6 @@ vi.mock('@/local-db/settings', () => ({
     setAppSetting: mocks.setAppSetting
 }))
 
-vi.mock('@/lib/offlineLease', () => ({
-    isOfflineLeaseRequired: (mode: string) => mode === 'cloud' || mode === 'hybrid',
-    getOfflineLeaseStatus: mocks.getOfflineLeaseStatus,
-    markSupabaseReachableFromAccessToken: mocks.markSupabaseReachableFromAccessToken
-}))
-
 vi.mock('@/lib/pwaUpdateControl', () => ({
     getPwaOfflineShellStatus: mocks.getPwaOfflineShellStatus,
     preparePwaOfflineShell: mocks.preparePwaOfflineShell
@@ -59,11 +46,6 @@ vi.mock('@/lib/pwaUpdateControl', () => ({
 
 vi.mock('@/lib/updatePreference', () => ({
     areApplicationUpdatesDisabled: mocks.areApplicationUpdatesDisabled
-}))
-
-vi.mock('@/lib/supabaseRequest', () => ({
-    runSupabaseAction: async (_name: string, action: () => Promise<unknown>) => action(),
-    normalizeSupabaseActionError: (error: unknown) => error
 }))
 
 vi.mock('@/sync/syncCoordinator', () => ({
@@ -96,12 +78,6 @@ describe('offline preparation', () => {
         mocks.requestPersistentStorage.mockResolvedValue(true)
         mocks.getPersistentStorageStatus.mockResolvedValue(true)
         mocks.getStorageEstimate.mockResolvedValue({ usage: 1024, quota: 4096, percentage: 25 })
-        mocks.refreshSupabaseSession.mockResolvedValue({
-            data: { session: { access_token: 'access-token' } },
-            error: null
-        })
-        mocks.markSupabaseReachableFromAccessToken.mockReturnValue({ expiresAtMs: 123456 })
-        mocks.getOfflineLeaseStatus.mockReturnValue({ required: true, blocked: false, lease: { expiresAtMs: 123456 } })
         mocks.runManagedFullSync.mockResolvedValue({ success: true, pushed: 0, pulled: 5, errors: [] })
         mocks.preparePwaOfflineShell.mockResolvedValue({
             ready: true,
@@ -121,10 +97,6 @@ describe('offline preparation', () => {
 
         expect(result.outcome).toBe('ready')
         expect(mocks.runManagedFullSync).toHaveBeenCalledWith('user-1', 'workspace-1', null)
-        expect(mocks.markSupabaseReachableFromAccessToken).toHaveBeenCalledWith(expect.objectContaining({
-            accessToken: 'access-token',
-            dataMode: 'cloud'
-        }))
         expect(mocks.setAppSetting).toHaveBeenCalledWith(
             expect.stringContaining('offline_readiness:v1:workspace-1:user-1'),
             expect.any(String)
@@ -152,7 +124,6 @@ describe('offline preparation', () => {
             outcome: 'ready'
         })
 
-        expect(mocks.refreshSupabaseSession).not.toHaveBeenCalled()
         expect(mocks.runManagedFullSync).not.toHaveBeenCalled()
         expect(mocks.ensurePwaDatabase).toHaveBeenCalledOnce()
     })
@@ -176,10 +147,28 @@ describe('offline preparation', () => {
             cachedAssets: 20,
             storagePersisted: true,
             storageUsage: 1,
-            storageQuota: 2,
-            offlineLeaseExpiresAt: 123456
+            storageQuota: 2
         }))
 
         await expect(getOfflineReadinessSnapshot(user, 'cloud')).resolves.toMatchObject({ ready: false })
+    })
+
+    it('accepts a matching legacy readiness record without requiring an offline lease', async () => {
+        mocks.getAppSetting.mockResolvedValue(JSON.stringify({
+            version: 1,
+            userId: 'user-1',
+            workspaceId: 'workspace-1',
+            dataMode: 'cloud',
+            preparedAt: '2026-09-08T00:00:00.000Z',
+            dataSyncedAt: '2026-09-08T00:00:00.000Z',
+            shellBuildId: 'build-1',
+            cachedAssets: 30,
+            storagePersisted: true,
+            storageUsage: 1,
+            storageQuota: 2,
+            offlineLeaseExpiresAt: 1
+        }))
+
+        await expect(getOfflineReadinessSnapshot(user, 'cloud')).resolves.toMatchObject({ ready: true })
     })
 })

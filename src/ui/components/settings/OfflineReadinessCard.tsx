@@ -106,7 +106,7 @@ export function OfflineReadinessCard() {
             { phase: 'storage', icon: HardDrive }
         ]
         if (dataMode === 'cloud' || dataMode === 'hybrid') {
-            rows.push({ phase: 'session', icon: ShieldCheck }, { phase: 'data', icon: CloudDownload })
+            rows.push({ phase: 'data', icon: CloudDownload })
         }
         rows.push({ phase: 'database', icon: Database }, { phase: 'shell', icon: CloudDownload })
         return rows
@@ -187,9 +187,6 @@ export function OfflineReadinessCard() {
     const preparedAt = snapshot?.record?.preparedAt
         ? new Date(snapshot.record.preparedAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)
         : null
-    const leaseExpiry = snapshot?.leaseExpiresAt
-        ? new Date(snapshot.leaseExpiresAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)
-        : null
     const usage = formatBytes(snapshot?.record?.storageUsage ?? null)
     const quota = formatBytes(snapshot?.record?.storageQuota ?? null)
 
@@ -231,7 +228,7 @@ export function OfflineReadinessCard() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <StatusItem
                             icon={CloudDownload}
                             label={t('settings.offlineReadiness.appFiles')}
@@ -245,12 +242,6 @@ export function OfflineReadinessCard() {
                             label={t('settings.offlineReadiness.workspaceData')}
                             value={preparedAt ?? t('settings.offlineReadiness.neverPrepared')}
                             ready={Boolean(snapshot?.record)}
-                        />
-                        <StatusItem
-                            icon={ShieldCheck}
-                            label={t('settings.offlineReadiness.offlineAccess')}
-                            value={leaseExpiry ?? t('settings.offlineReadiness.localAccess')}
-                            ready={!snapshot?.leaseBlocked}
                         />
                         <StatusItem
                             icon={HardDrive}

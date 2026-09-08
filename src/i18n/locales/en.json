@@ -112,19 +112,6 @@
     "extraDaysPendingDescription_one": "{{count}} temporary day is active. Its use is tracked continuously, and only the unused remainder will be deducted when the next subscription is approved.",
     "extraDaysPendingDescription_other": "{{count}} temporary days are active. Their use is tracked continuously, and only the unused remainder will be deducted when the next subscription is approved."
   },
-  "offlineLease": {
-    "title": "Connect to the internet to continue",
-    "reasons": {
-      "expired": "This device has been offline for more than 7 days.",
-      "missing": "This device needs one successful online session before offline use can continue.",
-      "clockRollback": "Check the device date and time, then reconnect to the internet."
-    },
-    "errors": {
-      "offline": "No internet connection detected. Connect and try again."
-    },
-    "retry": "Try again",
-    "checking": "Checking..."
-  },
   "notifications": {
     "tabs": {
       "all": "All",
@@ -2915,8 +2902,6 @@
       "incomplete": "Preparation required",
       "workspaceData": "Workspace data",
       "neverPrepared": "Never fully prepared",
-      "offlineAccess": "Offline access",
-      "localAccess": "Available locally",
       "storageProtection": "Android storage protection",
       "protected": "Protected from automatic cleanup",
       "notProtected": "Android may remove stored data",
@@ -2932,14 +2917,12 @@
       "unprotectedDescription": "Atlas is ready offline, but Android did not grant protected storage and may remove the saved data when storage is low.",
       "phases": {
         "storage": "Request protected device storage",
-        "session": "Verify online access",
         "data": "Download permitted workspace records",
         "database": "Verify the local database",
         "shell": "Download and verify the complete application"
       },
       "errors": {
         "offline": "An internet connection is required to prepare Atlas for offline use.",
-        "session-required": "Your online session could not be verified. Sign in again while connected, then retry.",
         "data-sync-failed": "Some workspace records could not be synchronized. Nothing currently stored on this device was removed.",
         "database-unavailable": "Atlas could not verify writable local storage on this device.",
         "shell-unavailable": "The complete application could not be downloaded. The existing installed version remains unchanged.",
