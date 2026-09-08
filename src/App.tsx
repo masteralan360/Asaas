@@ -223,6 +223,9 @@ const Loans = lazy(() =>
 const Installments = lazy(() =>
   import("@/ui/pages/Loans").then((m) => ({ default: m.Installments })),
 );
+const InstallmentSales = lazy(() =>
+  import("@/ui/pages/Loans").then((m) => ({ default: m.InstallmentSales })),
+);
 const BusinessPartners = lazy(() =>
   import("@/ui/pages/BusinessPartners").then((m) => ({
     default: m.BusinessPartners,
@@ -1471,6 +1474,17 @@ function App() {
                           </Layout>
                         </ProtectedRoute>
                       </Route>
+                      <Route path="/instant-pos/table/:tableNumber">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="instant_pos"
+                          requiredPermission="instantPos.access"
+                        >
+                          <Layout>
+                            <InstantPOS />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
                       <Route path="/instant-pos">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
@@ -2315,6 +2329,17 @@ function App() {
                         >
                           <Layout>
                             <Installments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/installments/sales">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="installments"
+                          requiredPermission="installments.access"
+                        >
+                          <Layout>
+                            <InstallmentSales />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

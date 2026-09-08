@@ -3184,6 +3184,7 @@
     "unsnooze": "لابردنی دواخستن",
     "completedPercent": "تەواوبووە",
     "frequencies": {
+      "daily": "ڕۆژانە",
       "weekly": "هەفتانە",
       "biweekly": "دوو هەفتە جارێک",
       "monthly": "مانگانە"
@@ -4483,6 +4484,7 @@
         "loanReceived": "قەرزی وەرگیراو",
         "loanRepaymentReceived": "پارەدانی قەرز وەرگیراو",
         "loanRepaymentMade": "پارەدانی قەرز دراو",
+        "installmentSale": "فرۆشتنی قیست",
         "paymentReversal": "پاشگەزکردنەوەی پارەدان",
         "orderReturnRefund": "گەڕاندنەوەی پارەی داواکاری",
         "loanRepaymentRefund": "گەڕاندنەوەی پارەدانی قەرز",
@@ -8462,6 +8464,60 @@
       "qicard": "QiCard",
       "zaincash": "ZainCash",
       "fastpay": "FastPay"
+    }
+  },
+  "installmentSales": {
+    "title": "فرۆشتنی قیست",
+    "subtitle": "فرۆشتنی دەرەوەی کاتالۆگ بە قیستی دیاریکراو بۆ کڕیار و بەدواداچوونی قازانجی چاوەڕوانکراو.",
+    "createSale": "فرۆشتنی قیستی نوێ",
+    "createTitle": "دروستکردنی فرۆشتنی قیست",
+    "confirmSale": "پەسەندکردنی فرۆشتن",
+    "customer": "کڕیار",
+    "description": "وەسفی فرۆشتن",
+    "currency": "دراو",
+    "acquisitionCost": "تێچووی بەدەستهێنان",
+    "totalSalePrice": "کۆی نرخی فرۆشتن",
+    "grossProfit": "قازانجی گشتی",
+    "pricingBreakdown": "وردەکاری نرخ",
+    "recordDownPayment": "ئێستا پارەی پێشەکی تۆمار بکە",
+    "downPayment": "پارەی پێشەکی",
+    "installmentCount": "ژمارەی قیست دوای پێشەکی",
+    "frequency": "دووبارەبوونەوە",
+    "firstDueDate": "یەکەم بەرواری قیست",
+    "customerReceivable": "داواکاری لە کڕیار",
+    "overdueSales": "فرۆشتنە دواخراوەکان",
+    "expectedGrossProfit": "قازانجی گشتی چاوەڕوانکراو",
+    "search": "گەڕان لە فرۆشتنەکان",
+    "saleNo": "ژمارەی فرۆشتن",
+    "nextDueDate": "دواوەختی داهاتوو",
+    "status": "دۆخ",
+    "installment": "قیست",
+    "dueDate": "بەرواری قیست",
+    "planned": "پلانکراو",
+    "paid": "دراو",
+    "balance": "باڵانس",
+    "collectCustomer": "وەرگرتنی پارەی کڕیار",
+    "paymentBalance": "باڵانسی ماوە",
+    "paymentDate": "بەرواری پارەدان",
+    "customerPayments": "پارەدانەکانی کڕیار",
+    "cancelSale": "هەڵوەشاندنەوەی فرۆشتن",
+    "cancelTitle": "هەڵوەشاندنەوەی فرۆشتنی قیست",
+    "cancellationReason": "هۆی هەڵوەشاندنەوە",
+    "cancellationWarning": "ئەمە هەموو فرۆشتنەکە هەڵدەوەشێنێتەوە و بۆ هەر پارەدانێکی تۆمارکراوی کڕیار تۆماری پێچەوانە دروست دەکات.",
+    "confirmCancellation": "هەڵوەشاندنەوە و پێچەوانەکردنەوەی پارەدانەکان",
+    "statuses": {
+      "active": "چالاک",
+      "overdue": "دواخراو",
+      "completed": "تەواو",
+      "cancelled": "هەڵوەشاوە"
+    },
+    "messages": {
+      "created": "فرۆشتنی قیست دروست کرا.",
+      "createFailed": "نەتوانرا فرۆشتنی قیست دروست بکرێت.",
+      "paymentRecorded": "پارەدان تۆمار کرا.",
+      "paymentFailed": "نەتوانرا پارەدان تۆمار بکرێت.",
+      "cancelled": "فرۆشتنی قیست هەڵوەشایەوە و پارەدانەکان پێچەوانە کرانەوە.",
+      "cancelFailed": "نەتوانرا فرۆشتنی قیست هەڵبوەشێندرێتەوە."
     }
   }
 }

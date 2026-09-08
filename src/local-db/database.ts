@@ -70,6 +70,9 @@ import type {
   Loan,
   LoanInstallment,
   LoanPayment,
+  InstallmentSale,
+  InstallmentSaleInstallment,
+  InstallmentSalePayment,
   PaymentTransaction,
   PaymentAccount,
   PaymentAccountBalance,
@@ -441,7 +444,10 @@ export class AtlasDatabase extends Dexie {
   delivery_shipment_cod_adjustment_requests!: EntityTable<DeliveryShipmentCodAdjustmentRequest, 'id'>
   delivery_shipment_cod_corrections!: EntityTable<DeliveryShipmentCodCorrection, 'id'>
   delivery_shipment_recipient_payout_corrections!: EntityTable<DeliveryShipmentRecipientPayoutCorrection, 'id'>
-  delivery_shipment_recipient_payout_adjustment_requests!: EntityTable<DeliveryShipmentRecipientPayoutAdjustmentRequest, 'id'>
+  delivery_shipment_recipient_payout_adjustment_requests!: EntityTable<
+    DeliveryShipmentRecipientPayoutAdjustmentRequest,
+    'id'
+  >
   delivery_runs!: EntityTable<DeliveryRun, 'id'>
   delivery_run_items!: EntityTable<DeliveryRunItem, 'id'>
   delivery_settlements!: EntityTable<DeliverySettlement, 'id'>
@@ -465,6 +471,9 @@ export class AtlasDatabase extends Dexie {
   loans!: EntityTable<Loan, 'id'>
   loan_installments!: EntityTable<LoanInstallment, 'id'>
   loan_payments!: EntityTable<LoanPayment, 'id'>
+  installment_sales!: EntityTable<InstallmentSale, 'id'>
+  installment_sale_installments!: EntityTable<InstallmentSaleInstallment, 'id'>
+  installment_sale_payments!: EntityTable<InstallmentSalePayment, 'id'>
   payment_transactions!: EntityTable<PaymentTransaction, 'id'>
   payment_accounts!: EntityTable<PaymentAccount, 'id'>
   payment_account_balances!: EntityTable<PaymentAccountBalance, 'id'>
@@ -1064,7 +1073,7 @@ export class AtlasDatabase extends Dexie {
             const phoneMatch = customerPhone && customerPhone === supplierPhone
 
             if (!exactName && !phoneMatch) {
-                continue
+              continue
             }
 
             const confidence = exactName && phoneMatch ? 0.98 : exactName ? 0.86 : 0.78
@@ -1073,10 +1082,7 @@ export class AtlasDatabase extends Dexie {
               continue
             }
 
-            const reasons = [
-              exactName ? 'matching name' : '',
-              phoneMatch ? 'matching phone' : ''
-            ].filter(Boolean)
+            const reasons = [exactName ? 'matching name' : '', phoneMatch ? 'matching phone' : ''].filter(Boolean)
 
             candidateMap.set(candidateId, {
               id: candidateId,
@@ -2306,8 +2312,9 @@ export class AtlasDatabase extends Dexie {
                   const advanceDueDate = (index: number) => {
                     if (!firstDueDate) return null
                     const base = new Date(`${firstDueDate}T00:00:00.000Z`)
-                    if (frequency === 'weekly' || frequency === 'biweekly') {
-                      base.setUTCDate(base.getUTCDate() + index * (frequency === 'weekly' ? 7 : 14))
+                    if (frequency === 'daily' || frequency === 'weekly' || frequency === 'biweekly') {
+                      const interval = frequency === 'daily' ? 1 : frequency === 'weekly' ? 7 : 14
+                      base.setUTCDate(base.getUTCDate() + index * interval)
                       return base.toISOString().slice(0, 10)
                     }
                     const targetMonth = base.getUTCMonth() + index
@@ -3064,14 +3071,17 @@ export class AtlasDatabase extends Dexie {
       })
 
     this.version(110).stores({
-      expense_categories: 'id, workspaceId, name, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+updatedAt]',
+      expense_categories:
+        'id, workspaceId, name, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+updatedAt]',
       expense_series: 'id, workspaceId, categoryId, recurrence, startMonth, endMonth, isDeleted'
     })
 
     this.version(111)
       .stores({
-        suppliers: 'id, partnerName, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
-        customers: 'id, partnerName, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        suppliers:
+          'id, partnerName, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        customers:
+          'id, partnerName, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
         business_partners:
           'id, partnerName, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, priceBookId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude'
       })
@@ -3084,22 +3094,27 @@ export class AtlasDatabase extends Dexie {
         const migrateRows = async (tableName: 'business_partners' | 'customers' | 'suppliers') => {
           const rows = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>
           if (rows.length > 0) {
-            await tx.table(tableName).bulkPut(rows.map((row) => ({
-              ...row,
-              partnerName: toPartnerName(row)
-            })))
+            await tx.table(tableName).bulkPut(
+              rows.map((row) => ({
+                ...row,
+                partnerName: toPartnerName(row)
+              }))
+            )
           }
         }
-        const migrateQueuedPayloads = async (tableName: 'offline_mutations' | 'syncQueue', field: 'payload' | 'data') => {
+        const migrateQueuedPayloads = async (
+          tableName: 'offline_mutations' | 'syncQueue',
+          field: 'payload' | 'data'
+        ) => {
           const rows = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>
           const migrated = rows.map((row) => {
             const entityType = row.entityType
             const payload = row[field]
             if (
-              (entityType !== 'business_partners' && entityType !== 'customers' && entityType !== 'suppliers')
-              || !payload
-              || typeof payload !== 'object'
-              || Array.isArray(payload)
+              (entityType !== 'business_partners' && entityType !== 'customers' && entityType !== 'suppliers') ||
+              !payload ||
+              typeof payload !== 'object' ||
+              Array.isArray(payload)
             ) {
               return row
             }
@@ -3129,8 +3144,10 @@ export class AtlasDatabase extends Dexie {
 
     this.version(112)
       .stores({
-        suppliers: 'id, partnerName, workspaceId, businessPartnerId, phone, defaultCurrency, updatedAt, isDeleted, syncStatus',
-        customers: 'id, partnerName, workspaceId, businessPartnerId, phone, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        suppliers:
+          'id, partnerName, workspaceId, businessPartnerId, phone, defaultCurrency, updatedAt, isDeleted, syncStatus',
+        customers:
+          'id, partnerName, workspaceId, businessPartnerId, phone, defaultCurrency, updatedAt, isDeleted, syncStatus',
         business_partners:
           'id, partnerName, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, priceBookId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId, latitude, longitude'
       })
@@ -3151,10 +3168,10 @@ export class AtlasDatabase extends Dexie {
             const entityType = row.entityType
             const payload = row[field]
             if (
-              (entityType !== 'business_partners' && entityType !== 'customers' && entityType !== 'suppliers')
-              || !payload
-              || typeof payload !== 'object'
-              || Array.isArray(payload)
+              (entityType !== 'business_partners' && entityType !== 'customers' && entityType !== 'suppliers') ||
+              !payload ||
+              typeof payload !== 'object' ||
+              Array.isArray(payload)
             ) {
               return row
             }
@@ -3190,9 +3207,10 @@ export class AtlasDatabase extends Dexie {
       })
       .upgrade(async (tx) => {
         const paymentTransactions = (await tx.table('payment_transactions').toArray()) as PaymentTransaction[]
-        const retiredPayments = paymentTransactions.filter((payment) =>
-          (payment.sourceModule as string) === 'travel_agency'
-          || (payment.sourceType as string) === 'travel_agency_sale'
+        const retiredPayments = paymentTransactions.filter(
+          (payment) =>
+            (payment.sourceModule as string) === 'travel_agency' ||
+            (payment.sourceType as string) === 'travel_agency_sale'
         )
         const retiredPaymentIds = new Set(retiredPayments.map((payment) => payment.id))
 
@@ -3203,8 +3221,8 @@ export class AtlasDatabase extends Dexie {
           return [updatedWorkspace]
         })
         const workspacePermissions = (await tx.table('workspace_permissions').toArray()) as WorkspacePermission[]
-        const retiredPermissions = workspacePermissions.filter((permission) =>
-          permission.module === 'travelAgency' || permission.key.startsWith('travelAgency.')
+        const retiredPermissions = workspacePermissions.filter(
+          (permission) => permission.module === 'travelAgency' || permission.key.startsWith('travelAgency.')
         )
         const retiredPermissionIds = new Set(retiredPermissions.map((permission) => permission.id))
 
@@ -3214,14 +3232,16 @@ export class AtlasDatabase extends Dexie {
         const isRetiredPayload = (payload: unknown) => {
           if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
           const value = payload as Record<string, unknown>
-          return value.sourceModule === 'travel_agency'
-            || value.source_module === 'travel_agency'
-            || value.sourceType === 'travel_agency_sale'
-            || value.source_type === 'travel_agency_sale'
+          return (
+            value.sourceModule === 'travel_agency' ||
+            value.source_module === 'travel_agency' ||
+            value.sourceType === 'travel_agency_sale' ||
+            value.source_type === 'travel_agency_sale'
+          )
         }
         const isRetiredQueueRow = (row: Record<string, unknown>, field: 'payload' | 'data') =>
-          row.entityType === 'travel_agency_sales'
-          || (row.entityType === 'payment_transactions' && isRetiredPayload(row[field]))
+          row.entityType === 'travel_agency_sales' ||
+          (row.entityType === 'payment_transactions' && isRetiredPayload(row[field]))
         const stripRetiredWorkspaceFlag = (row: Record<string, unknown>, field: 'payload' | 'data') => {
           if (row.entityType !== 'workspaces') return null
           const value = row[field]
@@ -3230,7 +3250,9 @@ export class AtlasDatabase extends Dexie {
           return { ...row, [field]: updatedPayload }
         }
 
-        const paymentAccountMovements = (await tx.table('payment_account_movements').toArray()) as PaymentAccountMovement[]
+        const paymentAccountMovements = (await tx
+          .table('payment_account_movements')
+          .toArray()) as PaymentAccountMovement[]
         const retiredMovements = paymentAccountMovements.filter((movement) =>
           retiredPaymentIds.has(movement.paymentTransactionId)
         )
@@ -3246,16 +3268,19 @@ export class AtlasDatabase extends Dexie {
           const key = `${balance.workspaceId}:${balance.accountId}:${balance.currency}`
           const delta = balanceDeltas.get(key)
           if (!delta) return []
-          return [{
-            ...balance,
-            balanceAmount: balance.balanceAmount - delta,
-            updatedAt: new Date().toISOString(),
-            version: balance.version + 1
-          }]
+          return [
+            {
+              ...balance,
+              balanceAmount: balance.balanceAmount - delta,
+              updatedAt: new Date().toISOString(),
+              version: balance.version + 1
+            }
+          ]
         })
 
         if (workspacesToUpdate.length) await tx.table('workspaces').bulkPut(workspacesToUpdate)
-        if (retiredPermissions.length) await tx.table('workspace_permissions').bulkDelete(retiredPermissions.map((permission) => permission.id))
+        if (retiredPermissions.length)
+          await tx.table('workspace_permissions').bulkDelete(retiredPermissions.map((permission) => permission.id))
         if (balancesToUpdate.length) {
           await tx.table('payment_account_balances').bulkPut(balancesToUpdate)
         }
@@ -3269,16 +3294,22 @@ export class AtlasDatabase extends Dexie {
         const retiredMovementIds = new Set(retiredMovements.map((movement) => movement.id))
         const retiredBalanceIds = new Set(balancesToUpdate.map((balance) => balance.id))
         const removeOfflineMutationIds = offlineMutations
-          .filter((row) => isRetiredQueueRow(row, 'payload')
-            || (row.entityType === 'workspace_permissions' && retiredPermissionIds.has(String(row.entityId)))
-            || (row.entityType === 'payment_account_movements' && retiredMovementIds.has(String(row.entityId)))
-            || (row.entityType === 'payment_account_balances' && retiredBalanceIds.has(String(row.entityId))))
+          .filter(
+            (row) =>
+              isRetiredQueueRow(row, 'payload') ||
+              (row.entityType === 'workspace_permissions' && retiredPermissionIds.has(String(row.entityId))) ||
+              (row.entityType === 'payment_account_movements' && retiredMovementIds.has(String(row.entityId))) ||
+              (row.entityType === 'payment_account_balances' && retiredBalanceIds.has(String(row.entityId)))
+          )
           .map((row) => String(row.id))
         const removeSyncQueueIds = syncQueue
-          .filter((row) => isRetiredQueueRow(row, 'data')
-            || (row.entityType === 'workspace_permissions' && retiredPermissionIds.has(String(row.entityId)))
-            || (row.entityType === 'payment_account_movements' && retiredMovementIds.has(String(row.entityId)))
-            || (row.entityType === 'payment_account_balances' && retiredBalanceIds.has(String(row.entityId))))
+          .filter(
+            (row) =>
+              isRetiredQueueRow(row, 'data') ||
+              (row.entityType === 'workspace_permissions' && retiredPermissionIds.has(String(row.entityId))) ||
+              (row.entityType === 'payment_account_movements' && retiredMovementIds.has(String(row.entityId))) ||
+              (row.entityType === 'payment_account_balances' && retiredBalanceIds.has(String(row.entityId)))
+          )
           .map((row) => String(row.id))
         const offlineMutationsToUpdate = offlineMutations
           .map((row) => stripRetiredWorkspaceFlag(row, 'payload'))
@@ -3307,13 +3338,13 @@ export class AtlasDatabase extends Dexie {
 
     this.version(118)
       .stores({
-        delivery_shipment_settlement_obligations: null,
+        delivery_shipment_settlement_obligations: null
       })
       .upgrade((tx) =>
         Promise.all([
           tx.table('offline_mutations').where('entityType').equals('delivery_shipment_settlement_obligations').delete(),
-          tx.table('syncQueue').where('entityType').equals('delivery_shipment_settlement_obligations').delete(),
-        ]),
+          tx.table('syncQueue').where('entityType').equals('delivery_shipment_settlement_obligations').delete()
+        ])
       )
 
     this.version(119).stores({
@@ -3328,7 +3359,21 @@ export class AtlasDatabase extends Dexie {
 
     this.version(121).stores({
       restaurant_table_settings: 'id, workspaceId, enabled, updatedAt, isDeleted, syncStatus, [workspaceId+enabled]',
-      restaurant_pos_tickets: 'id, workspaceId, tableNumber, status, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+tableNumber], [workspaceId+status], [workspaceId+updatedAt]'
+      restaurant_pos_tickets:
+        'id, workspaceId, tableNumber, status, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+tableNumber], [workspaceId+status], [workspaceId+updatedAt]'
+    })
+
+    this.version(122).stores({
+      installment_sales:
+        'id, workspaceId, saleNo, customerBusinessPartnerId, status, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+createdAt], [workspaceId+customerBusinessPartnerId]',
+      installment_sale_installments:
+        'id, workspaceId, installmentSaleId, dueDate, status, updatedAt, isDeleted, syncStatus, [installmentSaleId+installmentNo], [workspaceId+installmentSaleId]',
+      installment_sale_payments:
+        'id, workspaceId, installmentSaleId, installmentId, paidAt, updatedAt, isDeleted, syncStatus, [workspaceId+installmentSaleId]'
+    })
+
+    this.version(123).stores({
+      installment_sale_supplier_payments: null
     })
 
     this.registerLocalModeSqliteAuthority()
@@ -3486,6 +3531,9 @@ export class AtlasDatabase extends Dexie {
       'loans',
       'loan_installments',
       'loan_payments',
+      'installment_sales',
+      'installment_sale_installments',
+      'installment_sale_payments',
       'payment_transactions',
       'payment_accounts',
       'payment_account_balances',

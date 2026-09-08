@@ -92,12 +92,15 @@ function loadTickets(): InstantPosTicket[] {
         if (!raw) return []
         const parsed = JSON.parse(raw)
         return Array.isArray(parsed)
-            ? parsed.map((ticket: InstantPosTicket) => ({
-                ...ticket,
-                status: (ticket as InstantPosTicket & { status?: string }).status === 'paid'
+            ? parsed.map((ticket: InstantPosTicket) => {
+                const storedStatus = (ticket as { status?: unknown }).status
+                return {
+                    ...ticket,
+                    status: storedStatus === 'paid'
                     ? 'served'
                     : ticket.status
-            }))
+                }
+            })
             : []
     } catch {
         return []

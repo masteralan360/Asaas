@@ -1,0 +1,376 @@
+import "fake-indexeddb/auto";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+
+import { setNetworkStatus } from "@/lib/network";
+import {
+  clearWorkspaceModeSnapshot,
+  writeWorkspaceModeSnapshot,
+} from "@/workspace/workspaceMode";
+
+import { db } from "./database";
+
+const WORKSPACE_ID = "00000000-0000-4000-8000-000000000701";
+
+let createBusinessPartner: typeof import("./businessPartners").createBusinessPartner;
+let createInstallmentSale: typeof import("./installmentSales").createInstallmentSale;
+let recordInstallmentSaleCustomerPayment: typeof import("./installmentSales").recordInstallmentSaleCustomerPayment;
+let buildInstallmentSaleSchedule: typeof import("./installmentSales").buildInstallmentSaleSchedule;
+let cancelInstallmentSale: typeof import("./installmentSales").cancelInstallmentSale;
+let savePaymentAccount: typeof import("./paymentAccounts").savePaymentAccount;
+
+function installBrowserStorage() {
+  const values = new Map<string, string>();
+  const storage = {
+    get length() {
+      return values.size;
+    },
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+    clear: () => values.clear(),
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: storage,
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: storage,
+      sessionStorage: storage,
+      URL,
+      location: { origin: "http://localhost", hash: "", pathname: "/" },
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      visibilityState: "visible",
+      dir: "ltr",
+      documentElement: { lang: "en", dir: "ltr" },
+      head: { appendChild: () => undefined },
+      createElement: () => ({
+        setAttribute: () => undefined,
+        appendChild: () => undefined,
+      }),
+      createTextNode: () => ({}),
+      getElementsByTagName: () => [],
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    },
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: false },
+  });
+  Object.defineProperty(globalThis, "DOMMatrix", {
+    configurable: true,
+    value: class DOMMatrix {},
+  });
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: () => "blob:test",
+  });
+}
+
+describe("installment sales", () => {
+  beforeAll(async () => {
+    installBrowserStorage();
+    ({ createBusinessPartner } = await import("./businessPartners"));
+    ({
+      createInstallmentSale,
+      recordInstallmentSaleCustomerPayment,
+      buildInstallmentSaleSchedule,
+      cancelInstallmentSale,
+    } = await import("./installmentSales"));
+    ({ savePaymentAccount } = await import("./paymentAccounts"));
+  }, 30_000);
+
+  beforeEach(async () => {
+    installBrowserStorage();
+    await db.delete();
+    await db.open();
+    setNetworkStatus(true);
+    writeWorkspaceModeSnapshot({
+      workspaceId: WORKSPACE_ID,
+      dataMode: "local",
+    });
+  });
+
+  afterEach(() => {
+    clearWorkspaceModeSnapshot(WORKSPACE_ID);
+    setNetworkStatus(true);
+  });
+
+  afterAll(async () => {
+    await db.delete();
+    await db.open();
+  });
+
+  it("uses the selected first due date and puts the IQD rounding remainder on the final daily installment", () => {
+    expect(
+      buildInstallmentSaleSchedule(1_300_000, "iqd", 3, "daily", "2026-09-08"),
+    ).toEqual([
+      { installmentNo: 1, dueDate: "2026-09-08", plannedAmount: 433_333 },
+      { installmentNo: 2, dueDate: "2026-09-09", plannedAmount: 433_333 },
+      { installmentNo: 3, dueDate: "2026-09-10", plannedAmount: 433_334 },
+    ]);
+  });
+
+  it("creates a customer receivable and records every collection through payment transactions", async () => {
+    const customer = await createBusinessPartner(WORKSPACE_ID, {
+      partnerName: "Customer A",
+      phone: "07500000001",
+      defaultCurrency: "iqd",
+      creditLimit: 0,
+      role: "customer",
+    });
+    const account = await savePaymentAccount(WORKSPACE_ID, {
+      name: "Sale drawer",
+      accountType: "cash_drawer",
+      openingBalances: [{ currency: "iqd", amount: 100_000 }],
+    });
+
+    const created = await createInstallmentSale(WORKSPACE_ID, {
+      customerBusinessPartnerId: customer.id,
+      description: "One-off device bundle",
+      currency: "iqd",
+      acquisitionCost: 1_000_000,
+      totalSalePrice: 1_500_000,
+      downPaymentAmount: 200_000,
+      installmentCount: 3,
+      installmentFrequency: "daily",
+      firstDueDate: "2026-09-08",
+      downPaymentMethod: "cash",
+      downPaymentAccountId: account.id,
+      downPaymentAccountNameSnapshot: account.name,
+    });
+
+    expect(created.sale).toMatchObject({
+      grossProfit: 500_000,
+      customerPaidAmount: 200_000,
+      customerBalanceAmount: 1_300_000,
+    });
+    expect(created.installments.map((row) => row.plannedAmount)).toEqual([
+      433_333, 433_333, 433_334,
+    ]);
+    expect(
+      await db.payment_transactions
+        .where("workspaceId")
+        .equals(WORKSPACE_ID)
+        .toArray(),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "installment_sale_down_payment",
+          direction: "incoming",
+          amount: 200_000,
+        }),
+      ]),
+    );
+
+    const afterDownPaymentCustomer = await db.business_partners.get(
+      customer.id,
+    );
+    expect(afterDownPaymentCustomer?.receivableBalance).toBe(1_300_000);
+
+    await recordInstallmentSaleCustomerPayment(WORKSPACE_ID, {
+      installmentSaleId: created.sale.id,
+      installmentId: created.installments[0].id,
+      amount: 300_000,
+      paymentMethod: "cash",
+      accountId: account.id,
+      accountNameSnapshot: account.name,
+    });
+    const updatedSale = await db.installment_sales.get(created.sale.id);
+    const updatedSchedule = await db.installment_sale_installments
+      .where("installmentSaleId")
+      .equals(created.sale.id)
+      .sortBy("installmentNo");
+    expect(updatedSale).toMatchObject({
+      customerPaidAmount: 500_000,
+      customerBalanceAmount: 1_000_000,
+    });
+    expect(updatedSchedule[0]).toMatchObject({
+      paidAmount: 300_000,
+      balanceAmount: 133_333,
+      status: "partial",
+    });
+    expect(
+      await db.payment_transactions
+        .where("workspaceId")
+        .equals(WORKSPACE_ID)
+        .toArray(),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "installment_sale_installment",
+          direction: "incoming",
+          amount: 300_000,
+        }),
+      ]),
+    );
+    const saleTransactions = (
+      await db.payment_transactions
+        .where("workspaceId")
+        .equals(WORKSPACE_ID)
+        .toArray()
+    ).filter((transaction) => transaction.sourceModule === "installment_sales");
+    expect(
+      await db.payment_account_movements
+        .where("accountId")
+        .equals(account.id)
+        .toArray(),
+    ).toEqual(
+      expect.arrayContaining(
+        saleTransactions.map((transaction) =>
+          expect.objectContaining({
+            paymentTransactionId: transaction.id,
+            deltaAmount: transaction.amount,
+          }),
+        ),
+      ),
+    );
+    expect(
+      await db.payment_account_balances
+        .where("[accountId+currency]")
+        .equals([account.id, "iqd"])
+        .first(),
+    ).toMatchObject({ balanceAmount: 600_000 });
+  });
+
+  it("rejects prices below cost and customer collections above the outstanding balance", async () => {
+    const customer = await createBusinessPartner(WORKSPACE_ID, {
+      partnerName: "Customer B",
+      phone: "07500000003",
+      defaultCurrency: "iqd",
+      creditLimit: 0,
+      role: "customer",
+    });
+    await expect(
+      createInstallmentSale(WORKSPACE_ID, {
+        customerBusinessPartnerId: customer.id,
+        description: "Invalid",
+        currency: "iqd",
+        acquisitionCost: 100,
+        totalSalePrice: 99,
+        installmentCount: 1,
+        installmentFrequency: "monthly",
+        firstDueDate: "2026-10-01",
+      }),
+    ).rejects.toThrow("Sale price cannot be less than acquisition cost");
+
+    const { sale } = await createInstallmentSale(WORKSPACE_ID, {
+      customerBusinessPartnerId: customer.id,
+      description: "Valid",
+      currency: "iqd",
+      acquisitionCost: 100,
+      totalSalePrice: 150,
+      installmentCount: 1,
+      installmentFrequency: "monthly",
+      firstDueDate: "2026-10-01",
+    });
+    await expect(
+      recordInstallmentSaleCustomerPayment(WORKSPACE_ID, {
+        installmentSaleId: sale.id,
+        amount: 151,
+        paymentMethod: "cash",
+      }),
+    ).rejects.toThrow("Payment amount cannot exceed the customer balance");
+    expect(
+      (await db.installment_sales.get(sale.id))?.customerBalanceAmount,
+    ).toBe(150);
+    expect(
+      await db.installment_sale_payments
+        .where("installmentSaleId")
+        .equals(sale.id)
+        .count(),
+    ).toBe(0);
+  });
+
+  it("cancels a financially active sale by posting immutable customer-payment reversals", async () => {
+    const customer = await createBusinessPartner(WORKSPACE_ID, {
+      partnerName: "Customer C",
+      phone: "07500000005",
+      defaultCurrency: "iqd",
+      creditLimit: 0,
+      role: "customer",
+    });
+    const { sale, installments } = await createInstallmentSale(WORKSPACE_ID, {
+      customerBusinessPartnerId: customer.id,
+      description: "Cancelled sale",
+      currency: "iqd",
+      acquisitionCost: 100,
+      totalSalePrice: 150,
+      downPaymentAmount: 20,
+      installmentCount: 2,
+      installmentFrequency: "weekly",
+      firstDueDate: "2026-10-01",
+      downPaymentMethod: "cash",
+    });
+    await recordInstallmentSaleCustomerPayment(WORKSPACE_ID, {
+      installmentSaleId: sale.id,
+      installmentId: installments[0].id,
+      amount: 40,
+      paymentMethod: "cash",
+    });
+    await cancelInstallmentSale(WORKSPACE_ID, sale.id, {
+      reason: "Customer returned the item",
+      cancelledBy: "user-1",
+    });
+
+    expect(await db.installment_sales.get(sale.id)).toMatchObject({
+      status: "cancelled",
+      customerPaidAmount: 0,
+      customerBalanceAmount: 0,
+      cancellationReason: "Customer returned the item",
+    });
+    expect(
+      await db.installment_sale_installments
+        .where("installmentSaleId")
+        .equals(sale.id)
+        .toArray(),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "cancelled", balanceAmount: 0 }),
+      ]),
+    );
+    const transactions = await db.payment_transactions
+      .where("workspaceId")
+      .equals(WORKSPACE_ID)
+      .toArray();
+    expect(
+      transactions.filter((item) => item.reversalOfTransactionId),
+    ).toHaveLength(2);
+    expect(transactions.filter((item) => item.amount < 0)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "installment_sale_down_payment",
+          amount: -20,
+        }),
+        expect.objectContaining({
+          sourceType: "installment_sale_installment",
+          amount: -40,
+        }),
+      ]),
+    );
+    expect(
+      (await db.business_partners.get(customer.id))?.receivableBalance,
+    ).toBe(0);
+  });
+});

@@ -1503,6 +1503,7 @@
         "loanReceived": "Loan received",
         "loanRepaymentReceived": "Loan repayment received",
         "loanRepaymentMade": "Loan repayment made",
+        "installmentSale": "Installment sale",
         "paymentReversal": "Payment reversal",
         "orderReturnRefund": "Order return refund",
         "loanRepaymentRefund": "Loan repayment refund",
@@ -4523,6 +4524,7 @@
     "unsnooze": "Un-snooze",
     "completedPercent": "completed",
     "frequencies": {
+      "daily": "Daily",
       "weekly": "Weekly",
       "biweekly": "Biweekly",
       "monthly": "Monthly"
@@ -8658,6 +8660,60 @@
       "qicard": "QiCard",
       "zaincash": "ZainCash",
       "fastpay": "FastPay"
+    }
+  },
+  "installmentSales": {
+    "title": "Installment Sales",
+    "subtitle": "Off-catalog sales with fixed customer installments and expected profit tracking.",
+    "createSale": "New installment sale",
+    "createTitle": "Create installment sale",
+    "confirmSale": "Confirm sale",
+    "customer": "Customer",
+    "description": "Sale description",
+    "currency": "Currency",
+    "acquisitionCost": "Acquisition cost",
+    "totalSalePrice": "Total sale price",
+    "grossProfit": "Gross profit",
+    "pricingBreakdown": "Pricing breakdown",
+    "recordDownPayment": "Record a down payment now",
+    "downPayment": "Down payment",
+    "installmentCount": "Installments after down payment",
+    "frequency": "Frequency",
+    "firstDueDate": "First due date",
+    "customerReceivable": "Customer receivable",
+    "overdueSales": "Overdue sales",
+    "expectedGrossProfit": "Expected gross profit",
+    "search": "Search sales",
+    "saleNo": "Sale no.",
+    "nextDueDate": "Next due",
+    "status": "Status",
+    "installment": "Installment",
+    "dueDate": "Due date",
+    "planned": "Planned",
+    "paid": "Paid",
+    "balance": "Balance",
+    "collectCustomer": "Collect customer payment",
+    "paymentBalance": "Remaining balance",
+    "paymentDate": "Payment date",
+    "customerPayments": "Customer payments",
+    "cancelSale": "Cancel sale",
+    "cancelTitle": "Cancel installment sale",
+    "cancellationReason": "Cancellation reason",
+    "cancellationWarning": "This cancels the complete sale and posts matching reversals for every recorded customer payment.",
+    "confirmCancellation": "Cancel and reverse payments",
+    "statuses": {
+      "active": "Active",
+      "overdue": "Overdue",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "messages": {
+      "created": "Installment sale created.",
+      "createFailed": "Unable to create the installment sale.",
+      "paymentRecorded": "Payment recorded.",
+      "paymentFailed": "Unable to record the payment.",
+      "cancelled": "Installment sale cancelled and payments reversed.",
+      "cancelFailed": "Unable to cancel the installment sale."
     }
   }
 }

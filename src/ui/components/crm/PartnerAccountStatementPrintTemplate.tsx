@@ -83,7 +83,8 @@ function entryLabel(kind: PartnerAccountStatementEntryKind, t: (key: string, opt
         loan_disbursal: t('businessPartners.accountStatement.loanMovement', { defaultValue: 'Loan movement' }),
         loan_repayment: t('businessPartners.accountStatement.loanRepayment', { defaultValue: 'Loan repayment' }),
         agent_commission: t('salesAgentCommissions.title', { defaultValue: 'Sales agent commission' }),
-        delivery_post: t('postService.title', { defaultValue: 'Post Service' })
+        delivery_post: t('postService.title', { defaultValue: 'Post Service' }),
+        installment_sale: t('businessPartners.accountStatement.installmentSale', { defaultValue: 'Installment sale' })
     }
     return labels[kind]
 }

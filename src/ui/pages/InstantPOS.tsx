@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useRoute } from 'wouter'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { addToOfflineMutations, adjustInventoryQuantity, calculateStockBatchUnitCost, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlans, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useProductSelectionAccess, useProducts, useStorages } from '@/local-db'
@@ -294,13 +295,14 @@ function loadTickets(): InstantPosTicket[] {
         const parsed = JSON.parse(raw)
         if (!Array.isArray(parsed)) return []
         return parsed.map((ticket: InstantPosTicket) => {
+            const storedStatus = (ticket as { status?: unknown }).status
             const normalizedItems = (ticket.items || []).map((item) => ({
                 ...item,
                 baseUnitPrice: Number.isFinite(item.baseUnitPrice) ? item.baseUnitPrice : item.unitPrice
             }))
             const normalizedTicket = {
                 ...ticket,
-                status: ticket.status === 'paid' ? 'served' : ticket.status,
+                status: storedStatus === 'paid' ? 'served' : ticket.status,
                 items: normalizedItems
             }
             if (ticket.expiresAt) return normalizedTicket
@@ -827,6 +829,8 @@ export function InstantPOS() {
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
+    const [, navigate] = useLocation()
+    const [hasRestaurantTableRoute, restaurantTableRouteParams] = useRoute('/instant-pos/table/:tableNumber')
     const { features, hasFeature, isLocalMode } = useWorkspace()
     const storages = useStorages(user?.workspaceId)
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
@@ -900,6 +904,39 @@ export function InstantPOS() {
     const [restaurantTicketToClose, setRestaurantTicketToClose] = useState<RestaurantPosTicket | null>(null)
     const [isRestaurantTicketClosing, setIsRestaurantTicketClosing] = useState(false)
     const tickets = restaurantMode ? restaurantTickets : localTickets
+    const routedRestaurantTableNumber = useMemo(() => {
+        const value = Number(restaurantTableRouteParams?.tableNumber)
+        return Number.isInteger(value) && value > 0 ? value : null
+    }, [restaurantTableRouteParams?.tableNumber])
+
+    useEffect(() => {
+        if (!hasRestaurantTableRoute) {
+            if (restaurantMode) {
+                setRestaurantTableNumber(null)
+                setActiveTicketId(null)
+            }
+            return
+        }
+        if (!restaurantTableSettings) return
+        if (!restaurantTableSettings.enabled
+            || !routedRestaurantTableNumber
+            || routedRestaurantTableNumber > restaurantTableSettings.tableCount) {
+            navigate('/instant-pos', { replace: true })
+            return
+        }
+
+        setRestaurantTableNumber(routedRestaurantTableNumber)
+        const ticket = restaurantPosTickets.find((current) => current.tableNumber === routedRestaurantTableNumber)
+        setActiveTicketId(ticket?.id ?? null)
+    }, [hasRestaurantTableRoute, navigate, restaurantMode, restaurantPosTickets, restaurantTableSettings, routedRestaurantTableNumber])
+
+    const openRestaurantTable = useCallback((tableNumber: number) => {
+        navigate(`/instant-pos/table/${tableNumber}`)
+    }, [navigate])
+
+    const returnToRestaurantTableGrid = useCallback(() => {
+        navigate('/instant-pos')
+    }, [navigate])
 
     const persistRestaurantTickets = useCallback((nextTickets: InstantPosTicket[]) => {
         if (!user?.workspaceId) return
@@ -1470,7 +1507,7 @@ export function InstantPOS() {
             const storedTicket = restaurantPosTickets.find((ticket) => ticket.id === activeTicket.id)
             if (storedTicket) {
                 void hardDeleteRestaurantPosTicket(storedTicket, restaurantLiveSyncEnabled)
-                setRestaurantTableNumber(null)
+                returnToRestaurantTableGrid()
                 setActiveTicketId(null)
             }
             return
@@ -1537,7 +1574,7 @@ export function InstantPOS() {
             if (ticket) {
                 await closeRestaurantPosTicket(ticket, restaurantLiveSyncEnabled)
             }
-            setRestaurantTableNumber(null)
+            returnToRestaurantTableGrid()
             setActiveTicketId(null)
             return
         }
@@ -2052,7 +2089,7 @@ export function InstantPOS() {
         try {
             await hardDeleteRestaurantPosTicket(restaurantTicketToClose, restaurantLiveSyncEnabled)
             if (activeTicketId === restaurantTicketToClose.id) {
-                setRestaurantTableNumber(null)
+                returnToRestaurantTableGrid()
                 setActiveTicketId(null)
             }
             setRestaurantTicketToClose(null)
@@ -2085,7 +2122,7 @@ export function InstantPOS() {
                     settlementCurrency,
                     features.iqd_display_preference
                 )}
-                onOpenTable={setRestaurantTableNumber}
+                onOpenTable={openRestaurantTable}
                 onMoveTicket={handleRestaurantTicketMove}
             />
         )
@@ -2112,6 +2149,12 @@ export function InstantPOS() {
                             }) || `Server: ${user?.name || 'Staff'} | Ticket ${activeTicket?.number || '--'}`}
                         </p>
                     </div>
+                    {restaurantMode && restaurantTableNumber !== null && (
+                        <div className="inline-flex h-12 shrink-0 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-sm font-black text-primary">
+                            <Table2 className="h-5 w-5" />
+                            <span>{t('instantPos.table')} {restaurantTableNumber}</span>
+                        </div>
+                    )}
                     <StorageSelector
                         storages={instantPosStorages}
                         selectedStorageId={selectedStorageId}
@@ -2130,7 +2173,7 @@ export function InstantPOS() {
                     <Button
                         onClick={() => {
                             if (restaurantMode) {
-                                setRestaurantTableNumber(null)
+                                returnToRestaurantTableGrid()
                                 setActiveTicketId(null)
                                 return
                             }

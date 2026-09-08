@@ -694,7 +694,7 @@ export interface BusinessPartner extends BaseEntity {
    *
    * The pre-migration `name` and `contactName` values are intentionally not
    * represented here. They remain in storage as historical metadata only.
-  */
+   */
   partnerName: string
   phone?: string
   address?: string
@@ -1958,7 +1958,7 @@ export type LoanDirection = 'lent' | 'borrowed'
 export type LoanOrderType = 'sales' | 'purchase'
 export type LoanStatus = 'active' | 'overdue' | 'completed' | 'cancelled'
 export type InstallmentStatus = 'unpaid' | 'partial' | 'paid' | 'overdue' | 'cancelled'
-export type InstallmentFrequency = 'weekly' | 'biweekly' | 'monthly'
+export type InstallmentFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly'
 export type LoanLinkedPartyType = 'business_partner'
 
 export interface Loan extends BaseEntity {
@@ -2012,6 +2012,54 @@ export interface LoanPayment extends BaseEntity {
   createdBy?: string
 }
 
+/** A generic, off-catalog sale whose customer pays over a fixed schedule. */
+export type InstallmentSaleStatus = 'active' | 'overdue' | 'completed' | 'cancelled'
+
+export interface InstallmentSale extends BaseEntity {
+  saleNo: string
+  customerBusinessPartnerId: string
+  customerNameSnapshot: string
+  description: string
+  notes?: string | null
+  currency: CurrencyCode
+  acquisitionCost: number
+  totalSalePrice: number
+  grossProfit: number
+  downPaymentAmount: number
+  customerPaidAmount: number
+  customerBalanceAmount: number
+  installmentCount: number
+  installmentFrequency: InstallmentFrequency
+  firstDueDate: string
+  nextDueDate?: string | null
+  status: InstallmentSaleStatus
+  cancelledAt?: string | null
+  cancelledBy?: string | null
+  cancellationReason?: string | null
+  createdBy?: string | null
+}
+
+export interface InstallmentSaleInstallment extends BaseEntity {
+  installmentSaleId: string
+  installmentNo: number
+  dueDate: string
+  plannedAmount: number
+  paidAmount: number
+  balanceAmount: number
+  status: InstallmentStatus
+  paidAt?: string | null
+}
+
+export interface InstallmentSalePayment extends BaseEntity {
+  installmentSaleId: string
+  installmentId?: string | null
+  amount: number
+  paymentMethod: WorkspacePaymentMethod
+  paidAt: string
+  note?: string | null
+  createdBy?: string | null
+}
+
 export type PaymentTransactionSourceModule =
   | 'sales'
   | 'loans'
@@ -2026,6 +2074,7 @@ export type PaymentTransactionSourceModule =
   | 'travel_transportation'
   | 'payments'
   | 'payment_accounts'
+  | 'installment_sales'
 export type PaymentTransactionSourceType =
   | 'sale_exchange'
   | 'pos_sale'
@@ -2061,6 +2110,8 @@ export type PaymentTransactionSourceType =
   | 'rental_deposit'
   | 'rental_deposit_refund'
   | 'travel_booking_payment'
+  | 'installment_sale_down_payment'
+  | 'installment_sale_installment'
 export type PaymentTransactionDirection = 'incoming' | 'outgoing'
 
 export interface PaymentTransaction extends BaseEntity {
@@ -2412,6 +2463,9 @@ export interface SyncQueueItem {
     | 'loans'
     | 'loan_installments'
     | 'loan_payments'
+    | 'installment_sales'
+    | 'installment_sale_installments'
+    | 'installment_sale_payments'
     | 'payment_transactions'
     | 'payment_accounts'
     | 'payment_account_balances'
@@ -2630,6 +2684,9 @@ export interface OfflineMutation {
     | 'loans'
     | 'loan_installments'
     | 'loan_payments'
+    | 'installment_sales'
+    | 'installment_sale_installments'
+    | 'installment_sale_payments'
     | 'payment_transactions'
     | 'payment_accounts'
     | 'payment_account_balances'

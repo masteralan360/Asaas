@@ -54,6 +54,7 @@ describe('order installment schedules', () => {
     it('keeps monthly dates in UTC and clamps end-of-month dates', () => {
         expect(addOrderInstallmentDate('2026-01-31', 'monthly', 1)).toBe('2026-02-28')
         expect(addOrderInstallmentDate('2026-01-31', 'monthly', 2)).toBe('2026-03-31')
+        expect(addOrderInstallmentDate('2026-07-01', 'daily', 2)).toBe('2026-07-03')
         expect(addOrderInstallmentDate('2026-07-01', 'weekly', 1)).toBe('2026-07-08')
     })
 

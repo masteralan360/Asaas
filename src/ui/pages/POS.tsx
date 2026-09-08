@@ -195,7 +195,8 @@ function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
         typeof payload.borrowerAddress === 'string' &&
         typeof payload.borrowerNationalId === 'string' &&
         Number.isFinite(Number(payload.installmentCount)) &&
-        (payload.installmentFrequency === 'weekly' ||
+        (payload.installmentFrequency === 'daily' ||
+            payload.installmentFrequency === 'weekly' ||
             payload.installmentFrequency === 'biweekly' ||
             payload.installmentFrequency === 'monthly') &&
         (payload.firstDueDate === null || typeof payload.firstDueDate === 'string')

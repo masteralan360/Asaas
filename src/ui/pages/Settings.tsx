@@ -127,7 +127,9 @@ export function Settings() {
     const [restaurantLiveSyncEnabled, setRestaurantLiveSyncEnabled] = useState(false)
     const [restaurantTableCount, setRestaurantTableCount] = useState('20')
     const [restaurantVipTables, setRestaurantVipTables] = useState<number[]>([])
+    const [isRestaurantTableViewDirty, setIsRestaurantTableViewDirty] = useState(false)
     const [isRestaurantTableViewSaving, setIsRestaurantTableViewSaving] = useState(false)
+    const restaurantSettingsHydrationKeyRef = useRef<string | null>(null)
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const canManageClinicalRegistry = canManageClinicalRegistryType(
         user?.role,
@@ -136,12 +138,15 @@ export function Settings() {
     )
 
     useEffect(() => {
-        if (!restaurantTableSettings) return
+        if (!restaurantTableSettings || isRestaurantTableViewDirty) return
+        const hydrationKey = `${restaurantTableSettings.id}:${restaurantTableSettings.version}:${restaurantTableSettings.updatedAt}`
+        if (restaurantSettingsHydrationKeyRef.current === hydrationKey) return
+        restaurantSettingsHydrationKeyRef.current = hydrationKey
         setRestaurantTableViewEnabled(restaurantTableSettings.enabled)
         setRestaurantLiveSyncEnabled(restaurantTableSettings.liveSyncEnabled)
         setRestaurantTableCount(String(restaurantTableSettings.tableCount))
         setRestaurantVipTables(restaurantTableSettings.vipTableNumbers)
-    }, [restaurantTableSettings])
+    }, [isRestaurantTableViewDirty, restaurantTableSettings])
 
     const saveRestaurantTableView = async () => {
         if (!user?.workspaceId || isRestaurantTableViewSaving) return
@@ -181,6 +186,7 @@ export function Settings() {
                 vipTableNumbers,
             }, user.workspaceId)
             setRestaurantVipTables(vipTableNumbers)
+            setIsRestaurantTableViewDirty(false)
             toast({ title: t('settings.restaurantTableView.saveSuccess') })
         } catch (error) {
             console.error('[Settings] Failed to save Restaurant Table View settings:', error)
@@ -3371,7 +3377,10 @@ export function Settings() {
                                     <Switch
                                         checked={restaurantTableViewEnabled}
                                         disabled={isRestaurantTableViewSaving}
-                                        onCheckedChange={setRestaurantTableViewEnabled}
+                                        onCheckedChange={(enabled) => {
+                                            setRestaurantTableViewEnabled(enabled)
+                                            setIsRestaurantTableViewDirty(true)
+                                        }}
                                         aria-label={t('settings.restaurantTableView.enabled')}
                                     />
                                 </div>
@@ -3383,7 +3392,10 @@ export function Settings() {
                                     </div>
                                     <Switch
                                         checked={restaurantLiveSyncEnabled}
-                                        onCheckedChange={setRestaurantLiveSyncEnabled}
+                                        onCheckedChange={(enabled) => {
+                                            setRestaurantLiveSyncEnabled(enabled)
+                                            setIsRestaurantTableViewDirty(true)
+                                        }}
                                         disabled={isRestaurantTableViewSaving}
                                         aria-label={t('settings.restaurantTableView.liveSyncEnabled')}
                                     />
@@ -3398,7 +3410,10 @@ export function Settings() {
                                         max={100}
                                         inputMode="numeric"
                                         value={restaurantTableCount}
-                                        onChange={(event) => setRestaurantTableCount(event.target.value)}
+                                        onChange={(event) => {
+                                            setRestaurantTableCount(event.target.value)
+                                            setIsRestaurantTableViewDirty(true)
+                                        }}
                                         placeholder="0"
                                         disabled={isRestaurantTableViewSaving}
                                     />
@@ -3422,10 +3437,13 @@ export function Settings() {
                                                         variant={selected ? 'default' : 'outline'}
                                                         size="sm"
                                                         disabled={isRestaurantTableViewSaving}
-                                                        onClick={() => setRestaurantVipTables((current) => selected
-                                                            ? current.filter((value) => value !== tableNumber)
-                                                            : [...current, tableNumber]
-                                                        )}
+                                                        onClick={() => {
+                                                            setRestaurantVipTables((current) => selected
+                                                                ? current.filter((value) => value !== tableNumber)
+                                                                : [...current, tableNumber]
+                                                            )
+                                                            setIsRestaurantTableViewDirty(true)
+                                                        }}
                                                     >
                                                         {tableNumber}
                                                     </Button>

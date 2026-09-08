@@ -444,6 +444,17 @@ export function buildWorkspaceNavigation({
               }),
               href: "/installments",
               icon: Copy,
+              children: hasFeature("installments")
+                ? [
+                    {
+                      name: t("installmentSales.title", {
+                        defaultValue: "Installment Sales",
+                      }),
+                      href: "/installments/sales",
+                      icon: Receipt,
+                    },
+                  ]
+                : undefined,
             },
           ]
           : []),

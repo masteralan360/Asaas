@@ -85,6 +85,7 @@ import { LoanSourceBadge } from '@/ui/components/loans/LoanSourceBadge'
 import { LoanNoteActionButton } from '@/ui/components/loans/LoanNoteActionButton'
 import { LoanNoteDialog } from '@/ui/components/loans/LoanNoteDialog'
 import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
+import { InstallmentSalesPanel } from '@/ui/components/installment-sales/InstallmentSalesPanel'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
@@ -1828,9 +1829,7 @@ export function Installments() {
 
     return (
         <Tabs
-            defaultValue={canUseLoanInstallments
-                ? 'loan-installments'
-                : 'real-estate'}
+            defaultValue="loan-installments"
             className="space-y-4"
         >
             <TabsList>
@@ -1853,4 +1852,16 @@ export function Installments() {
             ) : null}
         </Tabs>
     )
+}
+
+/** A sidebar child surface kept under the existing Installments permission. */
+export function InstallmentSales() {
+    const { user } = useAuth()
+    const workspaceId = user?.workspaceId
+
+    if (!workspaceId) {
+        return null
+    }
+
+    return <InstallmentSalesPanel workspaceId={workspaceId} />
 }

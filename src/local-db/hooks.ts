@@ -4636,7 +4636,9 @@ function addInstallmentDate(baseDate: string | null, frequency: InstallmentFrequ
     }
 
     const d = new Date(`${baseDate}T00:00:00.000Z`)
-    if (frequency === 'weekly') {
+    if (frequency === 'daily') {
+        d.setUTCDate(d.getUTCDate() + index)
+    } else if (frequency === 'weekly') {
         d.setUTCDate(d.getUTCDate() + (index * 7))
     } else if (frequency === 'biweekly') {
         d.setUTCDate(d.getUTCDate() + (index * 14))

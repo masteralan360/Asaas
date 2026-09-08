@@ -312,6 +312,7 @@ export function CreateManualLoanModal({
                                         <Select value={installmentFrequency} onValueChange={(value: InstallmentFrequency) => setInstallmentFrequency(value)}>
                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>
+                                                <SelectItem value="daily">{t('loans.frequencies.daily') || 'Daily'}</SelectItem>
                                                 <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
                                                 <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
                                                 <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>

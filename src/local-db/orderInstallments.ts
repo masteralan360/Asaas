@@ -80,7 +80,9 @@ export function getOrderPaymentStatus(order: OrderLike): OrderPaymentStatus {
 export function addOrderInstallmentDate(firstDueDate: string, frequency: InstallmentFrequency, offset: number) {
     const [year, month, day] = firstDueDate.slice(0, 10).split('-').map(Number)
     const date = new Date(Date.UTC(year, month - 1, day))
-    if (frequency === 'weekly') {
+    if (frequency === 'daily') {
+        date.setUTCDate(date.getUTCDate() + offset)
+    } else if (frequency === 'weekly') {
         date.setUTCDate(date.getUTCDate() + (offset * 7))
     } else if (frequency === 'biweekly') {
         date.setUTCDate(date.getUTCDate() + (offset * 14))

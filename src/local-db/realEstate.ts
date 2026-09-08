@@ -94,7 +94,9 @@ function normalizeDateKey(value: string) {
 function addInstallmentDate(firstDueDate: string, frequency: InstallmentFrequency, offset: number) {
     const date = new Date(`${normalizeDateKey(firstDueDate)}T00:00:00`)
 
-    if (frequency === 'weekly') {
+    if (frequency === 'daily') {
+        date.setDate(date.getDate() + offset)
+    } else if (frequency === 'weekly') {
         date.setDate(date.getDate() + offset * 7)
     } else if (frequency === 'biweekly') {
         date.setDate(date.getDate() + offset * 14)

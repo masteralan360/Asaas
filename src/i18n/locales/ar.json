@@ -3188,6 +3188,7 @@
     "unsnooze": "إلغاء التأجيل",
     "completedPercent": "مكتمل",
     "frequencies": {
+      "daily": "يومياً",
       "weekly": "أسبوعياً",
       "biweekly": "كل أسبوعين",
       "monthly": "شهرياً"
@@ -4486,6 +4487,7 @@
         "loanReceived": "قرض مستلم",
         "loanRepaymentReceived": "سداد قرض مستلم",
         "loanRepaymentMade": "سداد قرض مدفوع",
+        "installmentSale": "مبيعة بالتقسيط",
         "paymentReversal": "عكس الدفعة",
         "orderReturnRefund": "استرداد طلب مرتجع",
         "loanRepaymentRefund": "استرداد سداد القرض",
@@ -7115,9 +7117,9 @@
         "requestedCod": "المبلغ المطلوب"
       },
       "deliveredCodCorrection": {
-      "title": "تصحيح الدفع عند الاستلام",
-      "description": "صحّح الدفع عند الاستلام للشحنة {{trackingNumber}} قبل التسوية.",
-      "currentCod": "المبلغ الحالي",
+        "title": "تصحيح الدفع عند الاستلام",
+        "description": "صحّح الدفع عند الاستلام للشحنة {{trackingNumber}} قبل التسوية.",
+        "currentCod": "المبلغ الحالي",
         "settlementRequirement": "يتاح هذا التصحيح فقط عندما يكون التزاما التسوية المرتبطان مستحقين بالكامل دون أي تسوية."
       },
       "deliveredRecipientPayoutCorrection": {
@@ -8411,6 +8413,60 @@
       "qicard": "QiCard",
       "zaincash": "زين كاش",
       "fastpay": "FastPay"
+    }
+  },
+  "installmentSales": {
+    "title": "مبيعات بالتقسيط",
+    "subtitle": "مبيعات خارج الكتالوج بأقساط عميل ثابتة مع تتبع الربح المتوقع.",
+    "createSale": "مبيعة تقسيط جديدة",
+    "createTitle": "إنشاء مبيعة بالتقسيط",
+    "confirmSale": "تأكيد المبيعة",
+    "customer": "العميل",
+    "description": "وصف المبيعة",
+    "currency": "العملة",
+    "acquisitionCost": "كلفة الشراء",
+    "totalSalePrice": "إجمالي سعر البيع",
+    "grossProfit": "إجمالي الربح",
+    "pricingBreakdown": "تفصيل التسعير",
+    "recordDownPayment": "تسجيل دفعة مقدمة الآن",
+    "downPayment": "الدفعة المقدمة",
+    "installmentCount": "الأقساط بعد الدفعة المقدمة",
+    "frequency": "التكرار",
+    "firstDueDate": "تاريخ الاستحقاق الأول",
+    "customerReceivable": "ذمة العميل",
+    "overdueSales": "المبيعات المتأخرة",
+    "expectedGrossProfit": "إجمالي الربح المتوقع",
+    "search": "البحث في المبيعات",
+    "saleNo": "رقم المبيعة",
+    "nextDueDate": "الاستحقاق التالي",
+    "status": "الحالة",
+    "installment": "القسط",
+    "dueDate": "تاريخ الاستحقاق",
+    "planned": "المخطط",
+    "paid": "المدفوع",
+    "balance": "الرصيد",
+    "collectCustomer": "تحصيل دفعة العميل",
+    "paymentBalance": "الرصيد المتبقي",
+    "paymentDate": "تاريخ الدفع",
+    "customerPayments": "دفعات العميل",
+    "cancelSale": "إلغاء المبيعة",
+    "cancelTitle": "إلغاء مبيعة التقسيط",
+    "cancellationReason": "سبب الإلغاء",
+    "cancellationWarning": "يؤدي هذا إلى إلغاء المبيعة بالكامل وترحيل قيود عكسية لكل دفعة عميل مسجلة.",
+    "confirmCancellation": "إلغاء وعكس الدفعات",
+    "statuses": {
+      "active": "نشط",
+      "overdue": "متأخر",
+      "completed": "مكتمل",
+      "cancelled": "ملغي"
+    },
+    "messages": {
+      "created": "تم إنشاء مبيعة التقسيط.",
+      "createFailed": "تعذر إنشاء مبيعة التقسيط.",
+      "paymentRecorded": "تم تسجيل الدفعة.",
+      "paymentFailed": "تعذر تسجيل الدفعة.",
+      "cancelled": "تم إلغاء مبيعة التقسيط وعكس الدفعات.",
+      "cancelFailed": "تعذر إلغاء مبيعة التقسيط."
     }
   }
 }

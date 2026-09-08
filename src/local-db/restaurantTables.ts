@@ -47,14 +47,15 @@ function ticketItems(value: unknown): RestaurantPosTicketItem[] {
 
 export function restaurantTableSettingsFromRemote(row: RemoteRow): RestaurantTableSettings {
     const createdAt = stringValue(row.created_at ?? row.createdAt, now())
+    const vipTableNumbers = row.vip_table_numbers ?? row.vipTableNumbers
     return {
         id: stringValue(row.id),
         workspaceId: stringValue(row.workspace_id ?? row.workspaceId),
         enabled: booleanValue(row.enabled),
         liveSyncEnabled: booleanValue(row.live_sync_enabled ?? row.liveSyncEnabled),
         tableCount: numberValue(row.table_count ?? row.tableCount, 20),
-        vipTableNumbers: Array.isArray(row.vip_table_numbers ?? row.vipTableNumbers)
-            ? (row.vip_table_numbers ?? row.vipTableNumbers as unknown[]).map((value) => numberValue(value)).filter((value) => value > 0)
+        vipTableNumbers: Array.isArray(vipTableNumbers)
+            ? vipTableNumbers.map((value: unknown) => numberValue(value)).filter((value) => value > 0)
             : [],
         createdAt,
         updatedAt: stringValue(row.updated_at ?? row.updatedAt, createdAt),
@@ -108,7 +109,23 @@ export async function refreshRestaurantTableSettingsFromSupabase(workspaceId?: s
         .eq('workspace_id', workspaceId)
         .maybeSingle()
     if (error) throw error
-    if (data) await db.restaurant_table_settings.put(restaurantTableSettingsFromRemote(data as RemoteRow))
+    const existing = await db.restaurant_table_settings.where('workspaceId').equals(workspaceId).first()
+    if (!data) {
+        // A remotely deleted configuration means Restaurant Table View is off.
+        // Retain only an unsynced local create so it can still be uploaded later.
+        if (existing && existing.syncStatus !== 'pending') {
+            await db.restaurant_table_settings.delete(existing.id)
+        }
+        return
+    }
+    const incoming = restaurantTableSettingsFromRemote(data as RemoteRow)
+    // A request started before a save can return the previous settings
+    // row afterwards. It must not overwrite the newer local selection.
+    if (existing && (
+        existing.version > incoming.version
+        || (existing.syncStatus === 'pending' && existing.updatedAt >= incoming.updatedAt)
+    )) return
+    await db.restaurant_table_settings.put(incoming)
 }
 
 export async function refreshRestaurantPosTicketsFromSupabase(workspaceId?: string | null) {
@@ -233,7 +250,13 @@ async function saveRestaurantRow<T extends RestaurantTableSettings | RestaurantP
 
     const request = operation === 'delete'
         ? shouldHardDelete
-            ? supabase.from(table).delete().eq('id', row.id)
+            // Restaurant Table View is a one-row-per-workspace setting. Use the
+            // workspace key rather than a cached id so an administrator can
+            // always turn it off after the remote row was recreated or the
+            // local cache was cleared.
+            ? table === 'restaurant_table_settings'
+                ? supabase.from(table).delete().eq('workspace_id', row.workspaceId)
+                : supabase.from(table).delete().eq('id', row.id)
             : supabase.from(table).update({ is_deleted: true, updated_at: now() }).eq('id', row.id).select('*').single()
         : supabase.from(table).upsert(toRemotePayload(pendingRow), options?.onConflict ? { onConflict: options.onConflict } : undefined).select('*').single()
     const { data, error } = await request
@@ -258,11 +281,32 @@ export async function saveRestaurantTableSettings(input: Omit<RestaurantTableSet
     version?: number
 }, workspaceId: string) {
     const existing = await db.restaurant_table_settings.where('workspaceId').equals(workspaceId).first()
+    if (!input.enabled) {
+        if (!existing) {
+            // The server owns the workspace configuration in cloud and hybrid
+            // modes. A missing/stale local cache must never prevent the admin
+            // from deleting a remote settings row.
+            if (!isLocalWorkspaceMode(workspaceId) && isOnline(workspaceId)) {
+                const { error } = await supabase
+                    .from('restaurant_table_settings')
+                    .delete()
+                    .eq('workspace_id', workspaceId)
+                if (error) throw error
+            }
+            return undefined
+        }
+        return saveRestaurantRow('restaurant_table_settings', existing, 'delete', {
+            hardDelete: true,
+            requireRemote: !isLocalWorkspaceMode(workspaceId),
+            liveSyncEnabled: !isLocalWorkspaceMode(workspaceId)
+        })
+    }
     const timestamp = now()
     const row: RestaurantTableSettings = {
         id: existing?.id ?? input.id ?? generateId(),
         workspaceId,
         enabled: input.enabled,
+        liveSyncEnabled: input.liveSyncEnabled,
         tableCount: input.tableCount,
         vipTableNumbers: input.vipTableNumbers,
         createdAt: existing?.createdAt ?? input.createdAt ?? timestamp,

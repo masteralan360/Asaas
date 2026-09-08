@@ -39,6 +39,9 @@ CREATE TABLE public.loans (
   CONSTRAINT loans_direction_check CHECK (
     direction IN ('lent', 'borrowed')
   ),
+  CONSTRAINT loans_installment_frequency_check CHECK (
+    installment_frequency IN ('daily', 'weekly', 'biweekly', 'monthly')
+  ),
   CONSTRAINT loans_source_check CHECK (
     source IN ('pos', 'manual', 'order')
   ),
