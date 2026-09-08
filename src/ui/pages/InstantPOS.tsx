@@ -26,6 +26,12 @@ import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 import { RestaurantTableGrid } from '@/ui/components/pos/RestaurantTableGrid'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { calculateRestaurantTicketTotal } from '@/lib/restaurantTableView'
+import {
+    readRestaurantTableActionVisibility,
+    saveRestaurantTableActionVisibility,
+    shouldHideRestaurantTableAction,
+    type RestaurantTableActionVisibility,
+} from '@/lib/restaurantTableActionVisibility'
 import { closeRestaurantPosTicket, createRestaurantPosTicket, hardDeleteRestaurantPosTicket, moveRestaurantPosTicket, refreshRestaurantPosTicketsFromSupabase, saveRestaurantPosTicket, useRestaurantPosTickets, useRestaurantTableSettings } from '@/local-db/restaurantTables'
 import type { RestaurantPosTicket } from '@/local-db/models'
 
@@ -390,6 +396,9 @@ interface MobileTicketPanelProps {
     openTablePicker: () => void
     closeTicket: (id: string) => void
     hideTableAssignment?: boolean
+    hideItemDelete?: boolean
+    hideCloseTicket?: boolean
+    hideClearAll?: boolean
 }
 
 function MobileTicketPanel({
@@ -398,7 +407,8 @@ function MobileTicketPanel({
     canPreprintReceipt, isPreprinting, isLoadingPreprintTemplate,
     canCookOrderTicket, isPrintingCookOrderTicket,
     getStorageLabel, checkoutTicket, handlePreprintReceipt, handleCookOrderTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
-    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, hasTicketNote, openTicketNoteEditor, openTablePicker, closeTicket, hideTableAssignment = false
+    updateItemQuantity, setItemQuantity, removeItem, setNoteItem, hasTicketNote, openTicketNoteEditor, openTablePicker, closeTicket,
+    hideTableAssignment = false, hideItemDelete = false, hideCloseTicket = false, hideClearAll = false
 }: MobileTicketPanelProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -718,7 +728,9 @@ function MobileTicketPanel({
                                                         <StickyNote className="w-3.5 h-3.5" /> {t('common.note')}
                                                     </button>
                                                 </div>
-                                                <button onClick={() => removeItem(item.productId, item.storageId)} className="text-destructive p-2"><Trash2 className="w-4 h-4" /></button>
+                                                {!hideItemDelete && (
+                                                    <button onClick={() => removeItem(item.productId, item.storageId)} className="text-destructive p-2"><Trash2 className="w-4 h-4" /></button>
+                                                )}
                                             </div>
                                         </div>
                                     ))
@@ -801,12 +813,16 @@ function MobileTicketPanel({
                                                 : <Receipt className="h-5 w-5" />}
                                         </Button>
                                     )}
-                                    <Button variant="outline" className="h-14 rounded-2xl font-bold col-span-3" onClick={() => closeTicket(activeTicket.id)} disabled={isCheckoutLoading}>
-                                        {t('instantPos.closeTicket')}
-                                    </Button>
-                                    <Button variant="ghost" className="h-10 rounded-xl text-destructive font-bold col-span-3" onClick={clearActiveTicket} disabled={isCheckoutLoading}>
-                                        {t('instantPos.clearAll')}
-                                    </Button>
+                                    {!hideCloseTicket && (
+                                        <Button variant="outline" className="h-14 rounded-2xl font-bold col-span-3" onClick={() => closeTicket(activeTicket.id)} disabled={isCheckoutLoading}>
+                                            {t('instantPos.closeTicket')}
+                                        </Button>
+                                    )}
+                                    {!hideClearAll && (
+                                        <Button variant="ghost" className="h-10 rounded-xl text-destructive font-bold col-span-3" onClick={clearActiveTicket} disabled={isCheckoutLoading}>
+                                            {t('instantPos.clearAll')}
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -895,6 +911,10 @@ export function InstantPOS() {
     const restaurantLiveSyncEnabled = restaurantTableSettings?.liveSyncEnabled === true
     const restaurantPosTickets = useRestaurantPosTickets(user?.workspaceId, restaurantLiveSyncEnabled)
     const restaurantMode = restaurantTableSettings?.enabled === true
+    const isRestaurantAdmin = user?.role === 'admin'
+    const [restaurantActionVisibility, setRestaurantActionVisibility] = useState<RestaurantTableActionVisibility>(() => (
+        readRestaurantTableActionVisibility(user?.workspaceId)
+    ))
     const restaurantTickets = useMemo(
         () => restaurantPosTickets.map(restaurantTicketToInstantTicket),
         [restaurantPosTickets]
@@ -908,6 +928,29 @@ export function InstantPOS() {
         const value = Number(restaurantTableRouteParams?.tableNumber)
         return Number.isInteger(value) && value > 0 ? value : null
     }, [restaurantTableRouteParams?.tableNumber])
+
+    useEffect(() => {
+        setRestaurantActionVisibility(readRestaurantTableActionVisibility(user?.workspaceId))
+    }, [user?.workspaceId])
+
+    const hideRestaurantItemDelete = shouldHideRestaurantTableAction({
+        restaurantMode,
+        isAdmin: isRestaurantAdmin,
+        settings: restaurantActionVisibility,
+        action: 'hideItemDelete',
+    })
+    const hideRestaurantCloseTicket = shouldHideRestaurantTableAction({
+        restaurantMode,
+        isAdmin: isRestaurantAdmin,
+        settings: restaurantActionVisibility,
+        action: 'hideCloseTicket',
+    })
+    const hideRestaurantClearAll = shouldHideRestaurantTableAction({
+        restaurantMode,
+        isAdmin: isRestaurantAdmin,
+        settings: restaurantActionVisibility,
+        action: 'hideClearAll',
+    })
 
     useEffect(() => {
         if (!hasRestaurantTableRoute) {
@@ -937,6 +980,23 @@ export function InstantPOS() {
     const returnToRestaurantTableGrid = useCallback(() => {
         navigate('/instant-pos')
     }, [navigate])
+
+    const saveRestaurantActionVisibility = useCallback(async (settings: RestaurantTableActionVisibility) => {
+        if (!user?.workspaceId) return
+        try {
+            const saved = await saveRestaurantTableActionVisibility(user.workspaceId, settings)
+            setRestaurantActionVisibility(saved)
+            toast({ title: t('restaurantTables.actionVisibilitySaved') })
+        } catch (error) {
+            console.error('[Instant POS] Failed to save Restaurant Table View action visibility:', error)
+            toast({
+                title: t('common.error'),
+                description: t('restaurantTables.actionVisibilitySaveError'),
+                variant: 'destructive',
+            })
+            throw error
+        }
+    }, [t, toast, user?.workspaceId])
 
     const persistRestaurantTickets = useCallback((nextTickets: InstantPosTicket[]) => {
         if (!user?.workspaceId) return
@@ -2124,6 +2184,9 @@ export function InstantPOS() {
                 )}
                 onOpenTable={openRestaurantTable}
                 onMoveTicket={handleRestaurantTicketMove}
+                canManageActionVisibility={isRestaurantAdmin}
+                actionVisibility={restaurantActionVisibility}
+                onSaveActionVisibility={saveRestaurantActionVisibility}
             />
         )
     }
@@ -2394,6 +2457,9 @@ export function InstantPOS() {
                             openTablePicker={openTablePicker}
                             closeTicket={closeTicket}
                             hideTableAssignment={restaurantMode}
+                            hideItemDelete={hideRestaurantItemDelete}
+                            hideCloseTicket={hideRestaurantCloseTicket}
+                            hideClearAll={hideRestaurantClearAll}
                         />
                     )}
             </div>
@@ -2417,12 +2483,14 @@ export function InstantPOS() {
                                         {activeTicket.items.length} {activeTicket.items.length === 1 ? t('common.item') : t('common.items')} · {formatCompactDateTime(activeTicket.createdAt)}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={clearActiveTicket}
-                                    className="text-xs font-semibold text-destructive hover:text-destructive/80"
-                                >
-                                    {t('instantPos.clearAll') || 'Clear All'}
-                                </button>
+                                {!hideRestaurantClearAll && (
+                                    <button
+                                        onClick={clearActiveTicket}
+                                        className="text-xs font-semibold text-destructive hover:text-destructive/80"
+                                    >
+                                        {t('instantPos.clearAll') || 'Clear All'}
+                                    </button>
+                                )}
                                 </div>
                                 {!restaurantMode && <Button
                                     variant="outline"
@@ -2546,12 +2614,14 @@ export function InstantPOS() {
                                                         {t('common.note') || 'Note'}
                                                     </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => removeItem(item.productId, item.storageId)}
-                                                    className="ml-1 flex h-7 w-7 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive transition-opacity hover:bg-destructive/20"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
+                                                {!hideRestaurantItemDelete && (
+                                                    <button
+                                                        onClick={() => removeItem(item.productId, item.storageId)}
+                                                        className="ml-1 flex h-7 w-7 items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 text-destructive transition-opacity hover:bg-destructive/20"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))
@@ -2655,14 +2725,16 @@ export function InstantPOS() {
                                         </Button>
                                     )}
                                 </div>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => closeTicket(activeTicket.id)}
-                                    disabled={isCheckoutLoading}
-                                    className="h-11 w-full rounded-xl"
-                                >
-                                    {t('instantPos.closeTicket') || 'Close Ticket'}
-                                </Button>
+                                {!hideRestaurantCloseTicket && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => closeTicket(activeTicket.id)}
+                                        disabled={isCheckoutLoading}
+                                        className="h-11 w-full rounded-xl"
+                                    >
+                                        {t('instantPos.closeTicket') || 'Close Ticket'}
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     )}

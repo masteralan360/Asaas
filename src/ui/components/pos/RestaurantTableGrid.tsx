@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Crown, MoreVertical, MoveRight, Table2 } from 'lucide-react'
+import { Crown, MoreVertical, MoveRight, Settings2, Table2 } from 'lucide-react'
 
 import type { RestaurantPosTicket } from '@/local-db/models'
 import { cn } from '@/lib/utils'
+import type { RestaurantTableActionVisibility } from '@/lib/restaurantTableActionVisibility'
 import {
     AppDialog,
     AppDialogBody,
@@ -12,6 +13,7 @@ import {
     AppDialogHeader,
     AppDialogTitle,
     Button,
+    Switch,
 } from '@/ui/components'
 
 interface RestaurantTableGridProps {
@@ -21,6 +23,9 @@ interface RestaurantTableGridProps {
     formatTotal: (ticket: RestaurantPosTicket) => string
     onOpenTable: (tableNumber: number) => void
     onMoveTicket: (ticket: RestaurantPosTicket, destinationTableNumber: number) => Promise<void>
+    canManageActionVisibility: boolean
+    actionVisibility: RestaurantTableActionVisibility
+    onSaveActionVisibility: (settings: RestaurantTableActionVisibility) => Promise<void>
 }
 
 export function RestaurantTableGrid({
@@ -30,14 +35,21 @@ export function RestaurantTableGrid({
     formatTotal,
     onOpenTable,
     onMoveTicket,
+    canManageActionVisibility,
+    actionVisibility,
+    onSaveActionVisibility,
 }: RestaurantTableGridProps) {
     const { t } = useTranslation()
     const [actionTicket, setActionTicket] = useState<RestaurantPosTicket | null>(null)
     const [destinationTableNumber, setDestinationTableNumber] = useState<number | null>(null)
     const [isMoving, setIsMoving] = useState(false)
+    const [isActionVisibilitySettingsOpen, setIsActionVisibilitySettingsOpen] = useState(false)
+    const [actionVisibilityDraft, setActionVisibilityDraft] = useState(actionVisibility)
+    const [isActionVisibilitySaving, setIsActionVisibilitySaving] = useState(false)
     const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const ticketByTable = new Map(tickets.map((ticket) => [ticket.tableNumber, ticket]))
     const vipTables = new Set(vipTableNumbers)
+    const enabledActionVisibilityCount = Object.values(actionVisibility).filter(Boolean).length
 
     const dismissAction = () => {
         if (isMoving) return
@@ -77,6 +89,22 @@ export function RestaurantTableGrid({
         }
     }
 
+    const openActionVisibilitySettings = () => {
+        setActionVisibilityDraft(actionVisibility)
+        setIsActionVisibilitySettingsOpen(true)
+    }
+
+    const saveActionVisibilitySettings = async () => {
+        if (isActionVisibilitySaving) return
+        setIsActionVisibilitySaving(true)
+        try {
+            await onSaveActionVisibility(actionVisibilityDraft)
+            setIsActionVisibilitySettingsOpen(false)
+        } finally {
+            setIsActionVisibilitySaving(false)
+        }
+    }
+
     const emptyDestinationTables = Array.from({ length: tableCount }, (_, index) => index + 1)
         .filter((tableNumber) => tableNumber !== actionTicket?.tableNumber && !ticketByTable.has(tableNumber))
 
@@ -90,6 +118,25 @@ export function RestaurantTableGrid({
                     <h1 className="text-xl font-black tracking-tight">{t('restaurantTables.title')}</h1>
                     <p className="text-sm text-muted-foreground">{t('restaurantTables.description')}</p>
                 </div>
+                {canManageActionVisibility && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="relative ml-auto h-11 w-11 rounded-xl"
+                        onClick={openActionVisibilitySettings}
+                        title={t('restaurantTables.openActionVisibilitySettings')}
+                        aria-label={t('restaurantTables.openActionVisibilitySettings')}
+                    >
+                        <Settings2 className="h-5 w-5" />
+                        <span
+                            aria-hidden="true"
+                            className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-card bg-primary px-1 text-[10px] font-black leading-none text-primary-foreground"
+                        >
+                            {enabledActionVisibilityCount}
+                        </span>
+                    </Button>
+                )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -217,6 +264,56 @@ export function RestaurantTableGrid({
                         <Button onClick={() => void handleMove()} disabled={!destinationTableNumber || isMoving}>
                             <MoveRight className="h-4 w-4" />
                             {isMoving ? t('restaurantTables.transferring') : t('restaurantTables.transfer')}
+                        </Button>
+                    </AppDialogFooter>
+                </AppDialogContent>
+            </AppDialog>
+
+            <AppDialog
+                open={isActionVisibilitySettingsOpen}
+                onOpenChange={(open) => !isActionVisibilitySaving && setIsActionVisibilitySettingsOpen(open)}
+            >
+                <AppDialogContent className="max-w-xl">
+                    <AppDialogHeader>
+                        <AppDialogTitle>{t('restaurantTables.actionVisibilitySettings')}</AppDialogTitle>
+                    </AppDialogHeader>
+                    <AppDialogBody className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            {t('restaurantTables.actionVisibilitySettingsDescription')}
+                        </p>
+                        {([
+                            ['hideItemDelete', 'hideItemDelete', 'hideItemDeleteDescription'],
+                            ['hideCloseTicket', 'hideCloseTicket', 'hideCloseTicketDescription'],
+                            ['hideClearAll', 'hideClearAll', 'hideClearAllDescription'],
+                        ] as const).map(([setting, label, description]) => (
+                            <div key={setting} className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/20 p-4">
+                                <div className="space-y-1">
+                                    <p className="font-semibold">{t(`restaurantTables.${label}`)}</p>
+                                    <p className="text-sm text-muted-foreground">{t(`restaurantTables.${description}`)}</p>
+                                </div>
+                                <Switch
+                                    checked={actionVisibilityDraft[setting]}
+                                    disabled={isActionVisibilitySaving}
+                                    onCheckedChange={(checked) => setActionVisibilityDraft((current) => ({
+                                        ...current,
+                                        [setting]: checked,
+                                    }))}
+                                    aria-label={t(`restaurantTables.${label}`)}
+                                />
+                            </div>
+                        ))}
+                    </AppDialogBody>
+                    <AppDialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={isActionVisibilitySaving}
+                            onClick={() => setIsActionVisibilitySettingsOpen(false)}
+                        >
+                            {t('common.cancel')}
+                        </Button>
+                        <Button type="button" disabled={isActionVisibilitySaving} onClick={() => void saveActionVisibilitySettings()}>
+                            {isActionVisibilitySaving ? t('common.saving') : t('common.save')}
                         </Button>
                     </AppDialogFooter>
                 </AppDialogContent>

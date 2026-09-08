@@ -2727,7 +2727,18 @@
     "backToTables": "العودة إلى الطاولات",
     "closeTitle": "إغلاق تذكرة المطعم",
     "closeDescription": "سيؤدي ذلك إلى إلغاء تذكرة الطاولة النشطة وتفريغ طاولتها.",
-    "transferFailed": "تعذر نقل التذكرة. قد لا تكون الطاولة الوجهة فارغة الآن."
+    "transferFailed": "تعذر نقل التذكرة. قد لا تكون الطاولة الوجهة فارغة الآن.",
+    "openActionVisibilitySettings": "إعدادات إجراءات المطعم",
+    "actionVisibilitySettings": "إظهار إجراءات المطعم",
+    "actionVisibilitySettingsDescription": "اختر الإجراءات التي ستُخفى عن الموظفين غير الإداريين على هذا الجهاز.",
+    "hideItemDelete": "إخفاء حذف العنصر",
+    "hideItemDeleteDescription": "إخفاء زر حذف عناصر التذكرة عن الموظفين غير الإداريين.",
+    "hideCloseTicket": "إخفاء إغلاق التذكرة",
+    "hideCloseTicketDescription": "إخفاء إجراء إغلاق التذكرة عن الموظفين غير الإداريين.",
+    "hideClearAll": "إخفاء مسح الكل",
+    "hideClearAllDescription": "إخفاء إجراء مسح الكل عن الموظفين غير الإداريين.",
+    "actionVisibilitySaved": "تم حفظ إظهار إجراءات المطعم محلياً.",
+    "actionVisibilitySaveError": "تعذر حفظ إعدادات إظهار إجراءات المطعم محلياً."
   },
   "kdsDashboard": {
     "title": "لوحة تحكم KDS",

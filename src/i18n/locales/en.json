@@ -4051,7 +4051,18 @@
     "backToTables": "Back to tables",
     "closeTitle": "Close restaurant ticket",
     "closeDescription": "This will discard the active table ticket and free its table.",
-    "transferFailed": "The ticket could not be transferred. The destination may no longer be empty."
+    "transferFailed": "The ticket could not be transferred. The destination may no longer be empty.",
+    "openActionVisibilitySettings": "Restaurant action settings",
+    "actionVisibilitySettings": "Restaurant action visibility",
+    "actionVisibilitySettingsDescription": "Choose which actions are hidden from non-admin staff on this device.",
+    "hideItemDelete": "Hide Item Delete",
+    "hideItemDeleteDescription": "Hide the delete button on ticket items for non-admin staff.",
+    "hideCloseTicket": "Hide Close Ticket",
+    "hideCloseTicketDescription": "Hide the Close Ticket action for non-admin staff.",
+    "hideClearAll": "Hide Clear All",
+    "hideClearAllDescription": "Hide the Clear All action for non-admin staff.",
+    "actionVisibilitySaved": "Restaurant action visibility saved locally.",
+    "actionVisibilitySaveError": "Could not save the Restaurant action visibility settings locally."
   },
   "kdsDashboard": {
     "title": "KDS Dashboard",
