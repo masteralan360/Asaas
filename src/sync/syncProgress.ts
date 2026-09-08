@@ -2,11 +2,18 @@ import { useSyncExternalStore } from 'react'
 
 export type SyncProgressPhase = 'idle' | 'pushing' | 'pulling'
 
+export interface SyncProgressDetail {
+    table: string
+    completed: number
+    total: number
+}
+
 export interface SyncProgress {
     isSyncing: boolean
     phase: SyncProgressPhase
     completed: number
     total: number
+    detail?: SyncProgressDetail
 }
 
 const idleProgress: SyncProgress = {
@@ -27,7 +34,10 @@ function publish(progress: SyncProgress) {
             console.debug('[SyncProgress] Finished')
         } else if (progress.total > 0) {
             const phase = progress.phase === 'pushing' ? 'Uploading changes' : 'Checking updates'
-            console.debug(`[SyncProgress] ${phase}: ${progress.completed}/${progress.total}`)
+            const detail = progress.detail
+                ? ` (${progress.detail.table}: ${progress.detail.completed}/${progress.detail.total})`
+                : ''
+            console.debug(`[SyncProgress] ${phase}: ${progress.completed}/${progress.total}${detail}`)
         } else {
             console.debug('[SyncProgress] Started')
         }
@@ -45,12 +55,18 @@ export function startSyncProgress() {
     })
 }
 
-export function updateSyncProgress(phase: Exclude<SyncProgressPhase, 'idle'>, completed: number, total: number) {
+export function updateSyncProgress(
+    phase: Exclude<SyncProgressPhase, 'idle'>,
+    completed: number,
+    total: number,
+    detail?: SyncProgressDetail
+) {
     publish({
         isSyncing: true,
         phase,
         completed: Math.max(0, completed),
-        total: Math.max(0, total)
+        total: Math.max(0, total),
+        detail
     })
 }
 

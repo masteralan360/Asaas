@@ -1857,6 +1857,7 @@
       "notReady": "غير مجهّز",
       "appFiles": "ملفات التطبيق",
       "cachedAssets": "تم التحقق من {{count}} ملفاً",
+      "recordProgress": "{{completed}}/{{total}} سجلاً",
       "incomplete": "يلزم التجهيز",
       "workspaceData": "بيانات مساحة العمل",
       "neverPrepared": "لم يتم التجهيز بالكامل",

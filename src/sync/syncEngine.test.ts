@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const dbMock = vi.hoisted(() => {
     const rows: Array<Record<string, any>> = []
     const sales = {
-        update: vi.fn(async () => 1)
+        update: vi.fn(async () => 1),
+        get: vi.fn(async () => undefined),
+        put: vi.fn(async () => 'sale'),
+        bulkGet: vi.fn<(ids: unknown[]) => Promise<Array<Record<string, any> | undefined>>>(
+            async (ids) => ids.map(() => undefined)
+        ),
+        bulkPut: vi.fn<(rows: Array<Record<string, any>>) => Promise<void>>(async () => undefined)
     }
     const invoices = {
         update: vi.fn(async () => 1)
@@ -78,6 +84,10 @@ const dbMock = vi.hoisted(() => {
             offlineMutations.where.mockClear()
             offlineMutations.update.mockClear()
             sales.update.mockClear()
+            sales.get.mockClear()
+            sales.put.mockClear()
+            sales.bulkGet.mockClear()
+            sales.bulkPut.mockClear()
             invoices.update.mockClear()
             saleReturns.update.mockClear()
             saleReturnItems.where.mockClear()
@@ -101,6 +111,7 @@ const supabaseMock = vi.hoisted(() => {
     let saleLookup: Record<string, any> | null = null
     let activeSalesOrderAssignment: Record<string, any> | null = null
     let pullError: Error | null = null
+    const pullRowsByTable = new Map<string, Array<Record<string, any>>>()
 
     const makeBuilder = (tableName: string) => {
         const builder: Record<string, any> = {}
@@ -115,7 +126,10 @@ const supabaseMock = vi.hoisted(() => {
             }),
             gt: vi.fn(() => builder),
             order: vi.fn(() => builder),
-            range: vi.fn(async () => ({ data: [], error: pullError })),
+            range: vi.fn(async (from: number, to: number) => ({
+                data: (pullRowsByTable.get(tableName) ?? []).slice(from, to + 1),
+                error: pullError
+            })),
             in: vi.fn(() => builder),
             is: vi.fn(() => builder),
             maybeSingle: vi.fn(async () => ({
@@ -157,6 +171,9 @@ const supabaseMock = vi.hoisted(() => {
         setPullError(error: Error | null) {
             pullError = error
         },
+        setPullRows(tableName: string, rows: Array<Record<string, any>>) {
+            pullRowsByTable.set(tableName, rows)
+        },
         setActiveSalesOrderAssignment(row: Record<string, any> | null) {
             activeSalesOrderAssignment = row
         },
@@ -169,6 +186,7 @@ const supabaseMock = vi.hoisted(() => {
             saleLookup = null
             activeSalesOrderAssignment = null
             pullError = null
+            pullRowsByTable.clear()
         }
     }
 })
@@ -727,6 +745,45 @@ describe('fullSync error reporting', () => {
             p_workspace_id: 'workspace-1'
         })
         expect(supabaseMock.from).not.toHaveBeenCalledWith('business_partners')
+    })
+
+    it('persists large sales pulls in bounded batches and reports row progress', async () => {
+        const remoteSales = Array.from({ length: 501 }, (_, index) => ({
+            id: `sale-${index}`,
+            workspace_id: 'workspace-1',
+            updated_at: '2026-09-08T00:00:00.000Z'
+        }))
+        supabaseMock.setPullRows('sales', remoteSales)
+        dbMock.sales.bulkGet.mockImplementation(async (ids: unknown[]) => ids.map((id) => (
+            id === 'sale-0' ? { id, syncStatus: 'pending' } : undefined
+        )))
+        const progress: Array<{
+            completed: number
+            total: number
+            detail?: { table: string; completed: number; total: number }
+        }> = []
+
+        const result = await pullChanges(
+            'workspace-1',
+            '1970-01-01T00:00:00.000Z',
+            (completed, total, detail) => progress.push({ completed, total, detail })
+        )
+
+        expect(result).toMatchObject({ pulled: 500, errors: [] })
+        expect(dbMock.sales.bulkPut).toHaveBeenCalledTimes(3)
+        const writtenSales = dbMock.sales.bulkPut.mock.calls.flatMap((call) => call[0])
+        expect(writtenSales).toHaveLength(500)
+        expect(writtenSales).not.toContainEqual(expect.objectContaining({ id: 'sale-0' }))
+        expect(progress).toContainEqual(expect.objectContaining({
+            completed: 45,
+            total: 93,
+            detail: { table: 'sales', completed: 250, total: 501 }
+        }))
+        expect(progress).toContainEqual(expect.objectContaining({
+            completed: 45,
+            total: 93,
+            detail: { table: 'sales', completed: 501, total: 501 }
+        }))
     })
 
     it('returns a failed result with the mutation error and leaves the queued mutation marked failed', async () => {

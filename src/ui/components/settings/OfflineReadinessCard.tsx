@@ -123,7 +123,12 @@ export function OfflineReadinessCard() {
         if (phase === 'data' && syncProgress.total > 0) {
             const start = (activePhaseIndex / phases.length) * 100
             const share = 100 / phases.length
-            return start + (syncProgress.completed / syncProgress.total) * share
+            const completedTables = syncProgress.completed + (
+                syncProgress.detail && syncProgress.detail.total > 0
+                    ? syncProgress.detail.completed / syncProgress.detail.total
+                    : 0
+            )
+            return start + (completedTables / syncProgress.total) * share
         }
         return (activePhaseIndex / phases.length) * 100 + 4
     })()
@@ -333,7 +338,12 @@ export function OfflineReadinessCard() {
                                         )}
                                         {active && row.phase === 'data' && syncProgress.total > 0 && (
                                             <span className="ms-auto text-xs text-muted-foreground">
-                                                {syncProgress.completed}/{syncProgress.total}
+                                                {syncProgress.detail && syncProgress.detail.total > 0
+                                                    ? t('settings.offlineReadiness.recordProgress', {
+                                                        completed: syncProgress.detail.completed.toLocaleString(i18n.resolvedLanguage ?? i18n.language),
+                                                        total: syncProgress.detail.total.toLocaleString(i18n.resolvedLanguage ?? i18n.language)
+                                                    })
+                                                    : `${syncProgress.completed}/${syncProgress.total}`}
                                             </span>
                                         )}
                                     </div>

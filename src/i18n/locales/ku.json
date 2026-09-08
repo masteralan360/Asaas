@@ -1864,6 +1864,7 @@
       "notReady": "ئامادە نەکراوە",
       "appFiles": "فایلەکانی ئەپڵیکەیشن",
       "cachedAssets": "{{count}} فایل پشتڕاست کرایەوە",
+      "recordProgress": "{{completed}}/{{total}} تۆمار",
       "incomplete": "پێویستی بە ئامادەکردن هەیە",
       "workspaceData": "داتای شوێنی کار",
       "neverPrepared": "هەرگیز بە تەواوی ئامادە نەکراوە",

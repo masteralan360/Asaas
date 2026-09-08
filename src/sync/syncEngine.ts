@@ -15,6 +15,7 @@ import { prepareRemoteMutationPayload } from "@/sync/syncPayloadContract";
 import {
   finishSyncProgress,
   startSyncProgress,
+  type SyncProgressDetail,
   updateSyncProgress,
 } from "@/sync/syncProgress";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
@@ -32,6 +33,7 @@ export interface SyncResult {
 }
 
 const PULL_PAGE_SIZE = 1000;
+const PULL_WRITE_BATCH_SIZE = 250;
 const SALE_ITEM_PARENT_BATCH_SIZE = 250;
 const PULL_FETCH_CONCURRENCY = 6;
 
@@ -144,6 +146,11 @@ const TABLES_WITHOUT_VERSION = new Set<string>([
   "sale_returns",
   "sale_return_items",
   "invoice_versions",
+]);
+const ROW_WISE_PULL_TABLES = new Set<string>([
+  "price_book_items",
+  "inventory",
+  "workspaces",
 ]);
 const PROCESSABLE_MUTATION_STATUSES = ["pending", "syncing"] as const;
 const SALE_CREATE_RESULT_SELECT =
@@ -833,6 +840,56 @@ function removeRetiredPartnerFields(
 
   const { email: _email, country: _country, ...retained } = record;
   return retained;
+}
+
+async function persistRemoteRowsInBatches(
+  table: (typeof SYNC_PULL_TABLES)[number],
+  dbTable: any,
+  remoteItems: Array<Record<string, unknown>>,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<number> {
+  let applied = 0;
+
+  for (let index = 0; index < remoteItems.length; index += PULL_WRITE_BATCH_SIZE) {
+    const chunk = remoteItems.slice(index, index + PULL_WRITE_BATCH_SIZE);
+    const ids = chunk.map((item) => item.id);
+    const localItems = typeof dbTable.bulkGet === "function"
+      ? await dbTable.bulkGet(ids)
+      : await Promise.all(ids.map((id) => dbTable.get(id)));
+    const syncedAt = new Date().toISOString();
+    const rowsToWrite: Array<Record<string, unknown>> = [];
+
+    chunk.forEach((remoteItem, chunkIndex) => {
+      const remoteData = removeRetiredPartnerFields(
+        table,
+        toCamelCase(remoteItem) as Record<string, unknown>,
+      );
+      if (!shouldApplyRemoteItem(table, localItems[chunkIndex], remoteData)) {
+        return;
+      }
+      rowsToWrite.push({
+        ...remoteData,
+        syncStatus: "synced",
+        lastSyncedAt: syncedAt,
+      });
+    });
+
+    if (rowsToWrite.length > 0) {
+      if (typeof dbTable.bulkPut === "function") {
+        await dbTable.bulkPut(rowsToWrite);
+      } else {
+        for (const row of rowsToWrite) await dbTable.put(row);
+      }
+      applied += rowsToWrite.length;
+    }
+
+    onProgress?.(
+      Math.min(index + chunk.length, remoteItems.length),
+      remoteItems.length,
+    );
+  }
+
+  return applied;
 }
 
 // Process offline mutation queue
@@ -1639,7 +1696,11 @@ export async function pushChanges(
 export async function pullChanges(
   workspaceId: string,
   lastSyncTime: string | null,
-  onProgress?: (completed: number, total: number) => void,
+  onProgress?: (
+    completed: number,
+    total: number,
+    detail?: SyncProgressDetail,
+  ) => void,
 ): Promise<{ pulled: number; errors: string[] }> {
   if (isLocalWorkspaceMode(workspaceId)) {
     return { pulled: 0, errors: [] };
@@ -1701,70 +1762,83 @@ export async function pullChanges(
           );
           const dbTable = (db as any)[table];
 
-          for (const remoteItem of data) {
-            const localItem = await dbTable.get(remoteItem.id);
-            const remoteData = removeRetiredPartnerFields(
+          if (!ROW_WISE_PULL_TABLES.has(table)) {
+            totalPulled += await persistRemoteRowsInBatches(
               table,
-              toCamelCase(remoteItem) as Record<string, unknown>,
+              dbTable,
+              data,
+              (completed, total) => onProgress?.(
+                index,
+                SYNC_PULL_TABLES.length,
+                { table, completed, total },
+              ),
             );
+          } else {
+            for (let rowIndex = 0; rowIndex < data.length; rowIndex += 1) {
+              const remoteItem = data[rowIndex];
+              const localItem = await dbTable.get(remoteItem.id);
+              const remoteData = removeRetiredPartnerFields(
+                table,
+                toCamelCase(remoteItem) as Record<string, unknown>,
+              );
 
-            if (table === "price_book_items") {
-              const priceBookId = (remoteData as { priceBookId?: unknown }).priceBookId;
-              const productId = (remoteData as { productId?: unknown }).productId;
-              if (typeof priceBookId === "string" && typeof productId === "string") {
-                const naturalKeyConflict = await db.price_book_items
-                  .where("[priceBookId+productId]")
-                  .equals([priceBookId, productId])
-                  .first();
-                if (naturalKeyConflict && naturalKeyConflict.id !== remoteItem.id) {
-                  if (naturalKeyConflict.syncStatus === "pending") {
-                    continue;
+              if (table === "price_book_items") {
+                const priceBookId = (remoteData as { priceBookId?: unknown }).priceBookId;
+                const productId = (remoteData as { productId?: unknown }).productId;
+                if (typeof priceBookId === "string" && typeof productId === "string") {
+                  const naturalKeyConflict = await db.price_book_items
+                    .where("[priceBookId+productId]")
+                    .equals([priceBookId, productId])
+                    .first();
+                  if (naturalKeyConflict && naturalKeyConflict.id !== remoteItem.id) {
+                    if (naturalKeyConflict.syncStatus === "pending") {
+                      continue;
+                    }
+                    await db.price_book_items.delete(naturalKeyConflict.id);
                   }
-                  await db.price_book_items.delete(naturalKeyConflict.id);
                 }
               }
-            }
 
-          // Version control: Last Write Wins based on updated_at
-          // If local has newer version/updatedAt pending sync, don't overwrite?
-          // But we are manual sync. If pulling, we assume server is truth.
-          // However, if we have pending local changes, we should probably NOT overwrite them until we push?
-          // Strategy: "Prioritize Supabase as single source of truth".
-          // If we have pending local changes for this ID, we might have a conflict.
-          // For V1, "Last Write Wins". If server is newer, taking server.
-          // But if local is pending, it might be newer than server (but not pushed).
-          // If we overwrite local pending with server (which matches old local state), we lose the mutation.
-          // BUT our mutation is stored in `offline_mutations`!
-          // So even if we overwrite the Entity table, the Mutation Queue still has the pending operation.
-          // When we push, we will re-apply the mutation to server and then server will send back the final state.
-          // So it is SAFE to overwrite Entity table because `offline_mutations` is the intent source of truth for "My Pending Changes".
+              // Version control: Last Write Wins based on updated_at.
+              // Pending local intent remains protected by shouldApplyRemoteItem.
 
-            if (shouldApplyRemoteItem(table, localItem, remoteData)) {
-              const localThermalPrinting =
-                table === "workspaces"
-                  ? (localItem as any)?.thermal_printing
-                  : undefined;
-              const workspaceOverrides =
-                table === "workspaces" &&
-                typeof localThermalPrinting === "boolean"
-                  ? { thermal_printing: localThermalPrinting }
-                  : {};
+              if (shouldApplyRemoteItem(table, localItem, remoteData)) {
+                const localThermalPrinting =
+                  table === "workspaces"
+                    ? (localItem as any)?.thermal_printing
+                    : undefined;
+                const workspaceOverrides =
+                  table === "workspaces" &&
+                  typeof localThermalPrinting === "boolean"
+                    ? { thermal_printing: localThermalPrinting }
+                    : {};
 
-              await dbTable.put({
-                ...remoteData,
-                ...workspaceOverrides,
-                syncStatus: "synced",
-                lastSyncedAt: new Date().toISOString(),
-              });
-              if (
-                table === "inventory" &&
-                typeof (remoteData as any).productId === "string"
-              ) {
-                affectedInventoryProducts.add((remoteData as any).productId);
+                await dbTable.put({
+                  ...remoteData,
+                  ...workspaceOverrides,
+                  syncStatus: "synced",
+                  lastSyncedAt: new Date().toISOString(),
+                });
+                if (
+                  table === "inventory" &&
+                  typeof (remoteData as any).productId === "string"
+                ) {
+                  affectedInventoryProducts.add((remoteData as any).productId);
+                }
+                totalPulled++;
               }
-              totalPulled++;
-            }
 
+              if (
+                (rowIndex + 1) % PULL_WRITE_BATCH_SIZE === 0 ||
+                rowIndex + 1 === data.length
+              ) {
+                onProgress?.(
+                  index,
+                  SYNC_PULL_TABLES.length,
+                  { table, completed: rowIndex + 1, total: data.length },
+                );
+              }
+            }
           }
 
           if (table === "inventory" && affectedInventoryProducts.size > 0) {
@@ -1840,7 +1914,7 @@ export async function fullSync(
     const { pulled, errors: pullErrors } = await pullChanges(
       workspaceId,
       lastSyncTime,
-      (completed, total) => updateSyncProgress("pulling", completed, total),
+      (completed, total, detail) => updateSyncProgress("pulling", completed, total, detail),
     );
     const errors = [...pushErrors, ...pullErrors];
     if (pullErrors.length === 0) {

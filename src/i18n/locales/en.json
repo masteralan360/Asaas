@@ -2911,6 +2911,7 @@
       "notReady": "Not prepared",
       "appFiles": "Application files",
       "cachedAssets": "{{count}} files verified",
+      "recordProgress": "{{completed}}/{{total}} records",
       "incomplete": "Preparation required",
       "workspaceData": "Workspace data",
       "neverPrepared": "Never fully prepared",
