@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isAuthenticatedState } from './authenticationState'
+import { isAuthenticatedState, resolveCachedWorkspaceAssignment } from './authenticationState'
 
 describe('authentication state', () => {
   it('does not authenticate a session before its user identity is ready', () => {
@@ -33,5 +33,70 @@ describe('authentication state', () => {
       hasUser: true,
       canRestoreWithoutSession: false
     })).toBe(false)
+  })
+})
+
+describe('cached workspace assignment recovery', () => {
+  it('restores the active workspace from the same user recovery record', () => {
+    expect(resolveCachedWorkspaceAssignment({
+      authenticatedUserId: 'user-1',
+      recoveredUser: {
+        id: 'user-1',
+        workspaceId: 'workspace-current',
+        sourceWorkspaceId: 'workspace-source',
+        workspaceCode: 'WS-1',
+        workspaceName: 'Workspace 1',
+        isConfigured: true,
+        workspaceMode: 'cloud'
+      }
+    })).toEqual({
+      sourceWorkspaceId: 'workspace-source',
+      currentWorkspaceId: 'workspace-current',
+      workspaceCode: 'WS-1',
+      workspaceName: 'Workspace 1',
+      isConfigured: true,
+      workspaceMode: 'cloud'
+    })
+  })
+
+  it('does not reuse another signed-in user\'s recovery record', () => {
+    expect(resolveCachedWorkspaceAssignment({
+      authenticatedUserId: 'user-2',
+      recoveredUser: {
+        id: 'user-1',
+        workspaceId: 'workspace-1'
+      }
+    })).toBeNull()
+  })
+
+  it('supports a verified active local account backed by the online session', () => {
+    expect(resolveCachedWorkspaceAssignment({
+      authenticatedUserId: 'admin-user',
+      recoveredUser: {
+        id: 'local-staff-user',
+        workspaceId: 'workspace-1',
+        sourceWorkspaceId: 'workspace-1',
+        workspaceMode: 'hybrid'
+      },
+      recoveredUserIsActiveLocalAccount: true
+    })).toMatchObject({
+      sourceWorkspaceId: 'workspace-1',
+      currentWorkspaceId: 'workspace-1',
+      workspaceMode: 'hybrid'
+    })
+  })
+
+  it('falls back to the downloaded Dexie profile when recovery storage is unavailable', () => {
+    expect(resolveCachedWorkspaceAssignment({
+      authenticatedUserId: 'user-1',
+      cachedProfile: {
+        id: 'user-1',
+        workspaceId: 'workspace-source',
+        currentWorkspaceId: 'workspace-current'
+      }
+    })).toEqual({
+      sourceWorkspaceId: 'workspace-source',
+      currentWorkspaceId: 'workspace-current'
+    })
   })
 })

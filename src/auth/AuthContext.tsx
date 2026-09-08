@@ -6,7 +6,7 @@ import {
   signOutCurrentSupabaseSession
 } from './supabase'
 import { isSupabaseRateLimitedError } from './sessionManager'
-import { isAuthenticatedState } from './authenticationState'
+import { isAuthenticatedState, resolveCachedWorkspaceAssignment } from './authenticationState'
 import type { User, Session } from '@supabase/supabase-js'
 import type { CashierShiftAssignment, CashierShiftOccurrence, UserRole, WorkspaceDataMode } from '@/local-db/models'
 import { connectionManager } from '@/lib/connectionManager'
@@ -402,6 +402,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
   let canonicalWorkspaceId = originalWorkspaceId
   let sourceWorkspaceId = parsedUser.sourceWorkspaceId || ''
   let profileBootstrapCompleted = false
+  let cachedWorkspaceAssignment: ReturnType<typeof resolveCachedWorkspaceAssignment> = null
 
   try {
     const { data: profileRow, error: profileError } = (await runSupabaseAction(
@@ -441,6 +442,30 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
 
   if (!profileBootstrapCompleted && !canonicalWorkspaceId) {
     try {
+      const recoveredUser = getRecoveredUser()
+      const cachedProfile = await db.profiles.get(parsedUser.id)
+      const recoveredUserIsActiveLocalAccount = Boolean(
+        recoveredUser?.workspaceId
+        && readActiveLocalAccountId(recoveredUser.workspaceId) === recoveredUser.id
+      )
+      cachedWorkspaceAssignment = resolveCachedWorkspaceAssignment({
+        authenticatedUserId: parsedUser.id,
+        recoveredUser,
+        cachedProfile,
+        recoveredUserIsActiveLocalAccount
+      })
+
+      if (cachedWorkspaceAssignment) {
+        sourceWorkspaceId = cachedWorkspaceAssignment.sourceWorkspaceId
+        canonicalWorkspaceId = cachedWorkspaceAssignment.currentWorkspaceId
+      }
+    } catch (error) {
+      console.warn('[Auth] Failed to recover workspace state from local browser storage:', error)
+    }
+  }
+
+  if (!profileBootstrapCompleted && !canonicalWorkspaceId) {
+    try {
       const localWorkspaceState = await readLocalProfileWorkspaceState(parsedUser.id)
       if (localWorkspaceState) {
         sourceWorkspaceId = localWorkspaceState.sourceWorkspaceId
@@ -457,6 +482,13 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
     parsedUser.workspaceName = undefined
     parsedUser.isConfigured = undefined
     parsedUser.workspaceMode = 'cloud'
+  }
+
+  if (cachedWorkspaceAssignment) {
+    parsedUser.workspaceCode = cachedWorkspaceAssignment.workspaceCode || parsedUser.workspaceCode
+    parsedUser.workspaceName = cachedWorkspaceAssignment.workspaceName || parsedUser.workspaceName
+    parsedUser.isConfigured = cachedWorkspaceAssignment.isConfigured ?? parsedUser.isConfigured
+    parsedUser.workspaceMode = cachedWorkspaceAssignment.workspaceMode ?? parsedUser.workspaceMode
   }
 
   if (!canonicalWorkspaceId) {
