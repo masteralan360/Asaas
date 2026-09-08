@@ -53,7 +53,9 @@ export function isFulfilledUnitsAvailableForOrder(
     return true
   }
 
-  return Boolean(items?.length) && items.every((item) =>
+  if (!items?.length) return false
+
+  return items.every((item) =>
     item.fulfilledQuantity !== null && item.fulfilledQuantity !== undefined
   )
 }

@@ -6,6 +6,7 @@ import { Area, AreaChart, ResponsiveContainer } from 'recharts'
 import { useAuth } from '@/auth'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { UiAccessGate } from '@/context/UiAccessContext'
 import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
 import {
@@ -987,17 +988,19 @@ export function PaymentAccounts() {
                     {t('paymentAccounts.withdraw')}
                   </Button>
                   {isAdmin ? (
-                    <PressAndHoldButton
-                      size="sm"
-                      variant="outline"
-                      onComplete={openAdjustmentWarning}
-                      idleLabel={t('paymentAccounts.holdToOpenAdjustmentWarning')}
-                      holdingLabel={t('paymentAccounts.keepHoldingToOpenAdjustmentWarning')}
-                      loadingLabel={t('paymentAccounts.openingAdjustmentWarning')}
-                      isLoading={adjustmentWarningOpen}
-                      icon={<ShieldAlert className="h-4 w-4" />}
-                      className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
-                    />
+                    <UiAccessGate>
+                      <PressAndHoldButton
+                        size="sm"
+                        variant="outline"
+                        onComplete={openAdjustmentWarning}
+                        idleLabel={t('paymentAccounts.holdToOpenAdjustmentWarning')}
+                        holdingLabel={t('paymentAccounts.keepHoldingToOpenAdjustmentWarning')}
+                        loadingLabel={t('paymentAccounts.openingAdjustmentWarning')}
+                        isLoading={adjustmentWarningOpen}
+                        icon={<ShieldAlert className="h-4 w-4" />}
+                        className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                      />
+                    </UiAccessGate>
                   ) : null}
                 </div>
               ) : null}
