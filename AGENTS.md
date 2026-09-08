@@ -16,6 +16,7 @@ Any module that requires live exchange rate fetch MUST use the app-provided and 
 Any new module must have its access controlled either by workspace plan or by admin grant (E:\ERP System\Admin).
 When adding a module, the user must specify whether it should be included in one or more plans or remain admin-grant only.
 No new module should be accessible without one of these access rules being explicitly configured.
+Any new module that reads remote data must use scoped `ModulePageFreshness` with its own table names, and report start, page progress, completion, cancellation, and failure through `workspaceDataFreshness`; never show “Up to date” from an unrelated table’s load.
 
 ## Payment transactions
 

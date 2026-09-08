@@ -37,6 +37,9 @@ const dbMock = vi.hoisted(() => {
         delete: vi.fn(async () => 1),
         put: vi.fn(async () => 'assignment')
     }
+    const inventoryTransactions = {
+        put: vi.fn(async () => 'inventory-transaction')
+    }
 
     const offlineMutations = {
         where: vi.fn((indexName: string) => ({
@@ -79,6 +82,7 @@ const dbMock = vi.hoisted(() => {
         salesOrders,
         purchaseOrders,
         salesOrderAgentAssignments,
+        inventoryTransactions,
         reset() {
             rows.splice(0)
             offlineMutations.where.mockClear()
@@ -96,6 +100,7 @@ const dbMock = vi.hoisted(() => {
             purchaseOrders.update.mockClear()
             salesOrderAgentAssignments.delete.mockClear()
             salesOrderAgentAssignments.put.mockClear()
+            inventoryTransactions.put.mockClear()
         }
     }
 })
@@ -220,7 +225,8 @@ vi.mock('@/local-db', () => ({
         products: dbMock.products,
         sales_orders: dbMock.salesOrders,
         purchase_orders: dbMock.purchaseOrders,
-        sales_order_agent_assignments: dbMock.salesOrderAgentAssignments
+        sales_order_agent_assignments: dbMock.salesOrderAgentAssignments,
+        inventory_transactions: dbMock.inventoryTransactions
     }
 }))
 
@@ -257,6 +263,8 @@ import {
     isRecoverableCashierShiftTerminalReplayMutation,
     isRecoverablePriceBookMutation,
     orderMutationsForSync,
+    prepareLegacyStockProjectionsForReplay,
+    processMutationQueue,
     pullChanges,
     shouldApplyRemoteItem
 } from './syncEngine'
@@ -664,6 +672,123 @@ describe('sales-agent commission reconciliation ordering', () => {
     })
 })
 
+describe('legacy stock projection replay', () => {
+    it('restores the pre-sale inventory snapshot before replaying the sale RPC', () => {
+        const prepared = prepareLegacyStockProjectionsForReplay([
+            {
+                id: 'adjustment', workspaceId: 'workspace-1', entityType: 'inventory_transactions',
+                entityId: 'adjustment-1', operation: 'create', createdAt: '2026-09-09T10:00:00.000Z',
+                payload: {
+                    id: 'adjustment-1', workspaceId: 'workspace-1', productId: 'product-1',
+                    storageId: 'storage-1', transactionType: 'stock_adjustment', quantityDelta: 20,
+                    previousQuantity: 80, newQuantity: 100,
+                },
+            },
+            {
+                id: 'inventory', workspaceId: 'workspace-1', entityType: 'inventory',
+                entityId: 'inventory-1', operation: 'update', createdAt: '2026-09-09T10:01:00.000Z',
+                payload: {
+                    id: 'inventory-1', workspaceId: 'workspace-1', productId: 'product-1',
+                    storageId: 'storage-1', quantity: 90, isDeleted: false,
+                },
+            },
+            {
+                id: 'sale', workspaceId: 'workspace-1', entityType: 'sales',
+                entityId: 'sale-1', operation: 'create', createdAt: '2026-09-09T10:01:01.000Z',
+                payload: {
+                    id: 'sale-1',
+                    items: [{
+                        product_id: 'product-1', storage_id: 'storage-1',
+                        quantity: 10, inventory_snapshot: 100,
+                    }],
+                },
+            },
+        ])
+
+        expect(prepared[1].payload.quantity).toBe(100)
+
+        let remoteQuantity = 80
+        remoteQuantity += Number(prepared[0].payload.quantityDelta)
+        remoteQuantity = Number(prepared[1].payload.quantity)
+        remoteQuantity -= Number((prepared[2].payload.items as Array<Record<string, unknown>>)[0].quantity)
+        expect(remoteQuantity).toBe(90)
+    })
+
+    it('restores the pre-adjustment quantity for an adjustment-only legacy queue', () => {
+        const prepared = prepareLegacyStockProjectionsForReplay([
+            {
+                id: 'inventory', workspaceId: 'workspace-1', entityType: 'inventory',
+                entityId: 'inventory-1', operation: 'update', createdAt: '2026-09-09T10:00:00.000Z',
+                payload: {
+                    productId: 'product-1', storageId: 'storage-1', quantity: 100,
+                },
+            },
+            {
+                id: 'adjustment', workspaceId: 'workspace-1', entityType: 'inventory_transactions',
+                entityId: 'adjustment-1', operation: 'create', createdAt: '2026-09-09T10:00:01.000Z',
+                payload: {
+                    productId: 'product-1', storageId: 'storage-1',
+                    transactionType: 'stock_adjustment', previousQuantity: 80, newQuantity: 100,
+                },
+            },
+        ])
+
+        expect(prepared[0].payload).toMatchObject({
+            quantity: 80,
+            isDeleted: false,
+            is_deleted: false,
+        })
+    })
+
+    it('restores a consumed batch quantity before replaying its sale', () => {
+        const prepared = prepareLegacyStockProjectionsForReplay([
+            {
+                id: 'batch', workspaceId: 'workspace-1', entityType: 'stock_batches',
+                entityId: 'batch-1', operation: 'update', createdAt: '2026-09-09T10:00:00.000Z',
+                payload: {
+                    productId: 'product-1', storageId: 'storage-1', quantity: 3, isDeleted: false,
+                },
+            },
+            {
+                id: 'sale', workspaceId: 'workspace-1', entityType: 'sales',
+                entityId: 'sale-1', operation: 'create', createdAt: '2026-09-09T10:00:01.000Z',
+                payload: {
+                    items: [{
+                        productId: 'product-1', storageId: 'storage-1', quantity: 2,
+                        batchAllocations: [{ batchId: 'batch-1', quantity: 2 }],
+                    }],
+                },
+            },
+        ])
+
+        expect(prepared[0].payload).toMatchObject({
+            quantity: 5,
+            isDeleted: false,
+            is_deleted: false,
+        })
+    })
+
+    it('does not rewrite an unrelated inventory snapshot', () => {
+        const mutation = {
+            id: 'inventory', workspaceId: 'workspace-1', entityType: 'inventory',
+            entityId: 'inventory-1', operation: 'update', createdAt: '2026-09-09T10:00:00.000Z',
+            payload: { productId: 'product-1', storageId: 'storage-1', quantity: 75 },
+        }
+        const prepared = prepareLegacyStockProjectionsForReplay([mutation, {
+            id: 'sale', workspaceId: 'workspace-1', entityType: 'sales',
+            entityId: 'sale-1', operation: 'create', createdAt: '2026-09-09T10:00:01.000Z',
+            payload: {
+                items: [{
+                    productId: 'product-1', storageId: 'storage-1',
+                    quantity: 10, inventorySnapshot: 100,
+                }],
+            },
+        }])
+
+        expect(prepared[0]).toBe(mutation)
+    })
+})
+
 describe('fullSync error reporting', () => {
     beforeEach(() => {
         dbMock.reset()
@@ -676,6 +801,81 @@ describe('fullSync error reporting', () => {
             : undefined)
         schemaRoutingMock.getVisibilityScopedTableRpc.mockReset()
         schemaRoutingMock.getVisibilityScopedTableRpc.mockReturnValue(undefined)
+    })
+
+    it('replays a stock adjustment through the atomic RPC and stores server quantities', async () => {
+        supabaseMock.rpc.mockResolvedValueOnce({
+            data: {
+                transaction: {
+                    id: 'adjustment-1', workspace_id: 'workspace-1', product_id: 'product-1',
+                    storage_id: 'storage-1', transaction_type: 'stock_adjustment', quantity_delta: 20,
+                    previous_quantity: 80, new_quantity: 100, adjustment_reason: 'correction',
+                    created_at: '2026-09-09T10:00:00.000Z', updated_at: '2026-09-09T10:00:01.000Z',
+                    version: 1, is_deleted: false,
+                },
+                inventory: { id: 'inventory-1', quantity: 100 },
+                already_applied: false,
+            },
+            error: null,
+        })
+        dbMock.rows.push({
+            id: 'adjustment-mutation', workspaceId: 'workspace-1', entityType: 'inventory_transactions',
+            entityId: 'adjustment-1', operation: 'create', createdAt: '2026-09-09T10:00:00.000Z',
+            status: 'pending',
+            payload: {
+                id: 'adjustment-1', workspaceId: 'workspace-1', productId: 'product-1',
+                storageId: 'storage-1', transactionType: 'stock_adjustment', quantityDelta: 20,
+                previousQuantity: 80, newQuantity: 100, adjustmentReason: 'correction',
+            },
+        })
+
+        const result = await processMutationQueue('user-1')
+
+        expect(result).toMatchObject({ success: 1, failed: 0, errors: [] })
+        expect(supabaseMock.rpc).toHaveBeenCalledWith('apply_stock_adjustment', {
+            p_transaction: expect.objectContaining({
+                id: 'adjustment-1', transaction_type: 'stock_adjustment', quantity_delta: 20,
+            }),
+        })
+        expect(dbMock.inventoryTransactions.put).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'adjustment-1', previousQuantity: 80, newQuantity: 100,
+            syncStatus: 'synced',
+        }))
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
+    })
+
+    it('retries a stock adjustment after a transient RPC failure', async () => {
+        supabaseMock.rpc.mockResolvedValueOnce({ data: null, error: new Error('network disconnected') })
+        dbMock.rows.push({
+            id: 'adjustment-mutation', workspaceId: 'workspace-1', entityType: 'inventory_transactions',
+            entityId: 'adjustment-1', operation: 'create', createdAt: '2026-09-09T10:00:00.000Z',
+            status: 'pending',
+            payload: {
+                id: 'adjustment-1', workspaceId: 'workspace-1', productId: 'product-1',
+                storageId: 'storage-1', transactionType: 'stock_adjustment', quantityDelta: 20,
+                previousQuantity: 80, newQuantity: 100, adjustmentReason: 'correction',
+            },
+        })
+
+        expect(await processMutationQueue('user-1')).toMatchObject({ success: 0, failed: 1 })
+        expect(dbMock.rows[0]).toMatchObject({ status: 'failed', error: 'network disconnected' })
+
+        supabaseMock.rpc.mockResolvedValueOnce({
+            data: {
+                transaction: {
+                    id: 'adjustment-1', workspace_id: 'workspace-1', product_id: 'product-1',
+                    storage_id: 'storage-1', transaction_type: 'stock_adjustment', quantity_delta: 20,
+                    previous_quantity: 80, new_quantity: 100, adjustment_reason: 'correction',
+                },
+                inventory: { id: 'inventory-1', quantity: 100 },
+                already_applied: true,
+            },
+            error: null,
+        })
+
+        expect(await processMutationQueue('user-1')).toMatchObject({ success: 1, failed: 0 })
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
+        expect(supabaseMock.rpc).toHaveBeenCalledTimes(2)
     })
 
     it('retires legacy duplicate-candidate mutations without syncing or pulling them', async () => {

@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { setNetworkStatus } from '@/lib/network'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
@@ -90,11 +91,15 @@ describe('stock adjustments', () => {
         installBrowserGlobals()
         await db.delete()
         await db.open()
+        setNetworkStatus(false)
         writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'local' })
         await seedInventory(4)
     })
 
-    afterEach(() => clearWorkspaceModeSnapshot(WORKSPACE_ID))
+    afterEach(() => {
+        clearWorkspaceModeSnapshot(WORKSPACE_ID)
+        setNetworkStatus(true)
+    })
     afterAll(async () => { await db.delete() })
 
     it('uses the requested final quantity when creating the adjustment', async () => {
@@ -112,5 +117,65 @@ describe('stock adjustments', () => {
             .toMatchObject({ quantity: 11 })
         expect(await db.inventory_transactions.where('referenceId').equals(adjustment.id).first())
             .toMatchObject({ quantityDelta: 7, previousQuantity: 4, newQuantity: 11 })
+    })
+
+    it('queues only the stock-adjustment operation while offline in cloud mode', async () => {
+        writeWorkspaceModeSnapshot({ workspaceId: WORKSPACE_ID, dataMode: 'cloud' })
+
+        const adjustment = await createStockAdjustment(WORKSPACE_ID, {
+            productId: PRODUCT_ID,
+            storageId: STORAGE_ID,
+            adjustmentType: 'increase',
+            quantity: 1,
+            targetQuantity: 11,
+            reason: 'correction',
+        })
+
+        expect(await db.inventory.where('[productId+storageId]').equals([PRODUCT_ID, STORAGE_ID]).first())
+            .toMatchObject({ quantity: 11 })
+        expect(await db.offline_mutations.toArray()).toEqual([
+            expect.objectContaining({
+                entityType: 'inventory_transactions',
+                entityId: adjustment.id,
+                operation: 'create',
+                payload: expect.objectContaining({
+                    quantityDelta: 7,
+                    previousQuantity: 4,
+                    newQuantity: 11,
+                }),
+            }),
+        ])
+    })
+
+    it('rounds fractional target quantities to the inventory precision', async () => {
+        const adjustment = await createStockAdjustment(WORKSPACE_ID, {
+            productId: PRODUCT_ID,
+            storageId: STORAGE_ID,
+            adjustmentType: 'increase',
+            quantity: 1,
+            targetQuantity: 5.2345678,
+            reason: 'correction',
+        })
+
+        expect(adjustment).toMatchObject({
+            quantity: 1.234568,
+            previousQuantity: 4,
+            newQuantity: 5.234568,
+        })
+    })
+
+    it('rejects a decrease below zero without changing inventory or writing a ledger row', async () => {
+        await expect(createStockAdjustment(WORKSPACE_ID, {
+            productId: PRODUCT_ID,
+            storageId: STORAGE_ID,
+            adjustmentType: 'decrease',
+            quantity: 5,
+            reason: 'damage',
+        })).rejects.toThrow('Insufficient inventory')
+
+        expect(await db.inventory.where('[productId+storageId]').equals([PRODUCT_ID, STORAGE_ID]).first())
+            .toMatchObject({ quantity: 4 })
+        expect(await db.inventory_transactions.count()).toBe(0)
+        expect(await db.offline_mutations.count()).toBe(0)
     })
 })

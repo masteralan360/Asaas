@@ -196,6 +196,10 @@ export async function createStockAdjustment(
       quantityDelta,
       timestamp,
       skipRemoteHydration: true,
+      // The stock-adjustment transaction is the cloud operation. Uploading
+      // this local projection as well would apply the same change twice when
+      // the transaction is replayed after an offline session.
+      skipRemoteSync: true,
     });
     inventoryAdjusted = true;
 
@@ -229,6 +233,8 @@ export async function createStockAdjustment(
           productId: normalized.productId,
           storageId: normalized.storageId,
           quantityDelta: -quantityDelta,
+          skipRemoteHydration: true,
+          skipRemoteSync: true,
         });
       } catch (rollbackError) {
         console.error(

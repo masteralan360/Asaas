@@ -15,6 +15,7 @@ import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import { db } from "./database";
 import { addToOfflineMutations } from "./offlineMutations";
 import type {
+  Inventory,
   InventoryTransaction,
   InventoryTransactionType,
   StockAdjustmentReason,
@@ -159,6 +160,64 @@ function toRemoteInventoryTransactionPayload(transaction: InventoryTransaction) 
   });
 }
 
+type ApplyStockAdjustmentResult = {
+  transaction: Record<string, unknown>;
+  inventory: Record<string, unknown> | null;
+  already_applied: boolean;
+};
+
+export async function applyStockAdjustmentTransactionRemotely(
+  transaction: InventoryTransaction,
+) {
+  if (transaction.transactionType !== "stock_adjustment") {
+    throw new Error("Only stock adjustments can use the stock adjustment RPC");
+  }
+
+  const client = getSupabaseClientForTable(TABLE_NAME);
+  const { data, error } = await runSupabaseAction(
+    `${TABLE_NAME}.apply_stock_adjustment`,
+    () => client.rpc("apply_stock_adjustment", {
+      p_transaction: toRemoteInventoryTransactionPayload(transaction),
+    }),
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const result = data as ApplyStockAdjustmentResult | null;
+  if (!result?.transaction) {
+    throw new Error("Stock adjustment RPC returned no transaction");
+  }
+
+  return {
+    transaction: toCamelCase(result.transaction) as unknown as InventoryTransaction,
+    inventory: result.inventory
+      ? toCamelCase(result.inventory) as unknown as Inventory
+      : null,
+    alreadyApplied: result.already_applied === true,
+  };
+}
+
+async function reconcileAuthoritativeInventory(remoteInventory: Inventory) {
+  const localRows = await db.inventory
+    .where("[productId+storageId]")
+    .equals([remoteInventory.productId, remoteInventory.storageId])
+    .toArray();
+
+  await db.transaction("rw", db.inventory, async () => {
+    await Promise.all(
+      localRows
+        .filter((row) => (
+          row.workspaceId === remoteInventory.workspaceId
+          && row.id !== remoteInventory.id
+        ))
+        .map((row) => db.inventory.delete(row.id)),
+    );
+    await db.inventory.put(remoteInventory);
+  });
+}
+
 async function queueInventoryTransactionForSync(transaction: InventoryTransaction) {
   await addToOfflineMutations(
     TABLE_NAME,
@@ -182,21 +241,20 @@ export async function syncInventoryTransactionBestEffort(
   }
 
   try {
-    const client = getSupabaseClientForTable(TABLE_NAME);
-    const { error } = await runSupabaseAction(`${TABLE_NAME}.sync`, () =>
-      client
-        .from(TABLE_NAME)
-        .upsert(toRemoteInventoryTransactionPayload(transaction)),
-    );
-
-    if (error) {
-      throw error;
-    }
-
-    await db.inventory_transactions.update(transaction.id, {
+    const result = await applyStockAdjustmentTransactionRemotely(transaction);
+    const syncedAt = new Date().toISOString();
+    await db.inventory_transactions.put({
+      ...result.transaction,
       syncStatus: "synced",
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: syncedAt,
     });
+    if (result.inventory) {
+      await reconcileAuthoritativeInventory({
+        ...result.inventory,
+        syncStatus: "synced",
+        lastSyncedAt: syncedAt,
+      });
+    }
   } catch (error) {
     console.error("[InventoryTransactions] Failed to sync inventory transaction:", error);
     await queueInventoryTransactionForSync(transaction);

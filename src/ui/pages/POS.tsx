@@ -42,6 +42,7 @@ import {
 import { isService, SERVICES_VIRTUAL_STORAGE_ID } from '@/lib/catalogItem'
 import { isPosPaymentTypeAllowed, type PosPaymentType } from '@/lib/posPaymentPolicy'
 import { db } from '@/local-db/database'
+import { applyOfflinePosStockEffects } from '@/local-db/offlinePosStock'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { roundOrderValue } from '@/lib/orderPrecision'
 import { CartItem } from '@/types'
@@ -3055,29 +3056,19 @@ export function POS() {
                         }
                     })
 
-                    // 3. Update Local Inventory
-                    await Promise.all(physicalCart.map(async (item) => {
-                        const storageId = item.storageId || selectedStorageId
-                        if (!storageId) return
-
-                        await adjustInventoryQuantity({
-                            workspaceId: user.workspaceId,
-                            productId: item.product_id,
-                            storageId,
-                            quantityDelta: -item.quantity,
-                            timestamp: snapshotTimestamp
-                        })
-                    }))
-
-                    await Promise.all(batchSalePlans.map((plan) =>
-                        commitStockBatchAllocations(
-                            user.workspaceId,
-                            plan.productId,
-                            plan.storageId,
-                            plan.allocations,
-                            { timestamp: snapshotTimestamp }
-                        )
-                    ))
+                    // 3. Update the local projection only. complete_sale owns
+                    // the authoritative inventory and batch changes on replay.
+                    await applyOfflinePosStockEffects({
+                        workspaceId: user.workspaceId,
+                        items: physicalCart.flatMap((item) => {
+                            const storageId = item.storageId || selectedStorageId
+                            return storageId
+                                ? [{ productId: item.product_id, storageId, quantity: item.quantity }]
+                                : []
+                        }),
+                        batchPlans: batchSalePlans,
+                        timestamp: snapshotTimestamp
+                    })
 
                     const localFormattedInvoiceId = `#${String(localSequenceId).padStart(5, '0')}`
                     const saleDataOffline = mapSaleToUniversal({
