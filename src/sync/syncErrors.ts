@@ -1,5 +1,12 @@
 export const SCHEMA_MISMATCH_ERROR_PREFIX = "Schema mismatch:";
 export const SYNC_INTEGRITY_ERROR_PREFIX = "Sync integrity issue:";
+const CAPITAL_POOL_CONFLICT_MARKER = "CAPITAL_POOL_ACCOUNT_CONFLICT:";
+
+export interface CapitalPoolSyncConflict {
+  accountName: string;
+  poolName: string;
+  currency?: string;
+}
 
 type SyncIntegrityIssueKind = "schema" | "permission" | "validation";
 
@@ -18,6 +25,39 @@ function getErrorCode(error: unknown): string | null {
   }
   const code = (error as { code?: unknown }).code;
   return typeof code === "string" ? code : null;
+}
+
+function getCapitalPoolConflictFromRemoteError(error: unknown): CapitalPoolSyncConflict | null {
+  if (!error || typeof error !== "object") return null;
+  const message = getErrorMessage(error);
+  if (!message.includes("CAPITAL_POOL_ACCOUNT_CONFLICT")) return null;
+  const details = "details" in error ? (error as { details?: unknown }).details : null;
+  if (typeof details !== "string") return null;
+
+  try {
+    const parsed = JSON.parse(details) as Record<string, unknown>;
+    if (typeof parsed.account_name !== "string" || typeof parsed.pool_name !== "string") return null;
+    return {
+      accountName: parsed.account_name,
+      poolName: parsed.pool_name,
+      currency: typeof parsed.currency === "string" ? parsed.currency : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function getCapitalPoolConflictFromSyncError(error?: string): CapitalPoolSyncConflict | null {
+  if (typeof error !== "string") return null;
+  const markerIndex = error.indexOf(CAPITAL_POOL_CONFLICT_MARKER);
+  if (markerIndex < 0) return null;
+
+  try {
+    const parsed = JSON.parse(error.slice(markerIndex + CAPITAL_POOL_CONFLICT_MARKER.length)) as CapitalPoolSyncConflict;
+    return typeof parsed.accountName === "string" && typeof parsed.poolName === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getSchemaMismatchColumnName(error?: string): string | null {
@@ -105,6 +145,13 @@ export function getSyncIntegrityError(
   tableName: string,
   error: unknown,
 ): string | null {
+  if (tableName === "capital_pools") {
+    const conflict = getCapitalPoolConflictFromRemoteError(error);
+    if (conflict) {
+      return `${SYNC_INTEGRITY_ERROR_PREFIX} ${CAPITAL_POOL_CONFLICT_MARKER}${JSON.stringify(conflict)}`;
+    }
+  }
+
   const kind = getSyncIntegrityIssueKind(error);
   if (!kind) return null;
 

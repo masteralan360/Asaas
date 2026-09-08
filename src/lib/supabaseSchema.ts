@@ -72,6 +72,7 @@ const rentalTables = new Set([
 
 const paymentAccountTables = new Set([
     'payment_accounts',
+    'capital_pools',
     'payment_account_balances',
     'payment_account_movements',
     'cashier_shifts',

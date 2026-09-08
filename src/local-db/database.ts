@@ -75,6 +75,7 @@ import type {
   InstallmentSalePayment,
   PaymentTransaction,
   PaymentAccount,
+  CapitalPool,
   PaymentAccountBalance,
   PaymentAccountMovement,
   CashierShift,
@@ -476,6 +477,7 @@ export class AtlasDatabase extends Dexie {
   installment_sale_payments!: EntityTable<InstallmentSalePayment, 'id'>
   payment_transactions!: EntityTable<PaymentTransaction, 'id'>
   payment_accounts!: EntityTable<PaymentAccount, 'id'>
+  capital_pools!: EntityTable<CapitalPool, 'id'>
   payment_account_balances!: EntityTable<PaymentAccountBalance, 'id'>
   payment_account_movements!: EntityTable<PaymentAccountMovement, 'id'>
   cashier_shifts!: EntityTable<CashierShift, 'id'>
@@ -3376,6 +3378,11 @@ export class AtlasDatabase extends Dexie {
       installment_sale_supplier_payments: null
     })
 
+    this.version(124).stores({
+      capital_pools:
+        'id, workspaceId, name, currency, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+currency], *accountIds'
+    })
+
     this.registerLocalModeSqliteAuthority()
     this.registerLocalModeSyncHooks()
   }
@@ -3536,6 +3543,7 @@ export class AtlasDatabase extends Dexie {
       'installment_sale_payments',
       'payment_transactions',
       'payment_accounts',
+      'capital_pools',
       'payment_account_balances',
       'payment_account_movements',
       'cashier_shifts',
@@ -3724,6 +3732,7 @@ export async function clearDatabase(): Promise<void> {
       db.delivery_ledger_entries,
       db.payment_transactions,
       db.payment_accounts,
+      db.capital_pools,
       db.payment_account_balances,
       db.payment_account_movements,
       db.cashier_shifts,
@@ -3795,6 +3804,7 @@ export async function clearDatabase(): Promise<void> {
       await db.delivery_ledger_entries.clear()
       await db.payment_transactions.clear()
       await db.payment_accounts.clear()
+      await db.capital_pools.clear()
       await db.payment_account_balances.clear()
       await db.payment_account_movements.clear()
       await db.cashier_shifts.clear()

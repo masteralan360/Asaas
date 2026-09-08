@@ -31,6 +31,7 @@ import {
   Plane,
   Link2,
   Trash2,
+  Coins,
 } from "lucide-react";
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
@@ -112,6 +113,16 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     descriptionKey: "members.permissions.paymentAccountsAccessDescription",
     defaultDescription: "Access payment accounts, balances, and account movement history.",
     icon: Wallet,
+    section: "cash-and-control",
+  },
+  {
+    key: "paymentAccounts.manageCapitalPools",
+    module: "paymentAccounts",
+    labelKey: "members.permissions.paymentAccountsManageCapitalPools",
+    defaultLabel: "Manage Capital Pools",
+    descriptionKey: "members.permissions.paymentAccountsManageCapitalPoolsDescription",
+    defaultDescription: "Create, edit, and delete Capital Pools inside Payment Accounts.",
+    icon: Coins,
     section: "cash-and-control",
   },
   {

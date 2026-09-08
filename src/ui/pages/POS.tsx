@@ -134,6 +134,7 @@ import { usePosReceiptPrinter } from '@/ui/components/pos/usePosReceiptPrinter'
 import type { StorageSelectorOption } from '@/ui/components/pos/StorageSelector'
 import { PosPriceBookSelector } from '@/ui/components/pos/PosPriceBookSelector'
 import { CameraBarcodeScanner } from '@/ui/components/pos/CameraBarcodeScanner'
+import { MobileCatalogQuantityButton } from '@/ui/components/pos/MobileCatalogQuantityButton'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
 import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt } from '@/ui/components/loans/SaveBorrowerAsPartnerDialog'
@@ -5582,31 +5583,22 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 className="flex items-center justify-between bg-muted/30 rounded-2xl p-1 mt-auto"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-xl hover:bg-background"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        updateQuantity(buildCartItemKey(product.id, product.storageId), -1);
-                                    }}
+                                <MobileCatalogQuantityButton
+                                    ariaLabel={t('pos.removeOne')}
                                     disabled={!cartItem}
+                                    onAdjust={() => updateQuantity(buildCartItemKey(product.id, product.storageId), -1)}
                                 >
                                     <Minus className="w-3 h-3" />
-                                </Button>
+                                </MobileCatalogQuantityButton>
                                 <span className="font-bold text-sm min-w-4 text-center">{cartItem?.quantity || 0}</span>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-xl hover:bg-background text-primary"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        addToCart(product);
-                                    }}
+                                <MobileCatalogQuantityButton
+                                    ariaLabel={t('pos.addOne')}
+                                    className="text-primary"
                                     disabled={!isInfiniteActivity && remainingQuantity <= 0}
+                                    onAdjust={() => addToCart(product)}
                                 >
                                     <Plus className="w-3 h-3" />
-                                </Button>
+                                </MobileCatalogQuantityButton>
                             </div>
                         </div>
                     )
@@ -5913,16 +5905,25 @@ function MobileCart({
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
-                                                <button onClick={() => updateQuantity(itemKey, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
+                                                <MobileCatalogQuantityButton
+                                                    ariaLabel={t('pos.removeOne')}
+                                                    className="h-6 w-6 rounded-lg p-1.5"
+                                                    onAdjust={() => updateQuantity(itemKey, -1)}
+                                                >
                                                     <Minus className="w-3 h-3" />
-                                                </button>
+                                                </MobileCatalogQuantityButton>
                                                 <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
                                                     <span className="text-sm font-black">{item.quantity}</span>
                                                     <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`, item.unit)}</span>
                                                 </span>
-                                                <button onClick={() => updateQuantity(itemKey, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
+                                                <MobileCatalogQuantityButton
+                                                    ariaLabel={t('pos.addOne')}
+                                                    className="h-6 w-6 rounded-lg p-1.5 text-primary"
+                                                    disabled={item.quantity >= item.max_stock}
+                                                    onAdjust={() => updateQuantity(itemKey, 1)}
+                                                >
                                                     <Plus className="w-3 h-3" />
-                                                </button>
+                                                </MobileCatalogQuantityButton>
                                             </div>
                                         )}
                                     </div>

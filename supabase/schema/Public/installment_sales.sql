@@ -15,7 +15,7 @@ CREATE TABLE public.installment_sales (
   customer_balance_amount numeric NOT NULL,
   installment_count integer NOT NULL,
   installment_frequency text NOT NULL,
-  first_due_date date NOT NULL,
+  first_due_date date NULL,
   next_due_date date NULL,
   status text NOT NULL,
   cancelled_at timestamp with time zone NULL,

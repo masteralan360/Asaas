@@ -1,7 +1,6 @@
 Post Service Archiver
 retry sync
 icon
-Price books selector order form and quick order
 usage calculator
 remove R2 Print only
 account switch
@@ -10,8 +9,4 @@ Transaction Reconciliation & Integrity Audit, Expandable, Plain English Explanat
 supabase backup
 Move Tabs in sidebar
 
-Post Service Local settings
-client_latitude
-client_longitude
-
-DAILY INSTALLMENT without agressive loading
+Price books selector order form and quick order

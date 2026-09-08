@@ -10,6 +10,11 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import {
+  assertPaymentAccountNotInCapitalPool,
+  getCapitalPoolRemoteErrorMessage,
+  isCapitalPoolAccountInUseError
+} from './capitalPools'
 import { DIGITAL_WALLET_PAYMENT_METHODS } from './models'
 import type {
   CashierShift,
@@ -56,6 +61,7 @@ interface PersistOptions {
   localAlreadyPersisted?: boolean
   failOnRemoteConflict?: boolean
   remoteConflictMessage?: string
+  rollbackOnCapitalPoolUse?: () => Promise<void>
 }
 
 /** Keep floating-point input noise from creating an unusable negative balance. */
@@ -157,6 +163,13 @@ async function persist<T extends { id: string; workspaceId: string }>(
     await table.put(synced)
     return synced
   } catch (error) {
+    if (options.rollbackOnCapitalPoolUse && isCapitalPoolAccountInUseError(error)) {
+      await options.rollbackOnCapitalPoolUse()
+      throw new Error(
+        getCapitalPoolRemoteErrorMessage(error) ??
+        i18n.t('paymentAccounts.capitalPools.errors.accountInUse')
+      )
+    }
     if (options.failOnRemoteConflict && isRemoteUniqueViolation(error)) {
       await table.delete(row.id)
       throw new Error(options.remoteConflictMessage ?? 'This record conflicts with an existing record.')
@@ -495,6 +508,9 @@ export async function savePaymentAccount(workspaceId: string, input: SavePayment
     (item) => !item.isDeleted && item.isActive && item.id !== existing?.id
   )
   const isActive = input.isActive ?? existing?.isActive ?? true
+  if (existing?.isActive && !isActive) {
+    await assertPaymentAccountNotInCapitalPool(workspaceId, existing.id)
+  }
   const linkedPaymentMethod =
     isActive && input.accountType === 'digital_wallet'
       ? input.linkedPaymentMethod === undefined
@@ -553,8 +569,27 @@ export async function savePaymentAccount(workspaceId: string, input: SavePayment
   await db.transaction('rw', db.payment_accounts, async () => {
     await db.payment_accounts.bulkPut([...relatedUpdates, account])
   })
+  const rollbackAccountRemoval = existing?.isActive && !account.isActive
+    ? async () => {
+        await db.transaction('rw', db.payment_accounts, async () => {
+          await db.payment_accounts.put(existing)
+          const originalRelated = activeAccounts.filter((candidate) =>
+            relatedUpdates.some((related) => related.id === candidate.id)
+          )
+          if (originalRelated.length) await db.payment_accounts.bulkPut(originalRelated)
+        })
+      }
+    : undefined
+
+  // For removals, let the server-side pool guard accept the account change
+  // before synchronizing any related primary/default updates. A raced pool
+  // creation is surfaced and the optimistic local row is restored.
+  const savedAccount = rollbackAccountRemoval
+    ? await persist('payment_accounts', account, existing ? 'update' : 'create', {
+        rollbackOnCapitalPoolUse: rollbackAccountRemoval
+      })
+    : await persist('payment_accounts', account, existing ? 'update' : 'create')
   for (const related of relatedUpdates) await persist('payment_accounts', related, 'update')
-  const savedAccount = await persist('payment_accounts', account, existing ? 'update' : 'create')
 
   if (openingBalances.length) {
     const { appendPaymentTransaction } = await import('./payments')
@@ -585,6 +620,8 @@ export async function deletePaymentAccount(workspaceId: string, accountId: strin
   if (!account || account.workspaceId !== workspaceId || account.isDeleted) {
     throw new Error('Payment account was not found.')
   }
+
+  await assertPaymentAccountNotInCapitalPool(workspaceId, accountId)
 
   const now = new Date().toISOString()
   const activeRemaining = (await db.payment_accounts.where('workspaceId').equals(workspaceId).toArray())
@@ -622,7 +659,14 @@ export async function deletePaymentAccount(workspaceId: string, accountId: strin
     await db.payment_accounts.put(deleted)
     if (promoted) await db.payment_accounts.put(promoted)
   })
-  await persist('payment_accounts', deleted, 'update')
+  await persist('payment_accounts', deleted, 'update', {
+    rollbackOnCapitalPoolUse: async () => {
+      await db.transaction('rw', db.payment_accounts, async () => {
+        await db.payment_accounts.put(account)
+        if (fallbackPrimary) await db.payment_accounts.put(fallbackPrimary)
+      })
+    }
+  })
   if (promoted) await persist('payment_accounts', promoted, 'update')
   return { deleted, fallbackPrimary: promoted ?? null }
 }

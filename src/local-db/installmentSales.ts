@@ -20,8 +20,8 @@ import {
 } from './payments'
 import type {
   CurrencyCode,
-  InstallmentFrequency,
   InstallmentSale,
+  InstallmentSaleFrequency,
   InstallmentSaleInstallment,
   InstallmentSalePayment,
   InstallmentSaleStatus,
@@ -72,7 +72,12 @@ function normalizeDateKey(value: string | null | undefined) {
   return parsed.toISOString().slice(0, 10)
 }
 
-export function addInstallmentSaleDueDate(firstDueDate: string, frequency: InstallmentFrequency, index: number) {
+export function addInstallmentSaleDueDate(
+  firstDueDate: string | null,
+  frequency: InstallmentSaleFrequency,
+  index: number
+) {
+  if (frequency === 'no_frequency') return null
   const date = new Date(`${normalizeDateKey(firstDueDate)}T00:00:00.000Z`)
   if (frequency === 'daily') {
     date.setUTCDate(date.getUTCDate() + index)
@@ -94,15 +99,18 @@ export function buildInstallmentSaleSchedule(
   amount: number,
   currency: CurrencyCode,
   count: number,
-  frequency: InstallmentFrequency,
-  firstDueDate: string
+  frequency: InstallmentSaleFrequency,
+  firstDueDate: string | null
 ) {
-  const safeCount = Math.max(1, Math.trunc(Number(count) || 1))
+  // An open-balance sale deliberately has one internal allocation row. It is
+  // never presented as a schedule, but lets payment allocation and reversals
+  // continue to use the established, auditable installment-sale flow.
+  const safeCount = frequency === 'no_frequency' ? 1 : Math.max(1, Math.trunc(Number(count) || 1))
   const safeAmount = roundInstallmentSaleAmount(Math.max(0, amount), currency)
   const base = roundInstallmentSaleAmount(safeAmount / safeCount, currency)
   const rows: Array<{
     installmentNo: number
-    dueDate: string
+    dueDate: string | null
     plannedAmount: number
   }> = []
   let accumulated = 0
@@ -120,9 +128,9 @@ export function buildInstallmentSaleSchedule(
   return rows
 }
 
-function installmentStatus(dueDate: string, balance: number): InstallmentStatus {
+function installmentStatus(dueDate: string | null, balance: number): InstallmentStatus {
   if (balance <= 0) return 'paid'
-  return dueDate < new Date().toISOString().slice(0, 10) ? 'overdue' : 'unpaid'
+  return dueDate && dueDate < new Date().toISOString().slice(0, 10) ? 'overdue' : 'unpaid'
 }
 
 function saleStatus(
@@ -131,7 +139,9 @@ function saleStatus(
 ): InstallmentSaleStatus {
   if (balance <= 0) return 'completed'
   const today = new Date().toISOString().slice(0, 10)
-  return installments.some((row) => row.balanceAmount > 0 && row.dueDate < today) ? 'overdue' : 'active'
+  return installments.some((row) => row.balanceAmount > 0 && !!row.dueDate && row.dueDate < today)
+    ? 'overdue'
+    : 'active'
 }
 
 function sanitizeSyncPayload(entity: Record<string, unknown>) {
@@ -207,8 +217,8 @@ export interface CreateInstallmentSaleInput {
   totalSalePrice: number
   downPaymentAmount?: number
   installmentCount: number
-  installmentFrequency: InstallmentFrequency
-  firstDueDate: string
+  installmentFrequency: InstallmentSaleFrequency
+  firstDueDate?: string | null
   downPaymentMethod?: WorkspacePaymentMethod
   downPaymentAccountId?: string | null
   downPaymentAccountNameSnapshot?: string | null
@@ -232,12 +242,13 @@ export async function createInstallmentSale(workspaceId: string, input: CreateIn
     assertStandardSettlementPaymentMethod(input.downPaymentMethod || 'cash')
   }
 
-  const firstDueDate = normalizeDateKey(input.firstDueDate)
+  const isNoFrequency = input.installmentFrequency === 'no_frequency'
+  const firstDueDate = isNoFrequency ? null : normalizeDateKey(input.firstDueDate)
   const scheduleAmount = roundInstallmentSaleAmount(totalSalePrice - downPaymentAmount, input.currency)
   const plan = buildInstallmentSaleSchedule(
     scheduleAmount,
     input.currency,
-    input.installmentCount,
+    isNoFrequency ? 1 : input.installmentCount,
     input.installmentFrequency,
     firstDueDate
   )

@@ -132,6 +132,81 @@ describe("installment sales", () => {
     ]);
   });
 
+  it("creates an untimed open balance with no due date or overdue state", async () => {
+    expect(
+      buildInstallmentSaleSchedule(1_500_000, "iqd", 7, "no_frequency", null),
+    ).toEqual([
+      { installmentNo: 1, dueDate: null, plannedAmount: 1_500_000 },
+    ]);
+
+    const customer = await createBusinessPartner(WORKSPACE_ID, {
+      partnerName: "Open balance customer",
+      phone: "07500000002",
+      defaultCurrency: "iqd",
+      creditLimit: 0,
+      role: "customer",
+    });
+    const { sale, installments } = await createInstallmentSale(WORKSPACE_ID, {
+      customerBusinessPartnerId: customer.id,
+      description: "Untimed device sale",
+      currency: "iqd",
+      acquisitionCost: 1_000_000,
+      totalSalePrice: 1_500_000,
+      installmentCount: 7,
+      installmentFrequency: "no_frequency",
+    });
+
+    expect(sale).toMatchObject({
+      installmentCount: 1,
+      installmentFrequency: "no_frequency",
+      firstDueDate: null,
+      nextDueDate: null,
+      customerBalanceAmount: 1_500_000,
+      status: "active",
+    });
+    expect(installments).toEqual([
+      expect.objectContaining({
+        dueDate: null,
+        plannedAmount: 1_500_000,
+        balanceAmount: 1_500_000,
+        status: "unpaid",
+      }),
+    ]);
+
+    await recordInstallmentSaleCustomerPayment(WORKSPACE_ID, {
+      installmentSaleId: sale.id,
+      amount: 300_000,
+      paymentMethod: "cash",
+    });
+
+    expect(await db.installment_sales.get(sale.id)).toMatchObject({
+      customerPaidAmount: 300_000,
+      customerBalanceAmount: 1_200_000,
+      nextDueDate: null,
+      status: "active",
+    });
+    expect(await db.installment_sale_installments.get(installments[0].id)).toMatchObject({
+      dueDate: null,
+      paidAmount: 300_000,
+      balanceAmount: 1_200_000,
+      status: "partial",
+    });
+    expect(
+      await db.payment_transactions
+        .where("workspaceId")
+        .equals(WORKSPACE_ID)
+        .toArray(),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "installment_sale_installment",
+          direction: "incoming",
+          amount: 300_000,
+        }),
+      ]),
+    );
+  });
+
   it("creates a customer receivable and records every collection through payment transactions", async () => {
     const customer = await createBusinessPartner(WORKSPACE_ID, {
       partnerName: "Customer A",

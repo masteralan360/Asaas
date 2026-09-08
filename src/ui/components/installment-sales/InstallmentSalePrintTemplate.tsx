@@ -21,6 +21,7 @@ export function InstallmentSalePrintTemplate({
   qrValue,
 }: InstallmentSalePrintTemplateProps) {
   const { t } = useTranslation();
+  const isNoFrequency = sale.installmentFrequency === "no_frequency";
   const pages = Array.from(
     { length: Math.max(1, Math.ceil(installments.length / ROWS_PER_A4_PAGE)) },
     (_, index) =>
@@ -93,9 +94,42 @@ export function InstallmentSalePrintTemplate({
             </div>
           ) : null}
           <div className="mt-5 flex-1">
-            <h2 className="mb-3 text-sm font-bold">
-              {t("loans.installmentSchedule")}
-            </h2>
+            {isNoFrequency ? (
+              <>
+                <h2 className="mb-3 text-sm font-bold">
+                  {t("installmentSales.repaymentSummary")}
+                </h2>
+                <div className="grid grid-cols-3 gap-3 border-y py-4">
+                  <Summary
+                    label={t("installmentSales.totalSalePrice")}
+                    value={formatCurrency(
+                      sale.totalSalePrice,
+                      sale.currency,
+                      iqdPreference,
+                    )}
+                  />
+                  <Summary
+                    label={t("installmentSales.paid")}
+                    value={formatCurrency(
+                      sale.customerPaidAmount,
+                      sale.currency,
+                      iqdPreference,
+                    )}
+                  />
+                  <Summary
+                    label={t("installmentSales.customerReceivable")}
+                    value={formatCurrency(
+                      sale.customerBalanceAmount,
+                      sale.currency,
+                      iqdPreference,
+                    )}
+                  />
+                </div>
+              </>
+            ) : <>
+              <h2 className="mb-3 text-sm font-bold">
+                {t("loans.installmentSchedule")}
+              </h2>
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-y border-black text-left">
@@ -120,7 +154,7 @@ export function InstallmentSalePrintTemplate({
                     style={{ breakInside: "avoid" }}
                   >
                     <td className="py-2">{row.installmentNo}</td>
-                    <td className="py-2">{formatDate(row.dueDate)}</td>
+                    <td className="py-2">{row.dueDate ? formatDate(row.dueDate) : "-"}</td>
                     <td className="py-2 text-right">
                       {formatCurrency(
                         row.plannedAmount,
@@ -146,6 +180,7 @@ export function InstallmentSalePrintTemplate({
                 ))}
               </tbody>
             </table>
+            </>}
           </div>
           <footer className="mt-5 flex items-end justify-between border-t pt-3 text-[10px] text-zinc-500">
             <span>

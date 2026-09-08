@@ -37,8 +37,8 @@ import {
   useInstallmentSales,
   type BusinessPartner,
   type CurrencyCode,
-  type InstallmentFrequency,
   type InstallmentSale,
+  type InstallmentSaleFrequency,
   type InstallmentSaleInstallment,
   type PaymentAccount,
   type WorkspacePaymentMethod,
@@ -168,7 +168,7 @@ function CreateInstallmentSaleDialog({
   const [downMethod, setDownMethod] = useState<WorkspacePaymentMethod>("cash");
   const [downAccount, setDownAccount] = useState<PaymentAccount | null>(null);
   const [count, setCount] = useState("1");
-  const [frequency, setFrequency] = useState<InstallmentFrequency>("monthly");
+  const [frequency, setFrequency] = useState<InstallmentSaleFrequency>("monthly");
   const [firstDueDate, setFirstDueDate] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
@@ -197,6 +197,7 @@ function CreateInstallmentSaleDialog({
     ? parseFormattedNumber(downPayment || "0")
     : 0;
   const profit = numericPrice - numericCost;
+  const isNoFrequency = frequency === "no_frequency";
   const canSubmit =
     !!customer &&
     description.trim().length > 0 &&
@@ -204,8 +205,7 @@ function CreateInstallmentSaleDialog({
     numericPrice >= numericCost &&
     numericDown >= 0 &&
     numericDown < numericPrice &&
-    Number(count) > 0 &&
-    !!firstDueDate;
+    (isNoFrequency || (Number(count) > 0 && !!firstDueDate));
   const numericInput = (value: string) =>
     sanitizeNumericInput(value, { allowDecimal: currency !== "iqd" });
 
@@ -225,9 +225,9 @@ function CreateInstallmentSaleDialog({
         acquisitionCost: numericCost,
         totalSalePrice: numericPrice,
         downPaymentAmount: numericDown,
-        installmentCount: Number(count),
+        installmentCount: isNoFrequency ? 1 : Number(count),
         installmentFrequency: frequency,
-        firstDueDate: formatLocalDateValue(firstDueDate),
+        firstDueDate: isNoFrequency ? null : formatLocalDateValue(firstDueDate),
         downPaymentMethod: downMethod,
         downPaymentAccountId: downAccount?.id ?? null,
         downPaymentAccountNameSnapshot: downAccount?.name ?? null,
@@ -468,7 +468,7 @@ function CreateInstallmentSaleDialog({
               ) : null}
             </div>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="grid gap-2">
+              {!isNoFrequency ? <div className="grid gap-2">
                 <Label>
                   {t("installmentSales.installmentCount")}{" "}
                   <span className="text-destructive">*</span>
@@ -483,7 +483,7 @@ function CreateInstallmentSaleDialog({
                   }
                   disabled={isSaving}
                 />
-              </div>
+              </div> : null}
               <div className="grid gap-2">
                 <Label>
                   {t("installmentSales.frequency")}{" "}
@@ -491,15 +491,22 @@ function CreateInstallmentSaleDialog({
                 </Label>
                 <Select
                   value={frequency}
-                  onValueChange={(value) =>
-                    setFrequency(value as InstallmentFrequency)
-                  }
+                  onValueChange={(value) => {
+                    const nextFrequency = value as InstallmentSaleFrequency;
+                    setFrequency(nextFrequency);
+                    if (nextFrequency === "no_frequency") {
+                      setFirstDueDate(undefined);
+                    }
+                  }}
                   disabled={isSaving}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="no_frequency">
+                      {t("installmentSales.noFrequency")}
+                    </SelectItem>
                     <SelectItem value="daily">
                       {t("loans.frequencies.daily")}
                     </SelectItem>
@@ -514,8 +521,13 @@ function CreateInstallmentSaleDialog({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                {isNoFrequency ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t("installmentSales.noFrequencyHint")}
+                  </p>
+                ) : null}
               </div>
-              <div className="grid gap-2">
+              {!isNoFrequency ? <div className="grid gap-2">
                 <Label>
                   {t("installmentSales.firstDueDate")}{" "}
                   <span className="text-destructive">*</span>
@@ -527,7 +539,7 @@ function CreateInstallmentSaleDialog({
                   disabled={isSaving}
                   placeholder={t("installmentSales.firstDueDate")}
                 />
-              </div>
+              </div> : null}
             </div>
             <div className="grid gap-2">
               <Label>{t("common.notes")}</Label>
@@ -879,6 +891,7 @@ function SaleDetailsDialog({
   const [cancelOpen, setCancelOpen] = useState(false);
   const installments = useInstallmentSaleInstallments(sale?.id);
   const customerPayments = useInstallmentSalePayments(sale?.id);
+  const isNoFrequency = sale?.installmentFrequency === "no_frequency";
   const readOnly = user?.role === "viewer";
   return (
     <>
@@ -928,10 +941,16 @@ function SaleDetailsDialog({
                   <Card>
                     <CardContent className="p-4">
                       <div className="text-xs text-muted-foreground">
-                        {t("installmentSales.nextDueDate")}
+                        {isNoFrequency
+                          ? t("installmentSales.frequency")
+                          : t("installmentSales.nextDueDate")}
                       </div>
                       <strong>
-                        {sale.nextDueDate ? formatDate(sale.nextDueDate) : "-"}
+                        {isNoFrequency
+                          ? t("installmentSales.noFrequency")
+                          : sale.nextDueDate
+                            ? formatDate(sale.nextDueDate)
+                            : "-"}
                       </strong>
                     </CardContent>
                   </Card>
@@ -980,7 +999,7 @@ function SaleDetailsDialog({
                     </Button>
                   ) : null}
                 </div>
-                <div className="rounded-xl border overflow-x-auto">
+                {!isNoFrequency ? <div className="rounded-xl border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1005,7 +1024,7 @@ function SaleDetailsDialog({
                       {installments.map((row) => (
                         <TableRow key={row.id}>
                           <TableCell>#{row.installmentNo}</TableCell>
-                          <TableCell>{formatDate(row.dueDate)}</TableCell>
+                          <TableCell>{row.dueDate ? formatDate(row.dueDate) : "-"}</TableCell>
                           <TableCell className="text-end">
                             {formatCurrency(
                               row.plannedAmount,
@@ -1053,7 +1072,7 @@ function SaleDetailsDialog({
                       ))}
                     </TableBody>
                   </Table>
-                </div>
+                </div> : null}
                 <div className="rounded-xl border p-4">
                   <div className="mb-3 font-semibold">
                     {t("installmentSales.customerPayments")}

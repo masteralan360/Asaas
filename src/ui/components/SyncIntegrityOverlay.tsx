@@ -11,7 +11,7 @@ import { retrySyncIntegrityMutations } from '@/local-db/offlineMutations'
 import type { OfflineMutation } from '@/local-db/models'
 import { LAST_SYNC_KEY } from '@/sync/constants'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
-import { isSyncIntegrityError } from '@/sync/syncErrors'
+import { getCapitalPoolConflictFromSyncError, isSyncIntegrityError } from '@/sync/syncErrors'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
 
@@ -53,6 +53,13 @@ export function SyncIntegrityOverlay() {
     }, [workspaceId]) ?? []
 
     const firstIssue = integrityIssues[0]
+    const capitalPoolConflict = getCapitalPoolConflictFromSyncError(firstIssue?.error)
+    const firstIssueMessage = capitalPoolConflict
+        ? t('paymentAccounts.capitalPools.errors.accountConflict', {
+            account: capitalPoolConflict.accountName,
+            pool: capitalPoolConflict.poolName,
+        })
+        : firstIssue?.error
     const shouldBlock = isAuthenticated && !isLocalMode && Boolean(user && firstIssue)
     const canRepairVehicleYear = firstIssue?.entityType === 'rental_vehicles'
         && isRentalVehicleYearConstraintError(firstIssue.error)
@@ -124,7 +131,7 @@ export function SyncIntegrityOverlay() {
                                 )}
                             </div>
                             <p className="mt-2 break-words text-xs leading-5 text-destructive">
-                                {firstIssue.error}
+                                {firstIssueMessage}
                             </p>
                         </div>
 

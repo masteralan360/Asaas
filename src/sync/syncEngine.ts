@@ -122,6 +122,7 @@ const SYNC_PULL_TABLES = [
   "loan_installments",
   "loan_payments",
   "payment_accounts",
+  "capital_pools",
   "payment_account_balances",
   "payment_account_movements",
   "cashier_shifts",
@@ -370,6 +371,16 @@ function getMutationParentKeys(mutation: MutationSyncOrderItem) {
     case "payment_transactions":
       addParent("payment_accounts", "accountId", "account_id");
       break;
+    case "capital_pools": {
+      const rawAccountIds = payload.accountIds ?? payload.account_ids;
+      const accountIds = Array.isArray(rawAccountIds) ? rawAccountIds : [];
+      for (const accountId of accountIds) {
+        if (typeof accountId === "string" && accountId) {
+          parentKeys.push(mutationEntityKey(workspaceId, "payment_accounts", accountId));
+        }
+      }
+      break;
+    }
     case "travel_passengers":
       addParent("travel_bookings", "bookingId", "booking_id");
       break;

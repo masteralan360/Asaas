@@ -20,6 +20,7 @@ import {
   getPaymentAccountBalanceSummary,
   recordPaymentAccountManualOperation,
   savePaymentAccount,
+  useCapitalPools,
   usePaymentAccountBalances,
   usePaymentAccountMovements,
   usePaymentAccounts,
@@ -74,11 +75,16 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   useToast,
   PaymentMethodSelector,
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { CurrencySelector } from '@/ui/components/CurrencySelector'
+import { CapitalPoolsPanel } from '@/ui/components/payments/CapitalPoolsPanel'
 import { defaultPaymentAccountIcon, PAYMENT_ACCOUNT_ICON_OPTIONS, PaymentAccountIcon } from '@/ui/components/payments/PaymentAccountIcon'
 import { PressAndHoldButton } from '@/ui/components/PressAndHoldButton'
 import { useWorkspace } from '@/workspace'
@@ -398,11 +404,13 @@ export function PaymentAccounts() {
   const workspaceId = user?.workspaceId
   const baseCurrency = features.default_currency
   const accounts = usePaymentAccounts(workspaceId)
+  const capitalPools = useCapitalPools(workspaceId)
   const balances = usePaymentAccountBalances(workspaceId)
   const movements = usePaymentAccountMovements(workspaceId)
   const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: true })
 
   const [accountDialogOpen, setAccountDialogOpen] = useState(false)
+  const [activeModuleTab, setActiveModuleTab] = useState<'accounts' | 'capital-pools'>('accounts')
   const [editingAccount, setEditingAccount] = useState<PaymentAccount | null>(null)
   const [accountName, setAccountName] = useState('')
   const [accountType, setAccountType] = useState<PaymentAccountType>('cash_drawer')
@@ -889,9 +897,24 @@ export function PaymentAccounts() {
           <h1 className="text-3xl font-bold tracking-tight">{t('paymentAccounts.title', { defaultValue: 'Payment Accounts' })}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('paymentAccounts.subtitle', { defaultValue: 'Optional payment destinations. Payments without an account remain normal ledger transactions.' })}</p>
         </div>
-        <Button onClick={() => openAccountDialog()}><Plus className="mr-2 h-4 w-4" />{t('paymentAccounts.newAccount', { defaultValue: 'New Payment Account' })}</Button>
+        {activeModuleTab === 'accounts' ? (
+          <Button onClick={() => openAccountDialog()}><Plus className="mr-2 h-4 w-4" />{t('paymentAccounts.newAccount', { defaultValue: 'New Payment Account' })}</Button>
+        ) : null}
       </div>
 
+      <Tabs value={activeModuleTab} onValueChange={(value) => setActiveModuleTab(value as 'accounts' | 'capital-pools')} className="space-y-6">
+        <TabsList className="grid h-auto min-h-12 w-full grid-cols-2 rounded-2xl bg-secondary/50 p-1 sm:max-w-xl">
+          <TabsTrigger value="accounts" className="min-h-10 gap-2 rounded-xl">
+            <WalletCards className="h-4 w-4" />
+            {t('paymentAccounts.accountsTab')}
+          </TabsTrigger>
+          <TabsTrigger value="capital-pools" className="min-h-10 gap-2 rounded-xl">
+            <Landmark className="h-4 w-4" />
+            {t('paymentAccounts.capitalPools.tab')}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="accounts" className="mt-0 space-y-8">
       <Card className="overflow-hidden">
         <CardHeader className="border-b border-border/60 pb-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1635,6 +1658,19 @@ export function PaymentAccounts() {
         title={t('paymentAccounts.removeAccount', { defaultValue: 'Remove payment account' })}
         description={t('paymentAccounts.removeAccountDescription', { defaultValue: 'Historic payment movements stay in the ledger. If this is the primary account, the next available account becomes primary.' })}
       />
+
+        </TabsContent>
+        <TabsContent value="capital-pools" className="mt-0">
+          <CapitalPoolsPanel
+            workspaceId={workspaceId}
+            pools={capitalPools}
+            accounts={accounts}
+            balances={balances}
+            movements={movements}
+            transactions={paymentTransactions}
+          />
+        </TabsContent>
+      </Tabs>
 
     </div>
   )

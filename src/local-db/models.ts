@@ -1959,6 +1959,7 @@ export type LoanOrderType = 'sales' | 'purchase'
 export type LoanStatus = 'active' | 'overdue' | 'completed' | 'cancelled'
 export type InstallmentStatus = 'unpaid' | 'partial' | 'paid' | 'overdue' | 'cancelled'
 export type InstallmentFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly'
+export type InstallmentSaleFrequency = InstallmentFrequency | 'no_frequency'
 export type LoanLinkedPartyType = 'business_partner'
 
 export interface Loan extends BaseEntity {
@@ -2012,7 +2013,7 @@ export interface LoanPayment extends BaseEntity {
   createdBy?: string
 }
 
-/** A generic, off-catalog sale whose customer pays over a fixed schedule. */
+/** A generic, off-catalog sale with either a fixed schedule or an open customer balance. */
 export type InstallmentSaleStatus = 'active' | 'overdue' | 'completed' | 'cancelled'
 
 export interface InstallmentSale extends BaseEntity {
@@ -2029,8 +2030,8 @@ export interface InstallmentSale extends BaseEntity {
   customerPaidAmount: number
   customerBalanceAmount: number
   installmentCount: number
-  installmentFrequency: InstallmentFrequency
-  firstDueDate: string
+  installmentFrequency: InstallmentSaleFrequency
+  firstDueDate: string | null
   nextDueDate?: string | null
   status: InstallmentSaleStatus
   cancelledAt?: string | null
@@ -2042,7 +2043,7 @@ export interface InstallmentSale extends BaseEntity {
 export interface InstallmentSaleInstallment extends BaseEntity {
   installmentSaleId: string
   installmentNo: number
-  dueDate: string
+  dueDate: string | null
   plannedAmount: number
   paidAmount: number
   balanceAmount: number
@@ -2206,6 +2207,18 @@ export interface PaymentAccountMovement extends BaseEntity {
   deltaAmount: number
   currency: CurrencyCode
   occurredAt: string
+}
+
+/**
+ * A live, single-currency reporting group for payment accounts. The selected
+ * account IDs are configuration only; capital amounts are always derived from
+ * PaymentAccountBalance at read time.
+ */
+export interface CapitalPool extends BaseEntity {
+  name: string
+  currency: CurrencyCode
+  accountIds: string[]
+  createdBy?: string | null
 }
 
 /**
@@ -2468,6 +2481,7 @@ export interface SyncQueueItem {
     | 'installment_sale_payments'
     | 'payment_transactions'
     | 'payment_accounts'
+    | 'capital_pools'
     | 'payment_account_balances'
     | 'payment_account_movements'
     | 'cashier_shifts'
@@ -2689,6 +2703,7 @@ export interface OfflineMutation {
     | 'installment_sale_payments'
     | 'payment_transactions'
     | 'payment_accounts'
+    | 'capital_pools'
     | 'payment_account_balances'
     | 'payment_account_movements'
     | 'cashier_shifts'

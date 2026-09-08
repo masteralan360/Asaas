@@ -16,7 +16,7 @@ import { useToast } from '@/ui/components/use-toast'
 import { usePendingSyncMutations, clearOfflineMutations } from '@/local-db/hooks'
 import { retrySyncIntegrityMutations } from '@/local-db/offlineMutations'
 import type { OfflineMutation } from '@/local-db/models'
-import { isSyncIntegrityError } from '@/sync/syncErrors'
+import { getCapitalPoolConflictFromSyncError, isSyncIntegrityError } from '@/sync/syncErrors'
 import { inspectRemoteMutationPayload, type RemoteMutationFieldInspection } from '@/sync/syncPayloadContract'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
@@ -114,6 +114,13 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete, contentCla
     const selectedMutationFields = selectedMutation
         ? inspectRemoteMutationPayload(selectedMutation.entityType, selectedMutation.payload, selectedMutation.error)
         : []
+    const selectedCapitalPoolConflict = getCapitalPoolConflictFromSyncError(selectedMutation?.error)
+    const selectedMutationError = selectedCapitalPoolConflict
+        ? t('paymentAccounts.capitalPools.errors.accountConflict', {
+            account: selectedCapitalPoolConflict.accountName,
+            pool: selectedCapitalPoolConflict.poolName,
+        })
+        : selectedMutation?.error
 
     function handleOpenChange(nextOpen: boolean) {
         if (!nextOpen) {
@@ -376,7 +383,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete, contentCla
                     <DialogBody>
                         {selectedMutation?.error && (
                             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                                {selectedMutation.error}
+                                {selectedMutationError}
                             </div>
                         )}
 

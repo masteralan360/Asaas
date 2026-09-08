@@ -185,33 +185,37 @@ export function TitleBar() {
 
             {/* Right: Window Controls */}
             <div data-tauri-drag-region className="flex min-w-0 w-1/3 items-center justify-end gap-1">
-                {usageMeter && (
+                {(usageMeter || paygSummary) && (
                     <div className="flex min-w-0 flex-1 items-center justify-end">
                         {paygSummary && (
                             <WorkspacePaygChargeButton
                                 summary={paygSummary}
                                 onClick={() => setUsageModalOpen(true)}
                                 compact
-                                className="shrink-0 xl:hidden"
+                                className="me-2 shrink-0 xl:hidden"
                             />
                         )}
-                        <WorkspaceUsageCircleButton
-                            usageMeter={usageMeter}
-                            onClick={() => setUsageModalOpen(true)}
-                            className="relative z-10 mr-1 h-8 w-8 xl:hidden"
-                        />
+                        {!paygSummary && usageMeter && (
+                            <WorkspaceUsageCircleButton
+                                usageMeter={usageMeter}
+                                onClick={() => setUsageModalOpen(true)}
+                                className="relative z-10 mr-1 h-8 w-8 xl:hidden"
+                            />
+                        )}
                         {paygSummary && (
                             <WorkspacePaygChargeButton
                                 summary={paygSummary}
                                 onClick={() => setUsageModalOpen(true)}
-                                className="hidden shrink-0 xl:flex"
+                                className="me-2 hidden shrink-0 xl:flex"
                             />
                         )}
-                        <WorkspaceUsageButton
-                            usageMeter={usageMeter}
-                            onClick={() => setUsageModalOpen(true)}
-                            className="relative z-10 mr-2 hidden h-7 min-w-[150px] w-[240px] max-w-[22vw] shrink xl:flex"
-                        />
+                        {!paygSummary && usageMeter && (
+                            <WorkspaceUsageButton
+                                usageMeter={usageMeter}
+                                onClick={() => setUsageModalOpen(true)}
+                                className="relative z-10 mr-2 hidden h-7 min-w-[150px] w-[240px] max-w-[22vw] shrink xl:flex"
+                            />
+                        )}
                     </div>
                 )}
                 {subscriptionWarning && (
