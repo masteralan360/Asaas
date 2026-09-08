@@ -17,6 +17,8 @@ interface PartnerAutocompleteInputProps {
     required?: boolean
     includeRealEstateRoles?: boolean
     includeAgentRoles?: boolean
+    /** When agent roles are included, limits them to these eligible agent partners. */
+    eligibleAgentPartnerIds?: string[]
     excludePartnerIds?: string[]
     roles?: BusinessPartnerRole[]
 }
@@ -32,6 +34,7 @@ export function PartnerAutocompleteInput({
     required,
     includeRealEstateRoles = false,
     includeAgentRoles = false,
+    eligibleAgentPartnerIds,
     excludePartnerIds = [],
     roles
 }: PartnerAutocompleteInputProps) {
@@ -43,14 +46,19 @@ export function PartnerAutocompleteInput({
 
     const query = value.trim().toLowerCase()
     const excludedPartnerIds = useMemo(() => new Set(excludePartnerIds.filter(Boolean)), [excludePartnerIds])
+    const eligibleAgentPartnerIdSet = useMemo(
+        () => eligibleAgentPartnerIds === undefined ? null : new Set(eligibleAgentPartnerIds.filter(Boolean)),
+        [eligibleAgentPartnerIds]
+    )
 
     const filtered = useMemo(() => {
         if (!query || query.length < 1) return []
         return partners
             .filter((p) => !excludedPartnerIds.has(p.id))
+            .filter((p) => p.role !== 'agent' || !eligibleAgentPartnerIdSet || eligibleAgentPartnerIdSet.has(p.id))
             .filter((p) => p.partnerName.toLowerCase().includes(query))
             .slice(0, 8)
-    }, [excludedPartnerIds, partners, query])
+    }, [eligibleAgentPartnerIdSet, excludedPartnerIds, partners, query])
 
     const showDropdown = isFocused && !justSelected && filtered.length > 0
 

@@ -27,6 +27,7 @@ import {
     resolveActiveCashierShiftOccurrenceId
 } from './paymentAccounts'
 import type {
+    BusinessPartner,
     CurrencyCode,
     ClinicalAppointment,
     Employee,
@@ -2074,6 +2075,7 @@ const PARTNER_SETTLEMENT_SOURCE_TYPES = new Set<PaymentTransactionSourceType>([
   'simple_loan',
   'installment_sale_installment',
   'real_estate_commission',
+  'agent_commission_payout',
   'sales_order',
   'purchase_order'
 ])
@@ -2084,6 +2086,141 @@ async function resolveSettlementPartner(workspaceId: string, partnerId: string) 
     throw new Error('Business partner not found')
   }
   return partner
+}
+
+type SalesAccountCommissionBalance = {
+  agentId: string
+  assignmentId: string
+  order: SalesOrder
+  currency: CurrencyCode
+  amount: number
+  occurredAt: string
+}
+
+/**
+ * Sales-account commissions are kept in their own immutable ledger rather
+ * than the generic payment-obligations table. Expose their positive, unpaid
+ * assignment balances here so the standard partner settlement flow can pay
+ * them with the same partial and multi-currency controls as other payables.
+ */
+async function buildSalesAccountCommissionObligations(
+  workspaceId: string,
+  partner: BusinessPartner
+): Promise<PaymentObligation[]> {
+  const [agents, entries, orders, assignments] = await Promise.all([
+    db.agents.where('workspaceId').equals(workspaceId).toArray(),
+    db.agent_commission_entries.where('workspaceId').equals(workspaceId).toArray(),
+    db.sales_orders.where('workspaceId').equals(workspaceId).toArray(),
+    db.sales_order_agent_assignments.where('workspaceId').equals(workspaceId).toArray()
+  ])
+
+  const salesAccountAgents = new Map(
+    agents
+      .filter((agent) => (
+        !agent.isDeleted
+        && agent.businessPartnerId === partner.id
+        && agent.agentType === 'field_agent'
+        && agent.status === 'active'
+        && agent.salesAccountEnabled
+      ))
+      .map((agent) => [agent.id, agent])
+  )
+  if (salesAccountAgents.size === 0) {
+    return []
+  }
+
+  const ordersById = new Map(
+    orders
+      .filter((order) => !order.isDeleted && order.status === 'completed')
+      .map((order) => [order.id, order])
+  )
+  const assignmentsById = new Map(
+    assignments
+      .filter((assignment) => !assignment.isDeleted)
+      .map((assignment) => [assignment.id, assignment])
+  )
+  const balances = new Map<string, SalesAccountCommissionBalance>()
+
+  for (const entry of entries) {
+    if (
+      entry.isDeleted
+      || entry.kind === 'estimate'
+      || entry.kind === 'approval'
+      || !entry.assignmentId
+      || !entry.orderId
+    ) {
+      continue
+    }
+
+    const agent = salesAccountAgents.get(entry.agentId)
+    const order = ordersById.get(entry.orderId)
+    const assignment = assignmentsById.get(entry.assignmentId)
+    if (
+      !agent
+      || !order
+      || !assignment
+      || assignment.agentId !== agent.id
+      || assignment.orderId !== order.id
+    ) {
+      continue
+    }
+
+    const amount = Number(entry.amount || 0)
+    if (!Number.isFinite(amount)) {
+      continue
+    }
+
+    const key = `${agent.id}:${assignment.id}:${entry.currency}`
+    const current = balances.get(key)
+    if (current) {
+      current.amount += amount
+      if (entry.occurredAt < current.occurredAt) {
+        current.occurredAt = entry.occurredAt
+      }
+      continue
+    }
+
+    balances.set(key, {
+      agentId: agent.id,
+      assignmentId: assignment.id,
+      order,
+      currency: entry.currency,
+      amount,
+      occurredAt: entry.occurredAt
+    })
+  }
+
+  const todayKey = new Date().toISOString().slice(0, 10)
+  return Array.from(balances.values())
+    .filter((balance) => balance.amount > PAYMENT_AMOUNT_EPSILON)
+    .map((balance): PaymentObligation => {
+      const dueDate = normalizeDateKey(balance.occurredAt)
+      return {
+        id: `agent-commission:${balance.agentId}:${balance.assignmentId}:${balance.currency}`,
+        workspaceId,
+        sourceModule: 'orders',
+        sourceType: 'agent_commission_payout',
+        sourceRecordId: balance.order.id,
+        sourceSubrecordId: balance.assignmentId,
+        direction: 'outgoing',
+        amount: balance.amount,
+        currency: balance.currency,
+        dueDate,
+        createdAt: balance.occurredAt,
+        counterpartyName: partner.partnerName,
+        referenceLabel: balance.order.orderNumber,
+        title: partner.partnerName,
+        subtitle: balance.order.orderNumber,
+        status: isDateOverdue(dueDate, todayKey) ? 'overdue' : 'open',
+        routePath: `/orders/${balance.order.id}`,
+        metadata: {
+          businessPartnerId: partner.id,
+          agentId: balance.agentId,
+          commissionAssignmentId: balance.assignmentId,
+          orderId: balance.order.id
+        }
+      }
+    })
 }
 
 async function collectLockedOrderSourceKeys(workspaceId: string) {
@@ -2172,12 +2309,15 @@ export async function getPartnerSettlementBalance(
   direction: PaymentTransactionDirection
 ): Promise<PartnerSettlementBalance> {
   const partner = await resolveSettlementPartner(workspaceId, partnerId)
-  const [obligations, lockedSourceKeys] = await Promise.all([
+  const [obligations, lockedSourceKeys, salesAccountCommissionObligations] = await Promise.all([
     buildPaymentObligations(workspaceId, { direction }),
-    collectLockedOrderSourceKeys(workspaceId)
+    collectLockedOrderSourceKeys(workspaceId),
+    direction === 'outgoing'
+      ? buildSalesAccountCommissionObligations(workspaceId, partner)
+      : Promise.resolve([] as PaymentObligation[])
   ])
 
-  const eligibleObligations = obligations
+  const eligibleObligations = [...obligations, ...salesAccountCommissionObligations]
     .filter((item) => isEligiblePartnerObligation(item, partner.id, direction))
     .filter((item) => item.amount > PAYMENT_AMOUNT_EPSILON)
     .filter((item) => !lockedSourceKeys.has(getPaymentSourceKey(item)))
@@ -2380,6 +2520,30 @@ export async function settlePartnerBalance(
           businessPartnerId: partner.id,
           note,
           paidAt,
+          createdBy,
+          accountId: input.accountId ?? null,
+          accountNameSnapshot: input.accountNameSnapshot ?? null
+        })
+        break
+      }
+
+      case 'agent_commission_payout': {
+        const agentId = getMetadataString(obligation.metadata, 'agentId')
+        const assignmentId = getMetadataString(obligation.metadata, 'commissionAssignmentId')
+        if (!agentId || !assignmentId) {
+          throw new Error('Sales agent commission settlement metadata is incomplete')
+        }
+
+        const { recordAgentCommissionPayout } = await import('./agentCommissions')
+        await recordAgentCommissionPayout(workspaceId, {
+          agentId,
+          assignmentId,
+          orderId: obligation.sourceRecordId,
+          amount: applied,
+          currency: obligation.currency,
+          paymentMethod,
+          paidAt,
+          note,
           createdBy,
           accountId: input.accountId ?? null,
           accountNameSnapshot: input.accountNameSnapshot ?? null

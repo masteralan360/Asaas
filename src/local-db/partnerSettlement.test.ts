@@ -5,7 +5,7 @@ import { setNetworkStatus } from '@/lib/network'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 
 import { db } from './database'
-import type { RealEstateTransaction } from './models'
+import type { AgentCommissionEntry, SalesOrder, SalesOrderAgentAssignment, RealEstateTransaction } from './models'
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000001'
 
@@ -15,7 +15,12 @@ let getPartnerSettlementBalance: typeof import('./payments').getPartnerSettlemen
 let settlePartnerBalance: typeof import('./payments').settlePartnerBalance
 
 function installBrowserStorage() {
+    Object.defineProperty(globalThis.URL, 'createObjectURL', {
+        configurable: true,
+        value: () => 'blob:vitest'
+    })
     const values = new Map<string, string>()
+    const documentHead = { appendChild: () => undefined }
     const storage = {
         get length() {
             return values.size
@@ -34,17 +39,26 @@ function installBrowserStorage() {
         value: {
             localStorage: storage,
             sessionStorage: storage,
+            URL: globalThis.URL,
             location: { origin: 'http://localhost', hash: '', pathname: '/' },
             addEventListener: () => undefined,
             removeEventListener: () => undefined
         }
     })
+    Object.defineProperty(globalThis, 'DOMMatrix', { configurable: true, value: class DOMMatrix {} })
     Object.defineProperty(globalThis, 'document', {
         configurable: true,
         value: {
             visibilityState: 'visible',
             dir: 'ltr',
             documentElement: { lang: 'en', dir: 'ltr' },
+            head: documentHead,
+            getElementsByTagName: () => [documentHead],
+            createElement: () => ({
+                setAttribute: () => undefined,
+                appendChild: () => undefined
+            }),
+            createTextNode: () => ({}),
             addEventListener: () => undefined,
             removeEventListener: () => undefined
         }
@@ -484,6 +498,214 @@ describe('partner settlement', () => {
         const remaining = await getPartnerSettlementBalance(WORKSPACE_ID, partner.id, 'incoming')
         expect(remaining.total).toBeCloseTo(50000, 6)
         expect(remaining.eligibleObligations.map((item) => item.sourceRecordId)).toEqual([loanBId])
+    })
+
+    it('pays a sales-account agent commission through the partner settlement flow and records the account movement', async () => {
+        const partner = await createBusinessPartner(WORKSPACE_ID, {
+            partnerName: 'Sales Account Agent',
+            phone: '07500000011',
+            defaultCurrency: 'usd',
+            creditLimit: 0,
+            role: 'agent',
+            agent: {
+                zone: 'Baghdad',
+                agentType: 'field_agent',
+                status: 'active',
+                salesAccountEnabled: true
+            }
+        }, { allowAgentRole: true })
+        const agent = await db.agents.get(partner.agentFacetId!)
+        expect(agent).toBeTruthy()
+
+        const occurredAt = '2026-08-01T10:00:00.000Z'
+        const order: SalesOrder = {
+            id: 'sales-account-agent-order',
+            workspaceId: WORKSPACE_ID,
+            orderNumber: 'SO-AGENT-001',
+            businessPartnerId: null,
+            customerId: 'sales-account-agent-customer',
+            customerName: 'Commission Customer',
+            sourceStorageId: null,
+            items: [],
+            subtotal: 500,
+            discount: 0,
+            tax: 0,
+            total: 500,
+            currency: 'usd',
+            exchangeRate: null,
+            exchangeRateSource: null,
+            exchangeRateTimestamp: null,
+            status: 'completed',
+            actualDeliveryDate: occurredAt,
+            expectedDeliveryDate: null,
+            isPaid: false,
+            paymentStatus: 'unpaid',
+            paidAmount: 0,
+            balanceAmount: 500,
+            paidAt: null,
+            paymentMethod: 'cash',
+            initialPaymentAmount: 0,
+            linkedLoanId: null,
+            isInstallmentBased: false,
+            installmentCount: 0,
+            installmentFrequency: null,
+            firstDueDate: null,
+            nextDueDate: null,
+            reservedAt: occurredAt,
+            returnStatus: 'none',
+            returnedAmount: 0,
+            createdBy: null,
+            createdAt: occurredAt,
+            updatedAt: occurredAt,
+            syncStatus: 'synced',
+            lastSyncedAt: occurredAt,
+            version: 1,
+            isDeleted: false
+        }
+        const assignment: SalesOrderAgentAssignment = {
+            id: 'sales-account-agent-assignment',
+            workspaceId: WORKSPACE_ID,
+            orderId: order.id,
+            agentId: agent!.id,
+            assignmentSource: 'sales_account',
+            assignedAt: occurredAt,
+            unassignedAt: null,
+            assignedBy: null,
+            unassignedBy: null,
+            customerCitySnapshot: 'Baghdad',
+            deliveryChargeAmount: 0,
+            internalDeliveryCostAmount: 0,
+            createdAt: occurredAt,
+            updatedAt: occurredAt,
+            syncStatus: 'synced',
+            lastSyncedAt: occurredAt,
+            version: 1,
+            isDeleted: false
+        }
+        const accrual: AgentCommissionEntry = {
+            id: 'sales-account-agent-accrual',
+            workspaceId: WORKSPACE_ID,
+            orderId: order.id,
+            assignmentId: assignment.id,
+            agentId: agent!.id,
+            membershipId: null,
+            planId: null,
+            orderReturnId: null,
+            relatedEntryId: null,
+            kind: 'accrual',
+            status: 'earned',
+            currency: 'usd',
+            calculationBasis: 'net_profit',
+            includeTax: false,
+            includeDeliveryCharge: false,
+            basisAmount: 500,
+            revenueAmount: 500,
+            costAmount: 0,
+            taxAmount: 0,
+            deliveryChargeAmount: 0,
+            ratePercent: 16,
+            amount: 80,
+            occurredAt,
+            payoutReference: null,
+            settlementSource: 'manual',
+            notes: 'Commission earned for the sales account',
+            createdBy: null,
+            createdAt: occurredAt,
+            updatedAt: occurredAt,
+            syncStatus: 'synced',
+            lastSyncedAt: occurredAt,
+            version: 1,
+            isDeleted: false
+        }
+        await db.transaction('rw', db.sales_orders, db.sales_order_agent_assignments, db.agent_commission_entries, async () => {
+            await db.sales_orders.put(order)
+            await db.sales_order_agent_assignments.put(assignment)
+            await db.agent_commission_entries.put(accrual)
+        })
+
+        const payable = await getPartnerSettlementBalance(WORKSPACE_ID, partner.id, 'outgoing')
+        expect(payable).toMatchObject({ total: 80, items: 1 })
+        expect(payable.eligibleObligations).toEqual([
+            expect.objectContaining({
+                sourceType: 'agent_commission_payout',
+                sourceRecordId: order.id,
+                sourceSubrecordId: assignment.id,
+                direction: 'outgoing',
+                amount: 80,
+                currency: 'usd'
+            })
+        ])
+        expect((await getPartnerSettlementBalance(WORKSPACE_ID, partner.id, 'incoming')).total).toBe(0)
+
+        await expect(settlePartnerBalance(WORKSPACE_ID, {
+            partnerId: partner.id,
+            direction: 'outgoing',
+            paymentMethod: 'cash',
+            amount: 81
+        })).rejects.toThrow(/cannot exceed the outstanding balance/)
+
+        const { savePaymentAccount } = await import('./paymentAccounts')
+        const account = await savePaymentAccount(WORKSPACE_ID, {
+            name: 'Commission drawer',
+            accountType: 'cash_drawer',
+            openingBalances: [{ currency: 'usd', amount: 100 }]
+        })
+        const result = await settlePartnerBalance(WORKSPACE_ID, {
+            partnerId: partner.id,
+            direction: 'outgoing',
+            paymentMethod: 'cash',
+            paidAt: '2026-08-02T12:00:00.000Z',
+            amountsByCurrency: [{ currency: 'usd', amount: 30 }],
+            note: 'Partial commission payout',
+            accountId: account.id,
+            accountNameSnapshot: account.name
+        })
+        expect(result).toMatchObject({ totalSettled: 30, items: 1 })
+
+        const payoutEntry = await db.agent_commission_entries
+            .where('[workspaceId+agentId]')
+            .equals([WORKSPACE_ID, agent!.id])
+            .and((entry) => entry.kind === 'payout' && !entry.isDeleted)
+            .first()
+        expect(payoutEntry).toMatchObject({
+            orderId: order.id,
+            assignmentId: assignment.id,
+            amount: -30,
+            settlementSource: 'manual',
+            occurredAt: '2026-08-02T12:00:00.000Z'
+        })
+
+        const payment = await db.payment_transactions
+            .where('[workspaceId+sourceType+sourceRecordId]')
+            .equals([WORKSPACE_ID, 'agent_commission_payout', agent!.id])
+            .first()
+        expect(payment).toMatchObject({
+            sourceSubrecordId: payoutEntry?.id,
+            direction: 'outgoing',
+            amount: 30,
+            currency: 'usd',
+            accountId: account.id,
+            accountNameSnapshot: account.name,
+            counterpartyName: partner.partnerName,
+            metadata: expect.objectContaining({ businessPartnerId: partner.id, automaticSettlement: false })
+        })
+        expect(await db.payment_account_movements.get(payment!.id)).toMatchObject({
+            accountId: account.id,
+            direction: 'outgoing',
+            deltaAmount: -30,
+            currency: 'usd'
+        })
+        expect((await db.payment_account_balances.where('[accountId+currency]').equals([account.id, 'usd']).first())?.balanceAmount).toBe(70)
+
+        const remaining = await getPartnerSettlementBalance(WORKSPACE_ID, partner.id, 'outgoing')
+        expect(remaining).toMatchObject({ total: 50, items: 1 })
+        await settlePartnerBalance(WORKSPACE_ID, {
+            partnerId: partner.id,
+            direction: 'outgoing',
+            paymentMethod: 'cash',
+            amountsByCurrency: [{ currency: 'usd', amount: 50 }]
+        })
+        expect((await getPartnerSettlementBalance(WORKSPACE_ID, partner.id, 'outgoing')).total).toBe(0)
     })
 
     it('refreshes the partner summary after settling without error', async () => {

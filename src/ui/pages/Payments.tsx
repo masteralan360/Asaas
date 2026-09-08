@@ -56,7 +56,7 @@ import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { PartnerSettlementDialog } from '@/ui/components/payments/PartnerSettlementDialog'
 import { ReverseTransactionCofirmationDialog } from '@/ui/components/payments/ReverseTransactionCofirmationDialog'
 import { useWorkspace } from '@/workspace'
-import { useWorkspacePermissions } from '@/permissions'
+import { hasEffectiveSalesAgentCommissionPermission, useWorkspacePermissions } from '@/permissions'
 
 type PaymentsTab = 'open-items' | 'payable' | 'collectable' | 'transactions'
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
@@ -86,6 +86,8 @@ function sourceTypeLabel(
             return t('payments.sourceType.realEstateInstallment', { defaultValue: 'Real Estate Installment' })
         case 'real_estate_commission':
             return t('payments.sourceType.realEstateCommission', { defaultValue: 'Real Estate Commission' })
+        case 'agent_commission_payout':
+            return t('payments.sourceType.agentCommissionPayout', { defaultValue: 'Agent Commission Payout' })
         case 'activity_transaction':
             return t('payments.sourceType.activityTransaction', { defaultValue: 'Activity Transaction' })
         case 'activity_refund':
@@ -156,6 +158,25 @@ function paymentMethodLabel(value: PaymentTransaction['paymentMethod'], t: any) 
     }
 }
 
+function partnerSettlementErrorMessage(t: any, error: unknown) {
+    const message = error instanceof Error ? error.message : ''
+    if (message.includes('Commission payout cannot exceed the outstanding balance')) {
+        return t('settlementModal.amountExceedsBalance', { defaultValue: 'The amount cannot exceed the remaining balance.' })
+    }
+    if (
+        message.includes('Sales account agent not found')
+        || message.includes('Sales account commission assignment not found')
+        || message.includes('Sales account business partner not found')
+        || message.includes('Completed sales order not found')
+        || message.includes('Commission payout currency must match the sales order')
+    ) {
+        return t('partnerSettlement.agentCommissionPayoutUnavailable', {
+            defaultValue: 'This sales-account commission payout is no longer available. Refresh and try again.'
+        })
+    }
+    return message || t('payments.settlementFailed', { defaultValue: 'Failed to record settlement.' })
+}
+
 function collapseTransactionsBySource(
     items: PaymentTransaction[],
     latestUnreversedBySource: ReadonlyMap<string, PaymentTransaction>
@@ -215,11 +236,14 @@ export function Payments() {
     const { user } = useAuth()
     const { toast } = useToast()
     const { features, hasFeature } = useWorkspace()
-    const { hasPermission } = useWorkspacePermissions()
+    const { hasPermission, permissionKeys } = useWorkspacePermissions()
     const { dateRange, customDates } = useDateRange()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
     const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.activities || features.clinical_appointments || features.car_rental || features.travel_transportation || hasFeature('payment_accounts')
+    const canSettleSalesAccountCommissions = hasFeature('agent_sales_accounts')
+        && hasFeature('sales_agent_commissions')
+        && hasEffectiveSalesAgentCommissionPermission(user?.role, permissionKeys, 'salesAgentCommissions.pay')
 
     const [activeTab, setActiveTab] = useState<PaymentsTab>('open-items')
     const [search, setSearch] = useState('')
@@ -418,7 +442,7 @@ export function Payments() {
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || t('payments.settlementFailed', { defaultValue: 'Failed to record settlement.' }),
+                description: partnerSettlementErrorMessage(t, error),
                 variant: 'destructive'
             })
         } finally {
@@ -831,6 +855,7 @@ export function Payments() {
                     onOpenChange={setIsPartnerSettlementOpen}
                     workspaceId={workspaceId}
                     defaultDirection={settlementAction.direction}
+                    includeSalesAccountAgents={canSettleSalesAccountCommissions}
                     isSubmitting={isSubmittingSettlement}
                     onSubmit={handlePartnerSettlement}
                 />

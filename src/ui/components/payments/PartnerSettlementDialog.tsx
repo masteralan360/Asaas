@@ -10,7 +10,8 @@ import {
     type PartnerSettlementBalance,
     type PartnerSettlementProgress,
     type PaymentTransactionDirection,
-    type WorkspacePaymentMethod
+    type WorkspacePaymentMethod,
+    useAgents
 } from '@/local-db'
 import { STANDARD_PAYMENT_METHODS } from '@/lib/paymentMethods'
 import {
@@ -47,6 +48,7 @@ interface PartnerSettlementDialogProps {
     onOpenChange: (open: boolean) => void
     workspaceId: string
     defaultDirection?: PaymentTransactionDirection | null
+    includeSalesAccountAgents?: boolean
     isSubmitting?: boolean
     onSubmit: (input: {
         partner: BusinessPartner
@@ -68,6 +70,7 @@ export function PartnerSettlementDialog({
     onOpenChange,
     workspaceId,
     defaultDirection = null,
+    includeSalesAccountAgents = false,
     isSubmitting = false,
     onSubmit
 }: PartnerSettlementDialogProps) {
@@ -85,6 +88,18 @@ export function PartnerSettlementDialog({
     const [balanceError, setBalanceError] = useState<string | null>(null)
     const [settleProgress, setSettleProgress] = useState<PartnerSettlementProgress | null>(null)
     const [amountInputs, setAmountInputs] = useState<Record<string, string>>({})
+    const agents = useAgents(includeSalesAccountAgents ? workspaceId : undefined)
+    const eligibleSalesAccountAgentPartnerIds = useMemo(
+        () => agents
+            .filter((agent) => (
+                !agent.isDeleted
+                && agent.agentType === 'field_agent'
+                && agent.status === 'active'
+                && agent.salesAccountEnabled
+            ))
+            .map((agent) => agent.businessPartnerId),
+        [agents]
+    )
 
     useEffect(() => {
         if (!open) {
@@ -366,6 +381,8 @@ export function PartnerSettlementDialog({
                                     placeholder={t('partnerSettlement.partnerPlaceholder', { defaultValue: 'Search business partner' })}
                                     disabled={isSubmitting}
                                     includeRealEstateRoles
+                                    includeAgentRoles={includeSalesAccountAgents}
+                                    eligibleAgentPartnerIds={eligibleSalesAccountAgentPartnerIds}
                                 />
                                 {partner ? (
                                     <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">

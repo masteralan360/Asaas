@@ -1691,6 +1691,8 @@
       "grossProfit": "کۆی قازانج",
       "margin": "هامش",
       "receivedUnits": "یەکە وەرگیراوەکان",
+      "fulfilledUnits": "یەکە جێبەجێکراوەکان",
+      "notAvailable": "بەردەست نییە",
       "averageUnitCost": "تێکڕای تێچووی یەکە",
       "workflowStopped": "کارکردن وەستا",
       "workflowProgress": "بەرەوپێشچوونی کارکردن",
@@ -5085,7 +5087,8 @@
     "payAmountPartial": "دانەوەی {{amount}} لە {{total}}",
     "ofTotal": "لە {{total}}",
     "amountExceedsBalance": "نابێت زیاتر بێت لە {{amount}}.",
-    "remainsOpen": "{{amount}} بە کراوەیی دەمێنێتەوە."
+    "remainsOpen": "{{amount}} بە کراوەیی دەمێنێتەوە.",
+    "agentCommissionPayoutUnavailable": "ئەم پارەدانەی نسبەی حیسابی فرۆشتن بەردەست نییە. نوێی بکەرەوە و دووبارە هەوڵ بدە."
   },
   "payments": {
     "title": "پارەدانەکان",
@@ -5161,6 +5164,7 @@
       "payroll": "مووچە",
       "directTransaction": "مامەڵەی ڕاستەوخۆ",
       "clinicalAppointment": "نۆرە",
+      "agentCommissionPayout": "پارەدانی نسبەی بریکار",
       "activityTransaction": "مامەڵەی چالاکی",
       "activityRefund": "گەڕاندنەوەی پارەی چالاکی",
       "deliveryCourierRemittance": "تەسلیمکردنی نەقدی مەندوب",

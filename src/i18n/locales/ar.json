@@ -1684,6 +1684,8 @@
       "grossProfit": "إجمالي الربح",
       "margin": "الهامش",
       "receivedUnits": "الوحدات المستلمة",
+      "fulfilledUnits": "الوحدات المنفذة",
+      "notAvailable": "غير متاح",
       "averageUnitCost": "متوسط تكلفة الوحدة",
       "workflowStopped": "توقف سير العمل",
       "workflowProgress": "تقدم سير العمل",
@@ -5084,7 +5086,8 @@
     "payAmountPartial": "دفع {{amount}} من {{total}}",
     "ofTotal": "من {{total}}",
     "amountExceedsBalance": "لا يمكن أن يتجاوز {{amount}}.",
-    "remainsOpen": "سيبقى {{amount}} مفتوحًا."
+    "remainsOpen": "سيبقى {{amount}} مفتوحًا.",
+    "agentCommissionPayoutUnavailable": "لم تعد دفعة نسبة حساب المبيعات هذه متاحة. حدّث الصفحة وحاول مجددًا."
   },
   "payments": {
     "title": "المدفوعات",
@@ -5160,6 +5163,7 @@
       "payroll": "رواتب",
       "directTransaction": "معاملة مباشرة",
       "clinicalAppointment": "موعد",
+      "agentCommissionPayout": "دفع نسبة الوكيل",
       "activityTransaction": "معاملة نشاط",
       "activityRefund": "استرداد نشاط",
       "deliveryCourierRemittance": "تسليم نقدي للمندوب",

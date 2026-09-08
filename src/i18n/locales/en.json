@@ -2096,7 +2096,8 @@
     "payAmountPartial": "Pay {{amount}} of {{total}}",
     "ofTotal": "of {{total}}",
     "amountExceedsBalance": "Cannot exceed {{amount}}.",
-    "remainsOpen": "{{amount}} will remain open."
+    "remainsOpen": "{{amount}} will remain open.",
+    "agentCommissionPayoutUnavailable": "This sales-account commission payout is no longer available. Refresh and try again."
   },
   "payments": {
     "title": "Payments",
@@ -2172,6 +2173,7 @@
       "payroll": "Payroll",
       "directTransaction": "Direct Transaction",
       "clinicalAppointment": "Appointment",
+      "agentCommissionPayout": "Agent Commission Payout",
       "activityTransaction": "Activity Transaction",
       "activityRefund": "Activity Refund",
       "deliveryCourierRemittance": "Courier Remittance",
@@ -2729,6 +2731,8 @@
       "grossProfit": "Gross Profit",
       "margin": "Margin",
       "receivedUnits": "Received Units",
+      "fulfilledUnits": "Fulfilled Units",
+      "notAvailable": "Not Available",
       "averageUnitCost": "Average Unit Cost",
       "workflowStopped": "Workflow Stopped",
       "workflowProgress": "Workflow Progress",

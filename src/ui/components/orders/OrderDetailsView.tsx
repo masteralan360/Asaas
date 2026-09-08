@@ -10,7 +10,7 @@ import { useAuth } from '@/auth'
 import { useDemoTutorial } from '@/demo'
 import { usePartnerAccountStatementClosingBalances } from '@/hooks/usePartnerAccountStatement'
 import { useProfileData } from '@/hooks/useProfileData'
-import { getOrderLineFreeBonusQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus } from '@/lib/orderLineItems'
+import { getOrderLineFreeBonusQuantity, getOrderLineFulfilledQuantity, getOrderLineInventoryQuantity, getOrderLinePaidQuantity, hasOrderLineFreeBonus, isFulfilledUnitsAvailableForOrder } from '@/lib/orderLineItems'
 import {
     getOrderAdjustmentTotals,
     getOrderTotalWithPostReturnAdjustments,
@@ -871,6 +871,10 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
     const receivedUnits = !isSales
         ? (order as PurchaseOrder).items.reduce((sum, item) => sum + (item.receivedQuantity ?? ((order.status === 'received' || order.status === 'completed') ? getOrderLineInventoryQuantity(item) : 0)), 0)
         : null
+    const fulfilledUnitsAvailable = isSales && isFulfilledUnitsAvailableForOrder(order.createdAt, order.items)
+    const fulfilledUnits = fulfilledUnitsAvailable
+        ? (order as SalesOrder).items.reduce((sum, item) => sum + getOrderLineFulfilledQuantity(item, order.status === 'completed'), 0)
+        : null
     const averageUnitCost = !isSales && totalUnits > 0 ? order.total / totalUnits : null
 
     const activity = [
@@ -1670,6 +1674,12 @@ const [activeWorkflowAction, setActiveWorkflowAction] = useState<string | null>(
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.units') || 'Units'}</div>
                                     <div className="mt-2 text-2xl font-black">{totalUnits}</div>
                                 </div>
+                                {isSales ? (
+                                    <div className="rounded-2xl border bg-background/70 p-4">
+                                        <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.fulfilledUnits') || 'Fulfilled Units'}</div>
+                                        <div className="mt-2 text-2xl font-black">{fulfilledUnitsAvailable ? fulfilledUnits : (t('orders.details.notAvailable') || 'Not Available')}</div>
+                                    </div>
+                                ) : null}
                                 {showFreeBonus ? (
                                     <div className="rounded-2xl border bg-background/70 p-4">
                                         <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.freeBonus', { defaultValue: 'Free Bonus' })}</div>

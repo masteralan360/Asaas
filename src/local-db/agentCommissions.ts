@@ -2533,6 +2533,7 @@ async function ensureCommissionPayoutTransaction(
   entry: Pick<AgentCommissionEntry, "id" | "orderId" | "agentId" | "amount" | "currency" | "occurredAt" | "payoutReference" | "settlementSource">,
   options: {
     counterpartyName: string | null;
+    businessPartnerId?: string | null;
     paymentMethod: WorkspacePaymentMethod;
     notes: string | null;
     createdBy: string | null;
@@ -2574,9 +2575,175 @@ async function ensureCommissionPayoutTransaction(
       agentId: entry.agentId,
       orderId: entry.orderId ?? null,
       payoutReference: entry.payoutReference ?? null,
+      businessPartnerId: options.businessPartnerId ?? null,
       automaticSettlement: entry.settlementSource === 'automatic',
     },
   });
+}
+
+export interface RecordAgentCommissionPayoutInput {
+  agentId: string;
+  assignmentId: string;
+  orderId: string;
+  amount: number;
+  currency: CurrencyCode;
+  paymentMethod: WorkspacePaymentMethod;
+  paidAt?: string;
+  note?: string | null;
+  createdBy?: string | null;
+  accountId?: string | null;
+  accountNameSnapshot?: string | null;
+}
+
+/**
+ * Pays an outstanding commission for one sales-order assignment. The payment
+ * transaction is written alongside the immutable commission-payout entry, so
+ * the Payments module, ledger, and payment-account movement stay in sync.
+ */
+export async function recordAgentCommissionPayout(
+  workspaceId: string,
+  input: RecordAgentCommissionPayoutInput,
+) {
+  const { softDeletePaymentTransaction } = await import('./payments');
+  if (
+    input.paymentMethod === 'credit'
+    || input.paymentMethod === 'unknown'
+    || input.paymentMethod === 'loan_adjustment'
+    || input.paymentMethod === 'loan'
+  ) {
+    throw new Error('Select a settlement payment method');
+  }
+
+  const amount = roundCommissionAmount(Number(input.amount));
+  if (!Number.isFinite(amount) || amount <= 0.000001) {
+    throw new Error('Commission payout amount must be greater than zero');
+  }
+
+  const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
+  if (Number.isNaN(paidAt.getTime())) {
+    throw new Error('Enter a valid payout date');
+  }
+  const occurredAt = paidAt.toISOString();
+
+  const [agent, assignment, order] = await Promise.all([
+    db.agents.get(input.agentId),
+    db.sales_order_agent_assignments.get(input.assignmentId),
+    db.sales_orders.get(input.orderId),
+  ]);
+  if (
+    !agent
+    || agent.isDeleted
+    || agent.workspaceId !== workspaceId
+    || agent.agentType !== 'field_agent'
+    || agent.status !== 'active'
+    || !agent.salesAccountEnabled
+  ) {
+    throw new Error('Sales account agent not found');
+  }
+  if (
+    !assignment
+    || assignment.isDeleted
+    || assignment.workspaceId !== workspaceId
+    || assignment.agentId !== agent.id
+    || assignment.orderId !== input.orderId
+  ) {
+    throw new Error('Sales account commission assignment not found');
+  }
+  if (
+    !order
+    || order.isDeleted
+    || order.workspaceId !== workspaceId
+    || order.status !== 'completed'
+  ) {
+    throw new Error('Completed sales order not found');
+  }
+  if (order.currency !== input.currency) {
+    throw new Error('Commission payout currency must match the sales order');
+  }
+
+  const commissionEntries = await db.agent_commission_entries
+    .where('[workspaceId+agentId]')
+    .equals([workspaceId, agent.id])
+    .and((entry) => (
+      !entry.isDeleted
+      && entry.assignmentId === assignment.id
+      && entry.orderId === order.id
+      && entry.currency === input.currency
+      && entry.kind !== 'estimate'
+      && entry.kind !== 'approval'
+    ))
+    .toArray();
+  const outstanding = roundCommissionAmount(commissionEntries.reduce((total, entry) => total + entry.amount, 0));
+  if (amount - outstanding > 0.000001) {
+    throw new Error('Commission payout cannot exceed the outstanding balance');
+  }
+
+  const partner = await db.business_partners.get(agent.businessPartnerId);
+  if (!partner || partner.isDeleted || partner.workspaceId !== workspaceId) {
+    throw new Error('Sales account business partner not found');
+  }
+
+  const payoutId = generateId();
+  const payoutReference = `${order.orderNumber} · SET-${payoutId.slice(0, 8).toUpperCase()}`;
+  const note = normalizeText(input.note);
+  const payoutInput = {
+    orderId: order.id,
+    assignmentId: assignment.id,
+    agentId: agent.id,
+    membershipId: null,
+    planId: null,
+    orderReturnId: null,
+    relatedEntryId: null,
+    kind: 'payout' as const,
+    status: 'paid' as const,
+    currency: input.currency,
+    calculationBasis: 'net_profit' as const,
+    includeTax: false,
+    includeDeliveryCharge: false,
+    basisAmount: 0,
+    revenueAmount: 0,
+    costAmount: 0,
+    taxAmount: 0,
+    deliveryChargeAmount: 0,
+    ratePercent: 0,
+    amount: -amount,
+    occurredAt,
+    payoutReference,
+    settlementSource: 'manual' as const,
+    notes: note,
+    createdBy: input.createdBy ?? null,
+  } satisfies Omit<AgentCommissionEntry, keyof ReturnType<typeof getSyncMetadata>
+    | 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'version' | 'isDeleted'>;
+
+  const payment = await ensureCommissionPayoutTransaction(workspaceId, {
+    id: payoutId,
+    orderId: order.id,
+    agentId: agent.id,
+    amount: -amount,
+    currency: input.currency,
+    occurredAt,
+    payoutReference,
+    settlementSource: 'manual',
+  }, {
+    counterpartyName: partner.partnerName,
+    businessPartnerId: partner.id,
+    paymentMethod: input.paymentMethod,
+    notes: note,
+    createdBy: input.createdBy ?? null,
+    accountId: input.accountId ?? null,
+    accountNameSnapshot: input.accountNameSnapshot ?? null,
+  });
+
+  try {
+    return await appendEntry(workspaceId, payoutInput, payoutId);
+  } catch (error) {
+    try {
+      await softDeletePaymentTransaction(payment);
+    } catch (cleanupError) {
+      console.error('[Sales Agent Commissions] Failed to roll back commission payout payment:', cleanupError);
+    }
+    throw error;
+  }
 }
 
 type CommissionPayoutFunding = {
